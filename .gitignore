@@ -21,7 +21,8 @@ env/
 Thumbs.db
 
 # Project specific
-output/
+output/*
+!output/submission/
 jiuwenswarm/.venv/
 jiuwenswarm/evaluation/latest_score.json
 

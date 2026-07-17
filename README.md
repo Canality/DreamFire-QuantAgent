@@ -99,8 +99,12 @@ Track_2/
 
 ```bash
 cd jiuwenswarm
-pip install -r requirements.txt  # 如果存在
-pip install yfinance akshare     # 数据源
+
+# 数据源 (三层级联兜底)
+pip install akshire baostock yfinance
+
+# 核心依赖
+pip install pandas numpy
 ```
 
 ### 运行策略 (单 Agent 直连)
@@ -110,6 +114,8 @@ cd jiuwenswarm
 python scripts/run_quant_pipeline.py
 ```
 
+输出: `output/pipeline_results.json`, `output/portfolio_weights.csv`
+
 ### 运行自评估
 
 ```bash
@@ -117,17 +123,57 @@ cd jiuwenswarm
 python evaluation/scoring.py --windows 8
 ```
 
+输出: `evaluation/latest_score.json`
+
 ### 运行多 Agent 团队 (框架模式)
 
 需要先配置 `~/.jiuwenswarm/config/config.yaml`，包含 LLM API 密钥和团队配置。
 
 ```bash
-# 启动框架
+# 方式1: 启动完整框架
 jiuwenswarm-app
 
-# 或程序化调用
+# 方式2: 程序化调用 (无需启动服务器)
 python evaluation/run_multi_agent.py
 ```
+
+### 生成竞赛提交物
+
+```bash
+cd jiuwenswarm
+python scripts/generate_submission.py
+```
+
+输出: `output/submission/` 目录，包含:
+- `Portfolio.json` — 投资组合结果
+- `量化投资报告.md` — 完整投资分析报告
+- `资源消耗日志.md` — Token/运行时/CPU 统计
+- `框架优化说明.md` — 框架改进详情
+
+### 关键参数释义
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--windows` | 8 | 回测窗口数量 (每个 20 交易日) |
+| `lookback_days` | 252 | 数据回溯天数 (含缓冲) |
+| `top_n` | 15 | 最大持仓股票数 |
+| `min_score` | -0.5 | 选股最低综合得分阈值 |
+| `single_stock_cap` | 0.10 | 单只股票最大权重 |
+| `sector_cap` | 0.25 | 单板块最大权重 |
+
+### 常见问题
+
+**Q: 数据获取失败怎么办？**
+系统内置三层数据源级联：akshare → baostock → yfinance。任意单源失效自动切换。
+若全部失败，检查网络并确保三个包均已安装。
+
+**Q: 多 Agent 模式需要什么额外配置？**
+需要在 `~/.jiuwenswarm/config/config.yaml` 中配置 LLM API 密钥 (DeepSeek 或其他 OpenAI 兼容接口) 和 `modes.team.quant_team` 团队配置。
+
+**Q: 如何切换单 Agent / 多 Agent 模式？**
+单 Agent: `python scripts/run_quant_pipeline.py`
+多 Agent: `python evaluation/run_multi_agent.py` 或 `jiuwenswarm-app`
+自评估: `python evaluation/scoring.py` (使用单 Agent 策略逻辑)
 
 ## 多 Agent 协作流程
 
