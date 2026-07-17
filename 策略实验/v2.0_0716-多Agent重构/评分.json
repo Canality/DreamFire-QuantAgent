@@ -1,0 +1,18 @@
+{
+  "version": "v2.0",
+  "date": "2026-07-16",
+  "total_score": 76.9,
+  "scores": {
+    "return": {"score": 36.8, "max": 56, "median_return": 0.03361},
+    "max_drawdown": {"score": 21.1, "max": 24, "median_dd": 0.01458},
+    "token": {"score": 10.0, "max": 10, "estimated_tokens": 15200},
+    "runtime": {"score": 5.0, "max": 5},
+    "compute": {"score": 4.0, "max": 5}
+  },
+  "data": {
+    "source": "yfinance",
+    "n_stocks": 49,
+    "n_days": 187,
+    "date_range": "2025-10-09 ~ 2026-07-15"
+  }
+}

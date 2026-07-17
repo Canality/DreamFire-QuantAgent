@@ -1,0 +1,19 @@
+{
+  "version": "v2.1",
+  "date": "2026-07-17",
+  "total_score": 78.5,
+  "scores": {
+    "return": {"score": 39.2, "max": 56, "median_return": 0.03839},
+    "max_drawdown": {"score": 20.3, "max": 24, "median_dd": 0.01830},
+    "token": {"score": 10.0, "max": 10, "estimated_tokens": 19700},
+    "runtime": {"score": 5.0, "max": 5},
+    "compute": {"score": 4.0, "max": 5}
+  },
+  "data": {
+    "source": "akshare → baostock → yfinance (multi-source)",
+    "n_stocks": 49,
+    "n_days": 188,
+    "date_range": "2025-10-09 ~ 2026-07-16",
+    "data_fetch_time_s": 15
+  }
+}
