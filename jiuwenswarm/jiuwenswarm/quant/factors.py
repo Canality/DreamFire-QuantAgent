@@ -57,7 +57,7 @@ class FactorConfig:
                 "turnover_momentum_z": 1.3,
                 "reversal_5_z": 0.3, "rsi_z": 0.5,
                 "volatility_z": 0.7, "max_drawdown_z": 0.7,
-                "pe_ttm_z": 0.7, "pb_mrq_z": 0.7, "roe_z": 1.2,
+                "pe_ttm_z": 0.3, "pb_mrq_z": 0.3, "roe_z": 0.5,
             }
         elif regime == MarketRegime.BEAR:
             adjustments = {
@@ -73,7 +73,7 @@ class FactorConfig:
                 "momentum_20_z": 0.8, "momentum_60_z": 0.7,
                 "reversal_5_z": 1.3, "rsi_z": 1.1,
                 "volatility_z": 1.1, "max_drawdown_z": 1.0,
-                "pe_ttm_z": 1.2, "pb_mrq_z": 1.2, "roe_z": 1.1,
+                "pe_ttm_z": 0.8, "pb_mrq_z": 0.8, "roe_z": 1.0,
             }
 
         result = {}
@@ -198,7 +198,9 @@ class FactorCalculator:
         weights = self.config.get_regime_weights(self.regime)
 
         scores["composite"] = sum(
-            scores[col].fillna(0) * wt for col, wt in weights.items()
+            scores[col].fillna(0) * wt
+            for col, wt in weights.items()
+            if col in scores.columns
         )
         scores["sector"] = scores.index.map(SECTOR_MAP)
         scores = scores.sort_values("composite", ascending=False)
