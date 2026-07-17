@@ -253,7 +253,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
     """Run complete self-evaluation using ONLY real data."""
     from jiuwenswarm.quant import (
         FactorCalculator, FactorConfig, PositionSizer, PositionConfig,
-        BacktestEngine, MarketRegime, ALL_STOCKS,
+        BacktestEngine, MarketRegime, ALL_STOCKS, RegimeFusion, MarketIndex,
     )
     from jiuwenswarm.quant.stock_pool import STOCK_POOL as SP
 
@@ -266,6 +266,13 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
     print("\n[Step 0] Fetching REAL stock data (no simulated fallback)...")
     t0 = time.time()
     prices_df = fetch_real_data(ALL_STOCKS)
+
+    # --- Fetch CSI 300 for index-based regime signal ---
+    index_prices = MarketIndex.fetch_csi300(
+        str(prices_df.index[0].date()), str(prices_df.index[-1].date())
+    )
+    if index_prices is not None:
+        print(f"  CSI 300: {len(index_prices)} days loaded for index regime signal")
     data_time = time.time() - t0
 
     n_days = len(prices_df)
@@ -305,8 +312,9 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         if len(window) < 15 or len(history) < min_history:
             continue
 
-        # Run strategy
-        regime = MarketRegime.detect(history)
+        # Run strategy — use fused regime detection
+        idx_slice = index_prices[index_prices.index <= history.index[-1]] if index_prices is not None else None
+        regime = RegimeFusion.detect(history, index_prices=idx_slice)
         calc = FactorCalculator(FactorConfig())
         calc.regime = regime
         factors = calc.compute_factors(history)

@@ -2,6 +2,8 @@
 
 from jiuwenswarm.quant.stock_pool import STOCK_POOL, ALL_STOCKS, SECTOR_MAP, TICKER_NAME_MAP
 from jiuwenswarm.quant.market_regime import MarketRegime
+from jiuwenswarm.quant.market_index import MarketIndex
+from jiuwenswarm.quant.regime_fusion import RegimeFusion
 from jiuwenswarm.quant.factors import (
     FactorConfig,
     PositionConfig,
@@ -24,6 +26,8 @@ __all__ = [
     "SECTOR_MAP",
     "TICKER_NAME_MAP",
     "MarketRegime",
+    "MarketIndex",
+    "RegimeFusion",
     "FactorConfig",
     "PositionConfig",
     "StrategyResult",

@@ -23,6 +23,7 @@ import pandas as pd
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP, TICKER_NAME_MAP
 from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig, PositionSizer, PositionConfig
 from jiuwenswarm.quant.backtest_engine import BacktestEngine
+from jiuwenswarm.quant.market_regime import MarketRegime
 
 
 def fetch_data(tickers, start_date, end_date):

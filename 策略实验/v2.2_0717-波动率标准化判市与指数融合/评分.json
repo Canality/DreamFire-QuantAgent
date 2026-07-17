@@ -1,0 +1,147 @@
+{
+  "evaluation_date": "2026-07-17 12:33",
+  "n_test_windows": 8,
+  "data": {
+    "source": "akshare → baostock → yfinance (multi-source) + CSI 300 index",
+  "regime_detection": "vol-normalized technical + CSI 300 index fusion",
+    "n_stocks": 49,
+    "n_days": 188,
+    "date_range": "2025-10-09 ~ 2026-07-16"
+  },
+  "version": "v2.0 (multi-agent Bull/Bear + percentile scoring)",
+  "scores": {
+    "dimension_1_portfolio": {
+      "total": 59.5,
+      "max": 80,
+      "return": {
+        "score": 39.2,
+        "max": 56,
+        "tier": "decent",
+        "median": 0.038389,
+        "worst": 0.008514,
+        "mean": 0.037841
+      },
+      "max_drawdown": {
+        "score": 20.3,
+        "max": 24,
+        "tier": "very_good",
+        "median": 0.018295,
+        "worst": 0.028808,
+        "mean": 0.018229
+      }
+    },
+    "dimension_2_resource": {
+      "total": 19.0,
+      "max": 20,
+      "token_consumption": {
+        "score": 10.0,
+        "max": 10,
+        "tier": "pending_baseline",
+        "estimated_tokens": 15200,
+        "baseline_tokens": 6000
+      },
+      "runtime_efficiency": {
+        "score": 5.0,
+        "max": 5,
+        "tier": "under_budget",
+        "avg_elapsed_s": 0.1
+      },
+      "compute_economy": {
+        "score": 4.0,
+        "max": 5,
+        "tier": "good"
+      }
+    }
+  },
+  "total_score": 78.5,
+  "window_details": [
+    {
+      "idx": 0,
+      "date_range": "2026-02-02 ~ 2026-03-09",
+      "regime": "range",
+      "n_stocks": 15,
+      "total_return": 0.035208,
+      "max_drawdown": 0.013763,
+      "sharpe_ratio": 5.13,
+      "ann_vol": 0.1136,
+      "elapsed_s": 0.08
+    },
+    {
+      "idx": 1,
+      "date_range": "2026-02-25 ~ 2026-03-24",
+      "regime": "range",
+      "n_stocks": 15,
+      "total_return": 0.021157,
+      "max_drawdown": 0.028731,
+      "sharpe_ratio": 2.42,
+      "ann_vol": 0.1325,
+      "elapsed_s": 0.08
+    },
+    {
+      "idx": 2,
+      "date_range": "2026-03-12 ~ 2026-04-09",
+      "regime": "range",
+      "n_stocks": 15,
+      "total_return": 0.008514,
+      "max_drawdown": 0.028808,
+      "sharpe_ratio": 0.89,
+      "ann_vol": 0.1331,
+      "elapsed_s": 0.08
+    },
+    {
+      "idx": 3,
+      "date_range": "2026-03-27 ~ 2026-04-24",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.091299,
+      "max_drawdown": 0.00616,
+      "sharpe_ratio": 22.9,
+      "ann_vol": 0.0955,
+      "elapsed_s": 0.08
+    },
+    {
+      "idx": 4,
+      "date_range": "2026-04-14 ~ 2026-05-14",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.048115,
+      "max_drawdown": 0.006102,
+      "sharpe_ratio": 10.44,
+      "ann_vol": 0.0828,
+      "elapsed_s": 0.08
+    },
+    {
+      "idx": 5,
+      "date_range": "2026-04-29 ~ 2026-05-29",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.041571,
+      "max_drawdown": 0.01361,
+      "sharpe_ratio": 7.62,
+      "ann_vol": 0.094,
+      "elapsed_s": 0.08
+    },
+    {
+      "idx": 6,
+      "date_range": "2026-05-19 ~ 2026-06-15",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.048241,
+      "max_drawdown": 0.022827,
+      "sharpe_ratio": 6.86,
+      "ann_vol": 0.1265,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 7,
+      "date_range": "2026-06-03 ~ 2026-07-01",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.00862,
+      "max_drawdown": 0.025831,
+      "sharpe_ratio": 0.59,
+      "ann_vol": 0.2044,
+      "elapsed_s": 0.08
+    }
+  ]
+}
