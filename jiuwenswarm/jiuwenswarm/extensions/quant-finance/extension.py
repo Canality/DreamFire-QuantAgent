@@ -699,15 +699,45 @@ def _json_to_df(data: dict) -> pd.DataFrame:
 
 
 def _fetch_real_data(tickers, start_date, end_date):
-    """Fetch real stock data. Tries akshare first (faster in China), then yfinance."""
+    """Fetch real stock data with multi-source fallback chain.
+
+    Tries sources in order, merging results to maximize coverage:
+      1. akshare (fast, domestic sources, sometimes blocked)
+      2. baostock (dedicated server, stable, no rate limit)
+      3. yfinance (international, slow in China, last resort)
+    Each level fills in only the tickers still missing.
+    """
+    all_prices = {}
+    all_volumes = {}
+    all_errors = []
+
+    # Tier 1: akshare
     prices, volumes, errors = _fetch_akshare(tickers, start_date, end_date)
+    all_prices.update(prices)
+    all_volumes.update(volumes)
+    all_errors.extend(errors)
 
-    if not prices:
-        logger.warning("[QuantFinance] akshare returned no data, trying yfinance...")
-        prices, volumes, yf_errors = _fetch_yfinance(tickers, start_date, end_date)
-        errors.extend(yf_errors)
+    missing = [t for t in tickers if t not in all_prices]
+    if missing:
+        logger.info("[QuantFinance] akshare: %d/%d stocks, trying baostock for %d missing...",
+                    len(all_prices), len(tickers), len(missing))
+        # Tier 2: baostock
+        prices2, volumes2, errors2 = _fetch_baostock(missing, start_date, end_date)
+        all_prices.update(prices2)
+        all_volumes.update(volumes2)
+        all_errors.extend(errors2)
 
-    return prices, volumes, errors
+    still_missing = [t for t in tickers if t not in all_prices]
+    if still_missing:
+        logger.info("[QuantFinance] baostock: %d/%d stocks, trying yfinance for %d missing...",
+                    len(all_prices), len(tickers), len(still_missing))
+        # Tier 3: yfinance
+        prices3, volumes3, errors3 = _fetch_yfinance(still_missing, start_date, end_date)
+        all_prices.update(prices3)
+        all_volumes.update(volumes3)
+        all_errors.extend(errors3)
+
+    return all_prices, all_volumes, all_errors
 
 
 def _fetch_yfinance(tickers, start_date, end_date):
@@ -767,6 +797,57 @@ def _fetch_akshare(tickers, start_date, end_date):
                 continue
     except ImportError:
         errors.append("akshare not installed. Run: pip install akshare")
+    return prices, volumes, errors
+
+
+def _fetch_baostock(tickers, start_date, end_date):
+    """Fetch stock data via baostock (dedicated server, stable, no rate limit).
+
+    BaoStock provides free A-share daily K-line data via its own server,
+    independent of scraping third-party websites. Requires pip install baostock.
+    """
+    prices = {}
+    volumes = {}
+    errors = []
+    try:
+        import baostock as bs
+        lg = bs.login()
+        if lg.error_code != "0":
+            errors.append(f"baostock login failed: {lg.error_msg}")
+            return prices, volumes, errors
+
+        for ticker in tickers:
+            code = ticker.replace(".SH", ".sh").replace(".SZ", ".sz")
+            try:
+                rs = bs.query_history_k_data_plus(
+                    code, "date,close,volume",
+                    start_date=start_date,
+                    end_date=end_date,
+                    frequency="d", adjustflag="3",
+                )
+                if rs.error_code != "0":
+                    errors.append(f"baostock:{ticker}: {rs.error_msg}")
+                    continue
+
+                rows = []
+                while rs.next():
+                    rows.append(rs.get_row_data())
+
+                if not rows:
+                    errors.append(f"baostock:{ticker}: no data")
+                    continue
+
+                df = pd.DataFrame(rows, columns=rs.fields)
+                df["date"] = pd.to_datetime(df["date"])
+                df = df.set_index("date")
+                prices[ticker] = pd.to_numeric(df["close"], errors="coerce").dropna()
+                volumes[ticker] = pd.to_numeric(df["volume"], errors="coerce").dropna()
+            except Exception as e:
+                errors.append(f"baostock:{ticker}: {e}")
+                continue
+        bs.logout()
+    except ImportError:
+        errors.append("baostock not installed. Run: pip install baostock")
     return prices, volumes, errors
 
 

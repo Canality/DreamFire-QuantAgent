@@ -165,41 +165,59 @@ def _extract_column(df: pd.DataFrame, col_name: str) -> pd.Series:
 
 
 def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFrame:
-    """
-    Fetch real stock data via yfinance for all tickers.
-    Aborts with clear error message if data cannot be fetched.
-    """
-    import yfinance as yf
+    """Fetch real stock data via multi-source chain: akshare → baostock → yfinance.
 
+    Each source fills in only the stocks still missing from previous tiers.
+    Aborts with clear error message if all sources fail.
+    """
     start_date = (datetime.now() - timedelta(days=lookback_days + 30)).strftime("%Y-%m-%d")
     end_date = datetime.now().strftime("%Y-%m-%d")
 
-    prices = {}
-    failed = []
-
-    print(f"  Fetching {len(tickers)} stocks via yfinance ({start_date} ~ {end_date})...")
+    print(f"  Fetching {len(tickers)} stocks via multi-source chain ({start_date} ~ {end_date})...")
     t0 = time.time()
 
-    for i, ticker in enumerate(tickers):
-        yf_ticker = _to_yf(ticker)
-        try:
-            df = yf.download(yf_ticker, start=start_date, end=end_date,
-                             progress=False, auto_adjust=True)
-            close = _extract_column(df, "Close")
-            if not close.empty and len(close) >= 60:
-                prices[ticker] = close
-            else:
-                failed.append(f"{ticker}: insufficient data ({len(close) if not close.empty else 0} rows)")
-        except Exception as e:
-            failed.append(f"{ticker}: {e}")
+    # Import extension helpers (loaded via importlib due to dash in dir name)
+    import importlib.util as _iu
+    _ext_path = Path(__file__).resolve().parent.parent / "jiuwenswarm" / "extensions" / "quant-finance" / "extension.py"
+    _ext_spec = _iu.spec_from_file_location("_quant_fetch_ext", str(_ext_path))
+    _ext_mod = _iu.module_from_spec(_ext_spec)
+    _ext_spec.loader.exec_module(_ext_mod)
+    _fetch_akshare = _ext_mod._fetch_akshare
+    _fetch_baostock = _ext_mod._fetch_baostock
+    _fetch_yfinance = _ext_mod._fetch_yfinance
 
-        if (i + 1) % 10 == 0:
-            print(f"    ... {i + 1}/{len(tickers)} ({len(prices)} ok, {len(failed)} failed)")
+    all_prices = {}
+    failed = []
+
+    # Tier 1: akshare
+    prices, _volumes, errors = _fetch_akshare(tickers, start_date, end_date)
+    all_prices.update(prices)
+    for e in errors:
+        ticker = e.split(":")[1] if ":" in e else ""
+        failed.append(e)
+
+    # Tier 2: baostock
+    missing = [t for t in tickers if t not in all_prices]
+    if missing:
+        print(f"    akshare: {len(all_prices)}/{len(tickers)}, baostock filling {len(missing)} missing...")
+        prices2, _volumes2, errors2 = _fetch_baostock(missing, start_date, end_date)
+        all_prices.update(prices2)
+        for e in errors2:
+            failed.append(e)
+
+    # Tier 3: yfinance
+    still_missing = [t for t in tickers if t not in all_prices]
+    if still_missing:
+        print(f"    baostock: {len(all_prices)}/{len(tickers)}, yfinance filling {len(still_missing)} missing...")
+        prices3, _volumes3, errors3 = _fetch_yfinance(still_missing, start_date, end_date)
+        all_prices.update(prices3)
+        for e in errors3:
+            failed.append(e)
 
     elapsed = time.time() - t0
-    print(f"  Done in {elapsed:.0f}s: {len(prices)}/{len(tickers)} stocks fetched")
+    print(f"  Done in {elapsed:.0f}s: {len(all_prices)}/{len(tickers)} stocks fetched")
 
-    if not prices:
+    if not all_prices:
         print("\n" + "=" * 60)
         print("ERROR: 无法获取任何真实股票数据")
         print("=" * 60)
@@ -208,16 +226,16 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFram
             for f in failed[:10]:
                 print(f"  - {f}")
         print("\n请检查:")
-        print("  1. pip install yfinance")
-        print("  2. 网络可以访问 Yahoo Finance (query1.finance.yahoo.com)")
+        print("  1. pip install akshare baostock yfinance")
+        print("  2. 网络可以访问东方财富 / BaoStock / Yahoo Finance")
         print("  3. 如在内网，配置代理: set HTTPS_PROXY=http://proxy:port")
         sys.exit(1)
 
     if failed:
-        print(f"  Warning: {len(failed)} stocks failed, proceeding with {len(prices)}")
+        print(f"  Warning: {len(failed)} errors across all sources, proceeding with {len(all_prices)}")
 
-    result = pd.DataFrame(prices).sort_index()
-    result = result.dropna(how="all")  # drop dates with no data at all
+    result = pd.DataFrame(all_prices).sort_index()
+    result = result.dropna(how="all")
 
     if len(result) < 80:
         print(f"\nERROR: Only {len(result)} trading days available (need >= 80 for reliable backtest)")
