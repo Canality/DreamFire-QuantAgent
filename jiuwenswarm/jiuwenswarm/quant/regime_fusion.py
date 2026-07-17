@@ -77,6 +77,13 @@ class RegimeFusion:
             if historical_vol > 0 and recent_vol > historical_vol * 2.0:
                 return MarketRegime.RANGE
 
+            # Return/vol divergence: bull call with negative recent return
+            # and elevated volatility → choppy decline, not trending up.
+            recent_ret_10d = market.iloc[-1] / market.iloc[-11] - 1
+            ret_vol_ratio = recent_ret_10d / max(recent_vol, 0.001)
+            if fused == MarketRegime.BULL and ret_vol_ratio < -0.5:
+                return MarketRegime.RANGE
+
         return fused
 
     @staticmethod

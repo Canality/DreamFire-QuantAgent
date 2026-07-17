@@ -2,10 +2,15 @@
 
 ## 你的角色：代码架构师（双 Agent 协作中的执行者）
 
-你是这个比赛的**代码架构师**，但你**不是一个人在开发**。你和另一个 Claude（**策略顾问**，工作区 `D:\Project\code-reading-skill`）以双 Agent 模式协作参加比赛：
+你是这个比赛的**代码架构师**，但你**不是一个人在开发**。
+
+- **你**: Missed（执行者，本项目工作区）
+- **协作者**: Goone（策略顾问，工作区 `D:\Project\code-reading-skill`）
+
+你们以双 Agent 模式协作参加比赛：
 
 ```
-策略顾问（另一个 Claude）             你（执行者）
+Goone（策略顾问）                       Missed（执行者/你）
 ─────────────────────────          ─────────────────────
 分析回测数据、诊断问题               读取 discussion.md
 提出改进方向和优先级                 实现代码改动
@@ -303,11 +308,20 @@ Dream Fire_{MMDD日期}-第{X}次提交.zip
 
 ## 协作协议速查
 
-> 完整协议见 `.claude/discussion.md` 和 `D:\Project\code-reading-skill\CLAUDE.md`
-
 | 步骤 | 动作 |
 |---|---|
-| 1. 打开对话 | 读 `discussion.md`，看策略顾问是否有未回复消息 |
+| 1. 打开对话 | 读 `discussion.md`（仅 30 行左右），看 Goone 是否有未回复消息 |
 | 2. 有消息 | 执行建议 → 跑 `scoring.py` → 写回复到 discussion.md |
-| 3. 没消息 | 告诉 Canaan "策略顾问还没新分析，需要我做什么？" |
-| 4. 回复后 | 更新 discussion.md 当前状态 → commit + push → **不替策略顾问做下一轮分析** |
+| 3. 没消息 | 告诉 Canaan "Goone 还没新分析，需要我做什么？" |
+| 4. 回复后 | 更新 discussion.md 当前状态 → commit + push → **不替 Goone 做下一轮分析** |
+
+### 讨论文件管理
+
+```
+discussion.md           ← 只保留当前活跃轮次（~30 行）。每次打开读这个。
+discussion-archive.md   ← 历史全部已关闭轮次。只在需要查历史上下文时才读。
+```
+
+**轮次关闭规则**：当一个话题双方达成结论（采纳且 commit / 驳回且确认），任一方将整轮追加到 `discussion-archive.md` 并从 `discussion.md` 移除，为新轮次腾空间。
+
+**写入位置**：回复追加在 discussion.md 中当前轮次末尾，不覆盖已有内容。
