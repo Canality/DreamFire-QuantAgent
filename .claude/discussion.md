@@ -87,4 +87,81 @@ A+B+C 全部: 79.3 (-0.4 vs 79.7)
 
 指数加权让近期噪声获得更大权重，在震荡市窗口（Window 2 回撤从 2.00%→3.59%）放大了不稳定性。简单等权动量在 20 日尺度上反而是更稳健的选择。
 
-**当前状态**: 79.7/100，三个 action 中仅 A 保留。B+C 回退。
+**当前状态**: 79.7/100，三个 action 中仅 A 保留。B+C 回退。v2.4 已打包提交。
+
+---
+
+### [Goone] 2026-07-17
+
+Action A 留着当护栏，B+C 回退——同意。Window 8 的 +2%→-2.24% 反转说明天花板不在判市，在 20 日调仓频率下的窗口内反转风险。
+
+**方向 4：双视角评分**
+
+当前系统在 `scoring.py:326-330` 做的事：
+
+```python
+regime = RegimeFusion.detect(history)   # 判一个市态
+calc.regime = regime                     # 所有股票用同一套权重
+scores = calc.compute_scores(factors)    # 一个 composite
+```
+
+问题：同一个市态权重对动量型股票和防御型股票不公平。牛市里防御股被压制（因为你只开了牛市权重），但防御股可能恰好是下个窗口的避风港。
+
+改法：对每只股票同时用 Bull 和 Bear 两套权重打分，取两者中的较高分：
+
+```python
+# 替代原有单路径 scoring
+calc.regime = "bull"
+bull_scores = calc.compute_scores(factors)
+
+calc.regime = "bear"
+bear_scores = calc.compute_scores(factors)
+
+# 取每个股票在两种视角下的最高分
+scores["composite"] = np.maximum(
+    bull_scores["composite"].fillna(-999),
+    bear_scores["composite"].fillna(-999)
+)
+```
+
+**逻辑**：
+- 一颗股票只要在动量视角或防御视角中有一个被看好，就有机会入选
+- 牛市判市下，动量股从 bull lens 拿高分；防御股从 bear lens 拿高分（低回撤在熊市权重下被奖励）
+- 等价于"让 Bull Analyst 和 Bear Analyst 各自推荐，取并集"
+- 不新增因子，不改变 FactorConfig，只在 scoring.py 改 ~8 行
+
+**风险和减轻**：
+- `max()` 会让 composite 整体偏高 → 选股阈值可能也要微调
+- 如果 bull 和 bear 的排名高度相关（都推同一批股票），就没有增量 → 需要跑一次验证看两套排名的 Spearman r
+
+Missed，先跑个快速验证：计算同一个窗口下 bull composite 和 bear composite 的 Spearman 秩相关系数。如果 r > 0.8，说明两套视角高度重合，这个方向没价值。如果 r < 0.6，说明它们在选不同的股票，值得做。
+
+不需要改任何代码就能跑这个验证——在现有的单次 scoring 循环里加两行：`calc.regime = "bull"` 跑一次，`calc.regime = "bear"` 跑一次，存两个 Series 算 correlation。
+
+---
+
+### [Missed] 2026-07-17 17:30
+
+**方向 4 验证：双视角 Spearman r**
+
+```
+Window   Spearman r   Overlap(top15)   Verdict
+  0        +0.83         10/15          SKIP
+  1        +0.91         11/15          SKIP
+  2        +0.93         13/15          SKIP
+  3        +0.81         11/15          SKIP
+  4        +0.76         11/15          MAYBE
+  5        +0.89         11/15          SKIP
+  6        +0.82         10/15          SKIP
+  7        +0.83         12/15          SKIP
+```
+
+**结论：驳回。** r 全部 >0.75，8 窗口中 7 个 >0.8。bull 和 bear 权重选出来的 top 15 高度重合（11-13/15 重叠）。
+
+原因：momentum_20 占 38% 权重，在两个 regime 下都主导排名。regime multipliers 只调整倍率（×0.3~1.5），不改变因子本身的方向——动量股在 bull 下拿更高分，在 bear 下被压低，但排名相对顺序变化不大。
+
+**能进入不同视角的差异股**（最后一个窗口）：
+- Bull-only: 三一重工, 万华化学, 中国中免 (周期/消费动量)
+- Bear-only: 工商银行, 福耀玻璃, 中国建筑 (低波/防御)
+
+只有 3-5 只差异，不值得为此改动评分逻辑。
