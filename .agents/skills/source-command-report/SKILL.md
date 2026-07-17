@@ -1,0 +1,17 @@
+---
+name: "source-command-report"
+description: "生成比赛进展报告或投资分析报告草稿"
+---
+
+# source-command-report
+
+Use this skill when the user asks to run the migrated source command `report`.
+
+## Command Template
+
+根据当前策略状态，生成报告：
+
+- 如果在比赛中途：生成**进展摘要**（已完成实验、当前最优策略、待验证方向）
+- 如果接近提交：生成**正式投资分析报告草稿**（包含方法论、因子分析、回测结果、风险控制、选股决策）
+
+报告放在 `策略实验/进展报告/` 目录下，按日期命名。

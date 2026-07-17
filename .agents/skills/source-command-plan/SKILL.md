@@ -1,0 +1,22 @@
+---
+name: "source-command-plan"
+description: "CC自主制定下一步策略计划"
+---
+
+# source-command-plan
+
+Use this skill when the user asks to run the migrated source command `plan`.
+
+## Command Template
+
+请基于当前的实验记录、MEMORY.md中的历史决策、以及股票池特征，自主制定下一步策略计划。
+
+输出格式：
+1. **当前状态评估**：已有策略的表现总结（如果有）
+2. **下一步假设**：我们想验证什么？（一句话）
+3. **策略设计**：具体因子选择、权重方案、仓位管理
+4. **预期效果**：预估的收益/风险区间
+5. **风险点**：可能失败的场景
+6. **教学要点**：本次涉及的需要教给罗迦南的量化概念
+
+写完后等待罗迦南确认或调整方向。

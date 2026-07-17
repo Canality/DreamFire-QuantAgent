@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(make:*)",
+      "Bash(uv:*)",
+      "Bash(pip:*)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(mkdir:*)",
+      "Read(*)",
+      "Write(*/Track_2/**)",
+      "Edit(*/Track_2/**)",
+      "Glob(*/Track_2/**)",
+      "Grep(*/Track_2/**)",
+      "WebFetch(domain:www.xir.cn)"
+    ]
+  }
+}

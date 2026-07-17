@@ -1,0 +1,11 @@
+id: quant-finance
+name: quant-finance
+version: 0.1.0
+description: Multi-factor quantitative investment strategy with backtesting for A-share stock pool.
+author: jiuwenswarm
+min_jiuwenswarm_version: "0.2.0"
+dependencies:
+  akshare: ">=1.12.0"
+  yfinance: ">=0.2.0"
+config_schema:
+  type: object

@@ -1,0 +1,6 @@
+openJiuwen官网：https://openjiuwen.com/
+openJiuwen官方仓库：https://atomgit.com/openJiuwen
+jiuwenswarm: https://atomgit.com/openJiuwen/jiuwenswarm
+jiuwenswarm 快速上手：https://atomgit.com/openJiuwen/jiuwenswarm/blob/develop/docs/zh/Quickstart.md
+Swarmskill: https://teamskills.openjiuwen.com/
+办公智能体officeAce: https://www.huaweicloud.com/product/agentarts/officeace.html

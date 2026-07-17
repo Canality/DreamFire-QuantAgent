@@ -1,0 +1,915 @@
+"""Quant Finance extension for JiuwenSwarm -- RPC handlers.
+
+Registers 8 RPC handlers for the full quant investment pipeline:
+  quant.fetch_data, quant.compute_factors, quant.select_stocks,
+  quant.allocate_positions, quant.run_backtest, quant.generate_report,
+  quant.bull_view, quant.bear_view
+
+Data flows through an in-memory cache: fetch_data stores results,
+subsequent tools read from cache. This avoids passing huge price
+matrices through the LLM context window.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import threading
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
+
+import numpy as np
+import pandas as pd
+
+from jiuwenswarm.extensions.sdk.base import BaseExtension
+from jiuwenswarm.extensions.types import ExtensionConfig
+
+logger = logging.getLogger(__name__)
+
+# In-memory data cache to avoid passing huge price matrices through LLM context.
+# Keyed by a deterministic cache key derived from (tickers, start_date, end_date).
+_data_cache: dict = {}
+_cache_lock = threading.Lock()
+
+
+def _cache_key(tickers: list, start: str, end: str) -> str:
+    return f"{','.join(sorted(tickers[:5]))}_{start}_{end}"
+
+
+def _get_cached_data() -> dict | None:
+    with _cache_lock:
+        return _data_cache.get("_last", None)
+
+
+def _set_cached_data(data: dict) -> None:
+    with _cache_lock:
+        _data_cache["_last"] = data
+        # Keep only last 3 fetches to bound memory
+        keys = [k for k in _data_cache if k != "_last"]
+        for k in keys[:-2]:
+            del _data_cache[k]
+
+QUANT_FETCH_DATA = "quant.fetch_data"
+QUANT_COMPUTE_FACTORS = "quant.compute_factors"
+QUANT_SELECT_STOCKS = "quant.select_stocks"
+QUANT_ALLOCATE_POSITIONS = "quant.allocate_positions"
+QUANT_RUN_BACKTEST = "quant.run_backtest"
+QUANT_GENERATE_REPORT = "quant.generate_report"
+QUANT_BULL_VIEW = "quant.bull_view"
+QUANT_BEAR_VIEW = "quant.bear_view"
+
+
+# -- YFinance ticker conversion --
+
+def _yf_ticker(t: str) -> str:
+    return t.replace(".SH", ".SS").replace(".SZ", ".SZ")
+
+
+# -- Name map (used in report generation) --
+
+_TICKER_NAME_MAP: Dict[str, str] = {
+    "601318.SH": "中国平安", "600036.SH": "招商银行", "601688.SH": "华泰证券",
+    "601398.SH": "工商银行", "601288.SH": "农业银行", "601988.SH": "中国银行",
+    "600000.SH": "浦发银行", "601998.SH": "中信银行", "600519.SH": "贵州茅台",
+    "000858.SZ": "五粮液", "600887.SH": "伊利股份", "603288.SH": "海天味业",
+    "600660.SH": "福耀玻璃", "000333.SZ": "美的集团", "000651.SZ": "格力电器",
+    "601888.SH": "中国中免", "600809.SH": "山西汾酒", "300750.SZ": "宁德时代",
+    "002594.SZ": "比亚迪", "601012.SH": "隆基绿能", "300274.SZ": "阳光电源",
+    "600900.SH": "长江电力", "600438.SH": "通威股份", "600089.SH": "特变电工",
+    "600212.SH": "绿能慧充", "688981.SH": "中芯国际", "600584.SH": "长电科技",
+    "600183.SH": "生益科技", "300308.SZ": "中际旭创", "300394.SZ": "天孚通信",
+    "603501.SH": "韦尔股份", "600703.SH": "三安光电", "600570.SH": "恒生电子",
+    "600845.SH": "宝信软件", "688041.SH": "海光信息", "603986.SH": "兆易创新",
+    "002475.SZ": "立讯精密", "601899.SH": "紫金矿业", "600309.SH": "万华化学",
+    "601600.SH": "中国铝业", "600028.SH": "中国石化", "601088.SH": "中国神华",
+    "600547.SH": "山东黄金", "600426.SH": "华鲁恒升", "601168.SH": "西部矿业",
+    "600031.SH": "三一重工", "601766.SH": "中国中车", "601668.SH": "中国建筑",
+    "601186.SH": "中国铁建",
+}
+
+
+class QuantFinanceExtension(BaseExtension):
+    """Quantitative finance extension for JiuwenSwarm."""
+
+    def __init__(self) -> None:
+        self._registry = None
+        self._initialized = False
+
+    async def initialize(self, config: ExtensionConfig) -> None:
+        self._initialized = True
+        logger.info("[QuantFinance] Extension initialized.")
+
+    async def shutdown(self) -> None:
+        self._initialized = False
+        logger.info("[QuantFinance] Extension shut down.")
+
+    def register(self, registry) -> None:
+        self._registry = registry
+        registry.register_rpc_handler(QUANT_FETCH_DATA, self.fetch_data)
+        registry.register_rpc_handler(QUANT_COMPUTE_FACTORS, self.compute_factors)
+        registry.register_rpc_handler(QUANT_SELECT_STOCKS, self.select_stocks)
+        registry.register_rpc_handler(QUANT_ALLOCATE_POSITIONS, self.allocate_positions)
+        registry.register_rpc_handler(QUANT_RUN_BACKTEST, self.run_backtest)
+        registry.register_rpc_handler(QUANT_GENERATE_REPORT, self.generate_report)
+        registry.register_rpc_handler(QUANT_BULL_VIEW, self.bull_view)
+        registry.register_rpc_handler(QUANT_BEAR_VIEW, self.bear_view)
+        logger.info("[QuantFinance] Registered 8 RPC handlers.")
+
+    # ---- quant.fetch_data ----
+
+    async def fetch_data(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Fetch stock price/volume data for the competition stock pool.
+
+        Data is cached in memory. Returns a compact summary (NOT raw prices)
+        to stay within LLM context limits. Subsequent tools read from cache.
+        """
+        del request
+        params = params or {}
+
+        start_date = str(params.get("start_date") or _default_start_date())
+        end_date = str(params.get("end_date") or _default_end_date())
+        ticker_filter = params.get("tickers")
+
+        from jiuwenswarm.quant.stock_pool import ALL_STOCKS
+
+        tickers = ticker_filter if ticker_filter else ALL_STOCKS
+
+        def _fetch() -> dict:
+            # Check cache first
+            cached = _get_cached_data()
+            if cached and cached.get("_start") == start_date and cached.get("_end") == end_date:
+                logger.info("[QuantFinance] Using cached data for %s ~ %s", start_date, end_date)
+                return cached
+
+            prices, volumes, errors = _fetch_real_data(tickers, start_date, end_date)
+
+            if not prices:
+                error_detail = _build_fetch_error_message(errors)
+                return {
+                    "success": False,
+                    "detail": error_detail,
+                    "errors": errors,
+                }
+
+            prices_df = pd.DataFrame(prices).sort_index()
+            volumes_df = pd.DataFrame(volumes).sort_index() if volumes else pd.DataFrame()
+
+            # Store full data in cache for subsequent tools
+            result = {
+                "success": True,
+                "_start": start_date,
+                "_end": end_date,
+                "_prices_df": prices_df,
+                "_volumes_df": volumes_df,
+                # Compact summary for LLM
+                "n_stocks": len(prices),
+                "n_days": len(prices_df),
+                "date_range": f"{prices_df.index[0]} ~ {prices_df.index[-1]}",
+                "top_movers": _summarize_top_movers(prices_df, 10),
+                "fetch_errors": errors[:5] if errors else [],
+            }
+            _set_cached_data(result)
+            return result
+
+        return await asyncio.to_thread(_fetch)
+
+    # ---- quant.compute_factors ----
+
+    async def compute_factors(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Compute 8-factor scores with market regime detection.
+
+        Reads price data from cache if 'prices' param is not provided.
+        Always call quant_fetch_data before this tool.
+        """
+        del request
+        params = params or {}
+
+        prices_json = params.get("prices")
+        volumes_json = params.get("volumes")
+
+        # If no prices passed, read from cache
+        if not prices_json:
+            cached = _get_cached_data()
+            if cached and cached.get("_prices_df") is not None:
+                logger.info("[QuantFinance] Using cached data for factor computation")
+                prices_json = _df_to_json(cached["_prices_df"])
+                if cached.get("_volumes_df") is not None and not cached["_volumes_df"].empty:
+                    volumes_json = _df_to_json(cached["_volumes_df"])
+
+        if not prices_json:
+            return {"success": False, "detail": "prices data is required. Call quant_fetch_data first."}
+
+        def _compute() -> dict:
+            prices = _json_to_df(prices_json)
+            volumes = _json_to_df(volumes_json) if volumes_json else None
+
+            from jiuwenswarm.quant.market_regime import MarketRegime
+            from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
+
+            regime = MarketRegime.detect(prices)
+            factor_cfg = FactorConfig()
+            factor_calc = FactorCalculator(factor_cfg)
+            factor_calc.regime = regime
+            factors = factor_calc.compute_factors(prices, volumes)
+            scores = factor_calc.compute_scores(factors)
+
+            top_stocks = []
+            for ticker in scores.head(15).index:
+                top_stocks.append({
+                    "ticker": ticker,
+                    "name": _TICKER_NAME_MAP.get(ticker, ticker),
+                    "composite": round(float(scores.loc[ticker, "composite"]), 4),
+                    "sector": str(scores.loc[ticker, "sector"]),
+                })
+
+            return {
+                "success": True,
+                "regime": regime,
+                "n_stocks_analyzed": len(scores),
+                "top_stocks": top_stocks,
+                "all_composite": {t: round(float(scores.loc[t, "composite"]), 4)
+                                  for t in scores.index},
+            }
+
+        return await asyncio.to_thread(_compute)
+
+    # ---- quant.select_stocks ----
+
+    async def select_stocks(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Select stocks with sector diversification from factor scores."""
+        del request
+        params = params or {}
+
+        all_composite = params.get("all_composite", {})
+        top_n = int(params.get("top_n", 15))
+        min_score = float(params.get("min_score", -0.5))
+
+        from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
+
+        if not all_composite:
+            return {"success": False, "detail": "all_composite scores required"}
+
+        sorted_stocks = sorted(all_composite.items(), key=lambda x: x[1], reverse=True)
+
+        selected = []
+        selected_set = set()
+
+        # Ensure at least 1 per sector
+        for sector in STOCK_POOL:
+            sector_stocks_in_pool = set(STOCK_POOL[sector])
+            for ticker, score in sorted_stocks:
+                if ticker in sector_stocks_in_pool and ticker not in selected_set and score > min_score:
+                    selected.append({"ticker": ticker, "composite": score, "sector": sector})
+                    selected_set.add(ticker)
+                    break
+
+        # Fill remaining
+        for ticker, score in sorted_stocks:
+            if len(selected) >= top_n:
+                break
+            if ticker not in selected_set and score > 0:
+                sector = SECTOR_MAP.get(ticker, "其他")
+                selected.append({"ticker": ticker, "composite": score, "sector": sector})
+                selected_set.add(ticker)
+
+        sectors_covered = len(set(s["sector"] for s in selected))
+
+        return {
+            "success": True,
+            "n_selected": len(selected),
+            "n_sectors_covered": sectors_covered,
+            "selected_stocks": selected,
+            "tickers": [s["ticker"] for s in selected],
+        }
+
+    # ---- quant.allocate_positions ----
+
+    async def allocate_positions(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Risk-parity position sizing with constraints."""
+        del request
+        params = params or {}
+
+        prices_json = params.get("prices")
+        tickers = params.get("tickers", [])
+
+        if not prices_json or not tickers:
+            return {"success": False, "detail": "prices and tickers are required"}
+
+        def _allocate() -> dict:
+            prices = _json_to_df(prices_json)
+            from jiuwenswarm.quant.factors import PositionSizer, PositionConfig
+
+            # Build minimal scores df with just the selected tickers
+            scores = pd.DataFrame(
+                {"composite": [1.0] * len(tickers), "sector": [
+                    _TICKER_NAME_MAP.get(t, "?") for t in tickers
+                ]},
+                index=tickers,
+            )
+
+            sizer = PositionSizer(PositionConfig())
+            weights = sizer.allocate(scores, prices[tickers] if all(
+                t in prices.columns for t in tickers
+            ) else prices)
+
+            portfolio = []
+            total_weight = 0.0
+            for ticker, weight in weights.items():
+                from jiuwenswarm.quant.stock_pool import SECTOR_MAP
+                portfolio.append({
+                    "ticker": ticker,
+                    "name": _TICKER_NAME_MAP.get(ticker, ticker),
+                    "weight": round(weight, 4),
+                    "weight_pct": round(weight * 100, 2),
+                    "sector": SECTOR_MAP.get(ticker, "其他"),
+                })
+                total_weight += weight
+
+            return {
+                "success": True,
+                "total_weight": round(total_weight, 4),
+                "cash_reserve": round(1 - total_weight, 4),
+                "n_holdings": len(portfolio),
+                "portfolio": portfolio,
+                "weights": {p["ticker"]: p["weight"] for p in portfolio},
+            }
+
+        return await asyncio.to_thread(_allocate)
+
+    # ---- quant.run_backtest ----
+
+    async def run_backtest(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Run vectorized backtest with given portfolio weights."""
+        del request
+        params = params or {}
+
+        prices_json = params.get("prices")
+        weights = params.get("weights", {})
+        initial_capital = float(params.get("initial_capital", 1_000_000.0))
+
+        if not prices_json or not weights:
+            return {"success": False, "detail": "prices and weights are required"}
+
+        def _backtest() -> dict:
+            prices = _json_to_df(prices_json)
+            from jiuwenswarm.quant.backtest_engine import BacktestEngine
+
+            engine = BacktestEngine(initial_capital=initial_capital)
+            result = engine.run(prices, weights)
+
+            return {
+                "success": True,
+                **result.metrics,
+                "start_value": result.start_value,
+                "end_value": round(result.end_value, 2),
+            }
+
+        return await asyncio.to_thread(_backtest)
+
+    # ---- quant.generate_report ----
+
+    async def generate_report(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Generate structured Markdown quantitative investment report."""
+        del request
+        params = params or {}
+
+        portfolio = params.get("portfolio", [])
+        backtest = params.get("backtest", {})
+        regime = params.get("regime", "range")
+        top_stocks = params.get("top_stocks", [])
+
+        return {
+            "success": True,
+            "report": _build_report_markdown(portfolio, backtest, regime, top_stocks),
+            "summary": {
+                "n_holdings": len(portfolio),
+                "total_return": backtest.get("total_return"),
+                "annualized_return": backtest.get("annualized_return"),
+                "max_drawdown": backtest.get("max_drawdown"),
+                "sharpe_ratio": backtest.get("sharpe_ratio"),
+                "regime": regime,
+            },
+        }
+
+
+    # ---- quant.bull_view ----
+
+    async def bull_view(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Extract bullish signals using bull-market factor weights and percentile thresholds."""
+        del request
+        params = params or {}
+
+        prices_json = params.get("prices")
+        if not prices_json:
+            return {"success": False, "detail": "prices data is required"}
+
+        def _analyze() -> dict:
+            prices = _json_to_df(prices_json)
+            from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
+            from jiuwenswarm.quant.market_regime import MarketRegime
+
+            regime = MarketRegime.detect(prices)
+
+            # Bull uses bull-market weights: momentum boosted, reversal/risk reduced
+            bull_cfg = FactorConfig(
+                w_momentum_20=0.25,      # boosted from 0.15
+                w_momentum_60=0.15,      # boosted from 0.10
+                w_turnover_mom=0.12,     # boosted from 0.08
+                w_reversal_5=0.08,       # reduced from 0.18
+                w_rsi=0.05,              # reduced from 0.09
+                w_volatility=0.10,       # reduced from 0.15
+                w_volume_trend=0.15,     # boosted from 0.10
+                w_max_drawdown=0.10,     # reduced from 0.15
+            )
+            calc = FactorCalculator(bull_cfg)
+            calc.regime = regime
+            factors = calc.compute_factors(prices)
+
+            # Compute percentiles from cross-sectional distribution
+            pct = _factor_percentiles(factors)
+
+            bullish = []
+            for ticker in factors.index:
+                mom_20 = float(factors.loc[ticker, "momentum_20"])
+                mom_60 = float(factors.loc[ticker, "momentum_60"])
+                vol_ann = float(factors.loc[ticker, "volatility"])
+                vol_trend = float(factors.loc[ticker, "volume_trend"])
+
+                score = 0
+                signals = []
+                if mom_20 >= pct["momentum_20_p80"]:
+                    score += 3
+                    signals.append(
+                        f"20日动量 {mom_20:+.1%}（全市场前20%，阈值 {pct['momentum_20_p80']:+.1%}) — 短期趋势强劲"
+                    )
+                if mom_60 >= pct["momentum_60_p70"]:
+                    score += 2
+                    signals.append(
+                        f"60日动量 {mom_60:+.1%}（全市场前30%，阈值 {pct['momentum_60_p70']:+.1%}) — 中期趋势确认"
+                    )
+                if vol_trend >= pct["volume_trend_p70"]:
+                    score += 2
+                    signals.append(
+                        f"成交量放大 {vol_trend:.1f}x（全市场前30%，阈值 {pct['volume_trend_p70']:.1f}x) — 资金关注度上升"
+                    )
+                if vol_ann <= pct["volatility_p30"]:
+                    score += 2
+                    signals.append(
+                        f"低波动 {vol_ann:.1%}（全市场后30%，阈值 {pct['volatility_p30']:.1%}) — 涨得稳"
+                    )
+                if mom_20 >= pct["momentum_20_p80"] and vol_trend >= pct["volume_trend_p70"]:
+                    score += 2
+                    signals.append("量价齐升 — 动量+放量双信号叠加")
+
+                if score >= 4:
+                    bullish.append({
+                        "ticker": ticker,
+                        "name": _TICKER_NAME_MAP.get(ticker, ticker),
+                        "bull_score": score,
+                        "signals": signals,
+                        "key_metrics": {
+                            "momentum_20": round(mom_20, 4),
+                            "momentum_60": round(mom_60, 4),
+                            "volatility": round(vol_ann, 4),
+                            "volume_trend": round(vol_trend, 2),
+                        },
+                    })
+
+            bullish.sort(key=lambda x: x["bull_score"], reverse=True)
+
+            return {
+                "success": True,
+                "regime": regime,
+                "factor_weights": "bull-market (momentum boosted, risk reduced)",
+                "percentile_thresholds": {
+                    "momentum_20_p80": round(pct["momentum_20_p80"], 4),
+                    "momentum_60_p70": round(pct["momentum_60_p70"], 4),
+                    "volume_trend_p70": round(pct["volume_trend_p70"], 2),
+                    "volatility_p30": round(pct["volatility_p30"], 4),
+                },
+                "n_bullish": len(bullish),
+                "bullish_stocks": bullish[:12],
+                "recommended_position": "70-95%" if regime == "bull" else "50-80%",
+            }
+
+        return await asyncio.to_thread(_analyze)
+
+    # ---- quant.bear_view ----
+
+    async def bear_view(
+        self,
+        params: dict[str, Any] | None = None,
+        request: Any = None,
+    ) -> dict[str, Any]:
+        """Extract bearish signals using bear-market factor weights and percentile thresholds."""
+        del request
+        params = params or {}
+
+        prices_json = params.get("prices")
+        if not prices_json:
+            return {"success": False, "detail": "prices data is required"}
+
+        def _analyze() -> dict:
+            prices = _json_to_df(prices_json)
+            from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
+            from jiuwenswarm.quant.market_regime import MarketRegime
+
+            regime = MarketRegime.detect(prices)
+
+            # Bear uses bear-market weights: risk factors boosted, momentum reduced
+            bear_cfg = FactorConfig(
+                w_momentum_20=0.06,      # heavily reduced from 0.15
+                w_momentum_60=0.04,      # heavily reduced from 0.10
+                w_turnover_mom=0.05,     # reduced from 0.08
+                w_reversal_5=0.22,       # boosted from 0.18
+                w_rsi=0.12,              # boosted from 0.09
+                w_volatility=0.22,       # boosted from 0.15
+                w_volume_trend=0.07,     # reduced from 0.10
+                w_max_drawdown=0.22,     # boosted from 0.15
+            )
+            calc = FactorCalculator(bear_cfg)
+            calc.regime = regime
+            factors = calc.compute_factors(prices)
+
+            # Compute percentiles from cross-sectional distribution
+            pct = _factor_percentiles(factors)
+
+            bearish = []
+            for ticker in factors.index:
+                vol_ann = float(factors.loc[ticker, "volatility"])
+                max_dd = float(factors.loc[ticker, "max_drawdown"])
+                vol_trend = float(factors.loc[ticker, "volume_trend"])
+                rsi = float(factors.loc[ticker, "rsi"])
+
+                score = 0
+                warnings = []
+                if vol_ann >= pct["volatility_p80"]:
+                    score += 3
+                    warnings.append(
+                        f"高波动 {vol_ann:.1%}（全市场前20%，阈值 {pct['volatility_p80']:.1%}) — 年化波动率显著偏高"
+                    )
+                if max_dd >= pct["max_drawdown_p80"]:
+                    score += 3
+                    warnings.append(
+                        f"大幅回撤 {max_dd:.1%}（全市场前20%，阈值 {pct['max_drawdown_p80']:.1%}) — 60日最大回撤显著偏高"
+                    )
+                if vol_trend <= pct["volume_trend_p30"]:
+                    score += 2
+                    warnings.append(
+                        f"成交量萎缩 {vol_trend:.2f}x（全市场后30%，阈值 {pct['volume_trend_p30']:.1f}x) — 市场关注度下降"
+                    )
+                if rsi >= pct["rsi_p80"]:
+                    score += 2
+                    warnings.append(
+                        f"RSI={rsi:.0f}（全市场前20%，阈值 {pct['rsi_p80']:.0f}) — 超买区域，回调风险"
+                    )
+                if rsi <= pct["rsi_p20"]:
+                    score += 2
+                    warnings.append(
+                        f"RSI={rsi:.0f}（全市场后20%，阈值 {pct['rsi_p20']:.0f}) — 极端超卖，警惕死猫反弹"
+                    )
+                if vol_ann >= pct["volatility_p90"] and max_dd >= pct["max_drawdown_p90"]:
+                    score += 2
+                    warnings.append("高波动+大回撤双极端 — 极高风险组合")
+
+                if score >= 4:
+                    bearish.append({
+                        "ticker": ticker,
+                        "name": _TICKER_NAME_MAP.get(ticker, ticker),
+                        "bear_score": score,
+                        "warnings": warnings,
+                        "key_metrics": {
+                            "volatility": round(vol_ann, 4),
+                            "max_drawdown": round(max_dd, 4),
+                            "volume_trend": round(vol_trend, 2),
+                            "rsi": round(rsi, 1),
+                        },
+                    })
+
+            bearish.sort(key=lambda x: x["bear_score"], reverse=True)
+
+            return {
+                "success": True,
+                "regime": regime,
+                "factor_weights": "bear-market (risk boosted, momentum reduced)",
+                "percentile_thresholds": {
+                    "volatility_p80": round(pct["volatility_p80"], 4),
+                    "volatility_p90": round(pct["volatility_p90"], 4),
+                    "max_drawdown_p80": round(pct["max_drawdown_p80"], 4),
+                    "max_drawdown_p90": round(pct["max_drawdown_p90"], 4),
+                    "volume_trend_p30": round(pct["volume_trend_p30"], 2),
+                    "rsi_p80": round(pct["rsi_p80"], 1),
+                    "rsi_p20": round(pct["rsi_p20"], 1),
+                },
+                "n_bearish": len(bearish),
+                "bearish_stocks": bearish[:12],
+                "recommended_cash_reserve": "10-40%" if regime == "bear" else "5-15%",
+            }
+
+        return await asyncio.to_thread(_analyze)
+
+
+# ---- Module-level entry for ExtensionLoader ----
+
+async def register_extensions(registry):
+    extension = QuantFinanceExtension()
+    extension.register(registry)
+    return [extension]
+
+
+# ---- Helpers ----
+
+def _summarize_top_movers(prices_df: pd.DataFrame, top_n: int = 10) -> list[dict]:
+    """Return top and bottom performers from recent prices for LLM consumption."""
+    if prices_df.empty or len(prices_df) < 5:
+        return []
+    recent = prices_df.iloc[-5:]
+    returns = (recent.iloc[-1] / recent.iloc[0] - 1).sort_values()
+    result = []
+    import numpy as np
+    for ticker in list(returns.index[:top_n // 2]) + list(returns.index[-top_n // 2:]):
+        result.append({
+            "ticker": str(ticker),
+            "recent_5d_return": round(float(returns[ticker]) * 100, 2),
+        })
+    return result
+
+
+def _default_start_date() -> str:
+    return (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+
+
+def _default_end_date() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _df_to_json(df: pd.DataFrame) -> dict:
+    """Serialize DataFrame to JSON-safe dict (orient='index' with string keys)."""
+    result = {}
+    for idx, row in df.iterrows():
+        key = str(idx)
+        result[key] = {}
+        for col in df.columns:
+            val = row[col]
+            if isinstance(val, (np.floating, float)):
+                result[key][str(col)] = float(val) if not np.isnan(val) else None
+            elif isinstance(val, (np.integer, int)):
+                result[key][str(col)] = int(val)
+            else:
+                result[key][str(col)] = None if pd.isna(val) else float(val)
+    return result
+
+
+def _json_to_df(data: dict) -> pd.DataFrame:
+    """Deserialize JSON-safe dict back to DataFrame."""
+    if not data:
+        return pd.DataFrame()
+    df = pd.DataFrame.from_dict(data, orient="index")
+    df.index = pd.to_datetime(df.index, errors="coerce")
+    return df.sort_index()
+
+
+def _fetch_real_data(tickers, start_date, end_date):
+    """Fetch real stock data. Tries akshare first (faster in China), then yfinance."""
+    prices, volumes, errors = _fetch_akshare(tickers, start_date, end_date)
+
+    if not prices:
+        logger.warning("[QuantFinance] akshare returned no data, trying yfinance...")
+        prices, volumes, yf_errors = _fetch_yfinance(tickers, start_date, end_date)
+        errors.extend(yf_errors)
+
+    return prices, volumes, errors
+
+
+def _fetch_yfinance(tickers, start_date, end_date):
+    """Try fetching stock data via yfinance (Yahoo Finance API)."""
+    prices = {}
+    volumes = {}
+    errors = []
+    try:
+        import yfinance as yf
+        for ticker in tickers:
+            yt = _yf_ticker(ticker)
+            try:
+                df = yf.download(yt, start=start_date, end=end_date,
+                                 progress=False, auto_adjust=True)
+                if df is not None and not df.empty:
+                    if isinstance(df.columns, pd.MultiIndex):
+                        prices[ticker] = df["Close"].iloc[:, 0]
+                        vol_col = df.get("Volume")
+                        if vol_col is not None:
+                            volumes[ticker] = vol_col.iloc[:, 0] if isinstance(vol_col, pd.DataFrame) else vol_col
+                    else:
+                        prices[ticker] = df["Close"]
+                        volumes[ticker] = df.get("Volume", pd.Series(dtype=float))
+            except Exception as e:
+                errors.append(f"yfinance:{ticker}: {e}")
+                continue
+    except ImportError:
+        errors.append("yfinance not installed. Run: pip install yfinance")
+    return prices, volumes, errors
+
+
+def _fetch_akshare(tickers, start_date, end_date):
+    """Try fetching stock data via akshare (A-share native data source)."""
+    prices = {}
+    volumes = {}
+    errors = []
+    try:
+        import akshare as ak
+        for ticker in tickers:
+            code = ticker.replace(".SH", "").replace(".SZ", "")
+            symbol = code
+            try:
+                df = ak.stock_zh_a_hist(
+                    symbol=symbol,
+                    period="daily",
+                    start_date=start_date.replace("-", ""),
+                    end_date=end_date.replace("-", ""),
+                    adjust="qfq",
+                )
+                if df is not None and not df.empty:
+                    df["日期"] = pd.to_datetime(df["日期"])
+                    df = df.set_index("日期")
+                    prices[ticker] = df["收盘"]
+                    volumes[ticker] = df.get("成交量", pd.Series(dtype=float))
+            except Exception as e:
+                errors.append(f"akshare:{ticker}: {e}")
+                continue
+    except ImportError:
+        errors.append("akshare not installed. Run: pip install akshare")
+    return prices, volumes, errors
+
+
+def _build_fetch_error_message(errors: list) -> str:
+    """Build a clear error message when all data sources fail."""
+    yf_count = sum(1 for e in errors if "yfinance:" in e)
+    ak_count = sum(1 for e in errors if "akshare:" in e)
+    import_count = sum(1 for e in errors if "not installed" in e)
+
+    lines = [
+        f"无法获取真实股票数据。已尝试 yfinance 和 akshare 两个数据源，均失败。",
+        f"错误摘要: yfinance 错误 {yf_count} 条, akshare 错误 {ak_count} 条, 缺少依赖 {import_count} 条。",
+        "",
+        "解决方案:",
+    ]
+
+    if import_count > 0:
+        lines.append("  1. 安装缺失的依赖:")
+        for e in errors:
+            if "not installed" in e:
+                lines.append(f"     {e}")
+
+    lines.extend([
+        "  2. 检查网络连接: yfinance 需要访问 Yahoo Finance API",
+        "     akshare 需要访问东方财富/新浪等国内数据源",
+        "  3. 如果在内网环境，可能需要配置代理:",
+        "     export HTTP_PROXY=http://your-proxy:port",
+        "     export HTTPS_PROXY=http://your-proxy:port",
+        "  4. 确认股票代码正确且交易日历内存在数据",
+    ])
+
+    return "\n".join(lines)
+
+
+def _factor_percentiles(factors: pd.DataFrame) -> dict:
+    """Compute percentile thresholds from cross-sectional factor distribution.
+
+    Returns dict of percentile values used by bull_view and bear_view scoring.
+    Percentiles adapt to current market conditions — e.g. in a raging bull
+    market, the momentum thresholds will be higher because everyone is up.
+    """
+    pct = {}
+
+    def _p(data, q):
+        v = float(data.quantile(q / 100.0))
+        # Small epsilon so >= threshold works correctly for exact matches
+        sign = 1 if v >= 0 else -1
+        return v - sign * abs(v) * 1e-6
+
+    # Bull uses: p80/p70 for momentum, p30 for volatility, p70 for volume
+    pct["momentum_20_p80"] = _p(factors["momentum_20"], 80)
+    pct["momentum_60_p70"] = _p(factors["momentum_60"], 70)
+    pct["volatility_p30"] = _p(factors["volatility"], 30)
+    pct["volume_trend_p70"] = _p(factors["volume_trend"], 70)
+
+    # Bear uses: p80/p90 for volatility and drawdown, p30 for volume, p20/p80 for RSI
+    pct["volatility_p80"] = _p(factors["volatility"], 80)
+    pct["volatility_p90"] = _p(factors["volatility"], 90)
+    pct["max_drawdown_p80"] = _p(factors["max_drawdown"], 80)
+    pct["max_drawdown_p90"] = _p(factors["max_drawdown"], 90)
+    pct["volume_trend_p30"] = _p(factors["volume_trend"], 30)
+    pct["rsi_p80"] = _p(factors["rsi"], 80)
+    pct["rsi_p20"] = _p(factors["rsi"], 20)
+
+    return pct
+
+
+def _build_report_markdown(portfolio, backtest, regime, top_stocks):
+    """Build a structured Markdown investment report."""
+    regime_labels = {"bull": "牛市 (Bull)", "bear": "熊市 (Bear)", "range": "震荡市 (Range-bound)"}
+    regime_label = regime_labels.get(regime, regime)
+
+    lines = [
+        "# 量化投资分析报告",
+        "",
+        f"**生成日期**: {datetime.now().strftime('%Y-%m-%d')}",
+        f"**市场状态**: {regime_label}",
+        "**框架**: openJiuwen JiuwenSwarm (QuantFinance Extension)",
+        "",
+        "---",
+        "",
+        "## 一、回测表现",
+        "",
+        "| 指标 | 数值 |",
+        "|------|------|",
+    ]
+
+    bt_metrics = [
+        ("累计收益率", "total_return", "%"),
+        ("年化收益率", "annualized_return", "%"),
+        ("最大回撤", "max_drawdown", "%"),
+        ("Sharpe 比率", "sharpe_ratio", ""),
+        ("年化波动率", "annualized_volatility", "%"),
+        ("日胜率", "win_rate", "%"),
+    ]
+
+    for label, key, unit in bt_metrics:
+        val = backtest.get(key, "N/A")
+        if isinstance(val, (int, float)):
+            if unit == "%" and key not in ("sharpe_ratio",):
+                val = round(val * 100, 2)
+            lines.append(f"| {label} | {val}{unit} |")
+        else:
+            lines.append(f"| {label} | {val} |")
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## 二、投资组合明细",
+        "",
+        "| 股票代码 | 股票名称 | 所属板块 | 持仓占比(%) |",
+        "|---------|---------|---------|-----------|",
+    ])
+
+    for p in portfolio:
+        ticker = p.get("ticker", "")
+        name = p.get("name", "")
+        sector = p.get("sector", "")
+        w = p.get("weight_pct", 0)
+        lines.append(f"| {ticker} | {name} | {sector} | {w} |")
+
+    if top_stocks:
+        lines.extend([
+            "",
+            "---",
+            "",
+            "## 三、因子得分 Top 10",
+            "",
+            "| 股票代码 | 股票名称 | 综合得分 | 板块 |",
+            "|---------|---------|---------|------|",
+        ])
+        for s in top_stocks[:10]:
+            lines.append(
+                f"| {s['ticker']} | {s['name']} | {s['composite']:.3f} | {s['sector']} |"
+            )
+
+    lines.extend([
+        "",
+        "---",
+        "",
+        "*本报告由基于 JiuwenSwarm 的量化投资 Agent 自动生成。*",
+        "*投资结果基于历史数据回测，不构成任何投资建议。*",
+    ])
+
+    return "\n".join(lines)

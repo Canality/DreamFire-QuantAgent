@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+output/
+jiuwenswarm/.venv/
+jiuwenswarm/evaluation/latest_score.json
+
+# Sensitive
+*.env
+.env.*
+config.yaml
+!jiuwenswarm/jiuwenswarm/resources/config.yaml
+
+# Large data
+*.zip
+*.pkl
+*.h5
