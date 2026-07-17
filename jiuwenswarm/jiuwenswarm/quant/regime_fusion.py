@@ -55,19 +55,29 @@ class RegimeFusion:
         # Phase 2: index signal
         s_index = MarketIndex.detect(price_data, index_prices=index_prices)
 
-        # Simple voting: agree → output; disagree → range
+        # Simple voting → fused signal
         if s_tech == s_index:
-            return s_tech
+            fused = s_tech
+        elif s_tech != MarketRegime.RANGE and s_index == MarketRegime.RANGE:
+            fused = s_tech if RegimeFusion.W_TECH >= RegimeFusion.W_INDEX else MarketRegime.RANGE
+        elif s_index != MarketRegime.RANGE and s_tech == MarketRegime.RANGE:
+            fused = s_index if RegimeFusion.W_INDEX >= RegimeFusion.W_TECH else MarketRegime.RANGE
+        else:
+            fused = MarketRegime.RANGE
 
-        # One is bull, one is range → lean toward the non-range signal
-        # if its weight is higher
-        if s_tech != MarketRegime.RANGE and s_index == MarketRegime.RANGE:
-            return s_tech if RegimeFusion.W_TECH >= RegimeFusion.W_INDEX else MarketRegime.RANGE
-        if s_index != MarketRegime.RANGE and s_tech == MarketRegime.RANGE:
-            return s_index if RegimeFusion.W_INDEX >= RegimeFusion.W_TECH else MarketRegime.RANGE
+        # Volatility anomaly override: if recent vol has spiked to >2x
+        # historical, directional signals (bull/bear) are unreliable.
+        # High-vol bull = choppy market, not trending up.
+        # High-vol bear = panic selling, often near a bottom.
+        # Both cases: downgrade to range.
+        if fused in (MarketRegime.BULL, MarketRegime.BEAR):
+            market = price_data.mean(axis=1)
+            recent_vol = market.pct_change().tail(10).std()
+            historical_vol = market.pct_change().tail(60).std()
+            if historical_vol > 0 and recent_vol > historical_vol * 2.0:
+                return MarketRegime.RANGE
 
-        # Conflicting (one bull, one bear) or both range → range
-        return MarketRegime.RANGE
+        return fused
 
     @staticmethod
     def detect_with_detail(

@@ -15,65 +15,57 @@ from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
 
 @dataclass
 class FactorConfig:
-    """Weights for each factor. Supports regime-based dynamic weights.
+    """Weights for 4 core alpha factors + 1 risk constraint.
 
-    11 factors: 8 technical + 3 fundamental (PE, PB, ROE).
+    Factor selection based on IC analysis (2026-07-17):
+      - 4 alpha factors: momentum_20 (IC=+0.72), momentum_60 (IC=+0.41),
+        reversal_5_flipped (IC=+0.39), max_drawdown (IC=-0.38)
+      - 1 risk constraint: volatility (excluded from composite, applied as
+        hard filter in stock selection: vol_z > 2.0 → excluded)
+
+    Weights are proportional to |IC| (Information Coefficient).
     """
 
-    # Technical factor base weights
-    w_momentum_20: float = 0.12
-    w_momentum_60: float = 0.08
-    w_turnover_mom: float = 0.06
-    w_reversal_5: float = 0.14
-    w_rsi: float = 0.07
-    w_volatility: float = 0.12
-    w_volume_trend: float = 0.08
-    w_max_drawdown: float = 0.12
+    # IC-weighted base weights (sum to 1.0)
+    w_momentum_20: float = 0.38   # IC=+0.72 → largest weight
+    w_momentum_60: float = 0.22   # IC=+0.41
+    w_max_drawdown: float = 0.20  # IC=-0.38 (inverted: low drawdown = high score)
+    w_reversal_5: float = 0.20    # IC=+0.39 (flipped: was -0.39, now 5d momentum)
 
-    # Fundamental factor base weights
-    w_pe_ttm: float = 0.07
-    w_pb_mrq: float = 0.07
-    w_roe: float = 0.07
+    # Volatility constraint (not a composite weight)
+    vol_exclusion_sigma: float = 2.0  # exclude stocks with vol_z > 2.0
 
     def get_regime_weights(self, regime: str) -> Dict[str, float]:
-        """Return factor weights adjusted for market regime."""
+        """Return factor weights adjusted for market regime.
+
+        reversal_5_z is flipped: higher score = stronger 5-day momentum
+        (was previously a contrarian reversal signal; IC analysis showed
+        it actually predicts continuation, not reversal, on 20-day scale).
+        """
         base = {
             "momentum_20_z": self.w_momentum_20,
             "momentum_60_z": self.w_momentum_60,
-            "turnover_momentum_z": self.w_turnover_mom,
-            "reversal_5_z": self.w_reversal_5,
-            "rsi_z": self.w_rsi,
-            "volatility_z": -self.w_volatility,
-            "volume_trend_z": self.w_volume_trend,
+            "reversal_5_z": -self.w_reversal_5,  # flipped: was +0.20, now -0.20
             "max_drawdown_z": -self.w_max_drawdown,
-            "pe_ttm_z": self.w_pe_ttm,
-            "pb_mrq_z": self.w_pb_mrq,
-            "roe_z": self.w_roe,
         }
 
         if regime == MarketRegime.BULL:
             adjustments = {
                 "momentum_20_z": 1.5, "momentum_60_z": 1.5,
-                "turnover_momentum_z": 1.3,
-                "reversal_5_z": 0.3, "rsi_z": 0.5,
-                "volatility_z": 0.7, "max_drawdown_z": 0.7,
-                "pe_ttm_z": 0.3, "pb_mrq_z": 0.3, "roe_z": 0.5,
+                "reversal_5_z": 0.3,   # suppress weak signal; mom_20 dominates in trends
+                "max_drawdown_z": 0.7,  # relax risk control
             }
         elif regime == MarketRegime.BEAR:
             adjustments = {
                 "momentum_20_z": 0.3, "momentum_60_z": 0.3,
-                "turnover_momentum_z": 0.5,
-                "reversal_5_z": 1.5, "rsi_z": 1.3,
-                "volatility_z": 1.5, "max_drawdown_z": 2.0,
-                "volume_trend_z": 0.5,
-                "pe_ttm_z": 1.5, "pb_mrq_z": 1.5, "roe_z": 1.5,
+                "reversal_5_z": 1.5,   # 5d momentum helps spot oversold bounces
+                "max_drawdown_z": 2.0,  # strictest risk control
             }
         else:  # RANGE
             adjustments = {
                 "momentum_20_z": 0.8, "momentum_60_z": 0.7,
-                "reversal_5_z": 1.3, "rsi_z": 1.1,
-                "volatility_z": 1.1, "max_drawdown_z": 1.0,
-                "pe_ttm_z": 0.8, "pb_mrq_z": 0.8, "roe_z": 1.0,
+                "reversal_5_z": 1.3,   # active in choppy markets
+                "max_drawdown_z": 1.0,
             }
 
         result = {}
@@ -206,6 +198,35 @@ class FactorCalculator:
         scores = scores.sort_values("composite", ascending=False)
 
         return scores
+
+    def filter_high_volatility(
+        self, scores: pd.DataFrame, max_sigma: float | None = None,
+    ) -> pd.DataFrame:
+        """Exclude stocks with excessive volatility (hard constraint).
+
+        Unlike the composite score which uses soft penalty weights, this
+        is a binary filter: stocks with vol_z > max_sigma are removed.
+        This reduces drawdown risk without distorting alpha factor rankings.
+
+        Args:
+            scores: DataFrame from compute_scores() with 'volatility_z' column.
+            max_sigma: Exclusion threshold. Defaults to config value (2.0).
+
+        Returns:
+            scores with high-vol stocks removed.
+        """
+        if "volatility_z" not in scores.columns:
+            return scores
+        threshold = max_sigma if max_sigma is not None else self.config.vol_exclusion_sigma
+        keep = scores["volatility_z"].fillna(0) <= threshold
+        excluded = (~keep).sum()
+        if excluded > 0:
+            import logging
+            logging.getLogger(__name__).debug(
+                "[FactorCalc] Vol constraint excluded %d/%d stocks (vol_z > %.1f)",
+                excluded, len(scores), threshold,
+            )
+        return scores[keep]
 
     @staticmethod
     def _calc_rsi(prices: pd.DataFrame, period: int = 14) -> pd.Series:
