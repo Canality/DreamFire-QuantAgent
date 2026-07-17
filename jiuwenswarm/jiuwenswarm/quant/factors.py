@@ -38,33 +38,31 @@ class FactorConfig:
     def get_regime_weights(self, regime: str) -> Dict[str, float]:
         """Return factor weights adjusted for market regime.
 
-        reversal_5_z is flipped: higher score = stronger 5-day momentum
-        (was previously a contrarian reversal signal; IC analysis showed
-        it actually predicts continuation, not reversal, on 20-day scale).
+        reversal_5_z is flipped: higher score = stronger 5-day momentum.
         """
         base = {
             "momentum_20_z": self.w_momentum_20,
             "momentum_60_z": self.w_momentum_60,
-            "reversal_5_z": -self.w_reversal_5,  # flipped: was +0.20, now -0.20
+            "reversal_5_z": -self.w_reversal_5,
             "max_drawdown_z": -self.w_max_drawdown,
         }
 
         if regime == MarketRegime.BULL:
             adjustments = {
                 "momentum_20_z": 1.5, "momentum_60_z": 1.5,
-                "reversal_5_z": 0.3,   # suppress weak signal; mom_20 dominates in trends
-                "max_drawdown_z": 0.7,  # relax risk control
+                "reversal_5_z": 0.3,
+                "max_drawdown_z": 0.7,
             }
         elif regime == MarketRegime.BEAR:
             adjustments = {
                 "momentum_20_z": 0.3, "momentum_60_z": 0.3,
-                "reversal_5_z": 1.5,   # 5d momentum helps spot oversold bounces
-                "max_drawdown_z": 2.0,  # strictest risk control
+                "reversal_5_z": 1.5,
+                "max_drawdown_z": 2.0,
             }
         else:  # RANGE
             adjustments = {
                 "momentum_20_z": 0.8, "momentum_60_z": 0.7,
-                "reversal_5_z": 1.3,   # active in choppy markets
+                "reversal_5_z": 1.3,
                 "max_drawdown_z": 1.0,
             }
 
