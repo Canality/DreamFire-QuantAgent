@@ -83,12 +83,61 @@ quant-investment Team Skill
 2. **无反馈循环**: 比赛条件下暂时跳过
 3. **scoring.py 仍用单 Agent 策略**: 多 Agent 实际评分未独立测量
 
-### 已修复 (v2.1)
+### 已修复 (v2.1/v2.2)
 
 1. ~~yfinance/akshare 未安装~~ → 已安装
 2. ~~数据源顺序 yfinance 优先太慢~~ → akshare → baostock → yfinance
 3. ~~全量价格矩阵通过 LLM 上下文~~ → 内存缓存 + 摘要返回
 4. ~~Bull/Bear 缺少量化工具~~ → 移除 leader-only 限制
+5. ~~判市固定阈值 3%~~ → 波动率标准化 (v2.2)
+6. ~~判市只有技术面~~ → 加入 CSI 300 指数独立判市 (v2.2)
+
+## 版本管理（铁律，不可违反）
+
+### Git 强制规则
+
+1. **每个版本必须是一个独立的 git commit**，有清晰的 commit message
+2. **不能等"做完再提交"**——每完成一个 Phase 立即 commit + push
+3. **GitHub 仓库**: `https://github.com/Canality/DreamFire-QuantAgent` (私有)
+4. **Tag 每个提交版本**: `v2.0`, `v2.1`, `v2.2` 等
+
+### 版本产物完整性检查
+
+**每个版本必须同时满足以下 3 项才算完成：**
+
+| # | 产物 | 位置 |
+|---|------|------|
+| 1 | `策略实验/v{major}.{minor}_{日期}-{描述}/` 目录 | 含评分.json + 投资组合.json + 投资报告.md + 变更说明.md + 资源消耗.md |
+| 2 | `Dream Fire_{MMDD}-第{X}次提交.zip` | 含全部 6 项竞赛交付物 |
+| 3 | GitHub commit + push | master 分支 |
+
+### 竞赛 6 项交付物清单
+
+每次生成 zip 前必须逐项检查：
+
+- [ ] Agent 完整代码 (全部业务代码 + requirements.txt)
+- [ ] 量化投资报告 (选股逻辑/仓位决策/分析过程/风险评估/投资组合明细)
+- [ ] 投资组合结果 (Portfolio.json: `{"代码": 权重}`)
+- [ ] 资源消耗日志 (Token/运行时/CPU/内存)
+- [ ] 可复现说明 (README.md)
+- [ ] 框架优化说明 (如有修改框架代码)
+
+### Zip 命名规范
+
+```
+Dream Fire_{MMDD日期}-第{X}次提交.zip
+```
+
+例: `Dream Fire_0717-第1次提交.zip`
+
+### 版本历史对照表
+
+| 版本 | 日期 | 总分 | Zip | 核心变化 |
+|------|------|------|-----|----------|
+| v1.0 | 7/12 | N/A | Dream Fire_0712-第2次提交.zip | 单 Agent 流水线 |
+| v2.0 | 7/16 | 76.9 | Dream Fire_0716-第3次提交.zip | 多 Agent 重构 |
+| v2.1 | 7/17 | 78.5 | — | 多源数据 + 缓存 + 工具权限 |
+| v2.2 | 7/17 | 78.5 | Dream Fire_0717-第1次提交.zip | 波动率标准化 + CSI300指数融合 |
 
 ## 协作方式
 
