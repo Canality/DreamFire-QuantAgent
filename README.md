@@ -1,203 +1,246 @@
 # Dream Fire — 基于 JiuwenSwarm 的 Agent 量化投资报告生成
 
-**比赛**: 华为 openJiuwen Track 2
-**团队**: Dream Fire
-**框架**: JiuwenSwarm (Agent + Symphony + Extensions)
+**比赛**: 华为 openJiuwen Track 2 | **团队**: Dream Fire | **评分**: 79.7/100 (v2.4)
 
 ---
 
-## 项目简介
+## 策略概述
 
-本项目基于华为 openJiuwen JiuwenSwarm 框架，构建多 Agent 协作的量化投资分析系统。系统以 **Coordinator + Bull Analyst + Bear Analyst** 三 Agent 协作模式，对指定的 6 大板块 49 只 A 股标的进行多因子选股分析和仓位配置。
+本系统对 6 大板块 49 只 A 股标的，用 **4 个经 IC 分析验证的核心因子 + 1 个风控约束** 进行选股和仓位配置，以 20 个交易日为调仓周期。
 
-## 核心架构
+### 核心原则：少而精
+
+v2.4 的 4 因子模型来自一个"先加后减"的迭代过程。我们最初有 8 个技术因子，后来加了 3 个基本面因子（PE/PB/ROE）变成 11 个——结果评分从 78.5 降到 77.2。通过 IC（Information Coefficient）分析，我们逐一检验每个因子对 20 日收益的预测力，砍掉了 7 个死因子，评分反而涨到 79.7。
+
+**教训**：在 20 日窗口这个约束下，信号的**时间尺度匹配**比因子数量重要得多。季频的 PE/PB/ROE 在 20 日内几乎不变，等同于常数偏置而非预测信号。
+
+## 策略架构
 
 ```
-quant-investment Team Skill
-├── Coordinator (Quant PM)    # 数据准备 → 分发任务 → 综合裁决 → 生成报告
-├── Bull Analyst              # 看多视角 (动量分析 + 资金流向)
-└── Bear Analyst              # 风控视角 (波动率 + 回撤 + 集中度)
+                    数据层
+    akshare → baostock → yfinance (三层级联)
+                     │
+              ┌──────┴───────┐
+              ▼              ▼
+         判市层          因子计算层
+    ┌─────────────┐   ┌─────────────────┐
+    │ 技术面 MA    │   │ momentum_20 (38%)│
+    │ CSI 300 指数 │   │ momentum_60 (22%)│
+    │ 波动率异常   │   │ reversal_5 (20%) │
+    │ 收益/波动比  │   │ max_drawdown(20%)│
+    │    ↓         │   │ vol约束(排除>2σ) │
+    │  融合投票    │   └─────────────────┘
+    └─────────────┘          │
+           │                 ▼
+           │          选股 & 仓位
+           │      ┌─────────────────┐
+           └─────→│ 板块分散 + 风险平价│
+                  │ 单只≤10% 板块≤25% │
+                  └─────────────────┘
 ```
 
-### 技术栈
+## 四个核心因子
 
-| 组件 | 技术 |
-|------|------|
-| Agent 框架 | JiuwenSwarm (openJiuwen) |
-| LLM | DeepSeek (deepseek-chat) |
-| 数据源 | akshare (优先) / yfinance (备用) |
-| 策略引擎 | 8 因子模型 + 风险平价 + 行业中性化 |
-| 回测 | 向量化回测引擎 |
+每个因子的权重和存在理由都由 IC 分析决定，不是拍脑袋。
 
-### 量化策略
+### momentum_20（权重 38%，IC = +0.72）
 
-- **因子模型**: 动量因子 (20日/60日) + 风险因子 (波动率/最大回撤) + 交易因子 (成交量趋势) + 反转因子 (5日反转/RSI)
-- **选股规则**: 行业中性化 Z-score + 板块分散化 (每板块至少 1 只)
-- **仓位管理**: 风险平价 (逆波动率加权) + 单只 ≤10% + 单板块 ≤25%
-- **风控**: 组合回撤阈值 + 空仓触发条件
+**是什么**：股票最近 20 个交易日的累计收益率。
 
-## 评分 (自评估)
+**为什么有效**：A 股存在显著的中短期动量效应——过去一个月涨得好的股票，下个月倾向于继续涨。IC=+0.72 意味着因子排名和未来收益的秩相关系数高达 0.72，8 个窗口中全部为正。
 
-| 维度 | 得分 | 说明 |
+**牛市/熊市调整**：牛市 ×1.5（追涨），熊市 ×0.3（减仓等企稳），震荡 ×0.8。
+
+### momentum_60（权重 22%，IC = +0.41）
+
+**是什么**：股票最近 60 个交易日的累计收益率。
+
+**为什么有效**：捕捉中期趋势，和 momentum_20 的相关系数只有 r=0.48——它是独立信号。20 日动量告诉你"最近在涨"，60 日动量告诉你"已经涨了一阵子了，趋势更稳固"。
+
+### reversal_5（权重 20%，IC 翻转后 = +0.39）
+
+**是什么**：最近 5 个交易日的收益率，**取负值**。
+
+**为什么取负值**：我们最初把它当作反转信号（"跌了 5 天该反弹了"），但 IC 分析显示它是 -0.39——即"跌了 5 天"的股票**继续跌**。翻转符号后变成 5 日动量因子，和 20 日动量的相关系数仅 r=0.48，是独立的短期动量信号。
+
+### max_drawdown（权重 20%，IC = -0.38）
+
+**是什么**：股票在过去 60 个交易日内，从最高点到最低点的最大跌幅。取负值——回撤越小得分越高。
+
+**为什么有效**：在 20 日窗口里，之前回撤小的股票确实表现更好。这也是比赛评分的直接对齐——回撤占 24/80 分。熊市 ×2.0（严格防守），牛市 ×0.7（适度放松）。
+
+### 波动率硬约束（不作为因子打分）
+
+volatility 的 IC=+0.07，几乎无预测力，但它的角色不是预测收益而是**控制风险**。我们把它从打分公式里拿出来，改成硬门槛：**波动率 Z-score > 2.0 的股票直接排除**。这样高波股票被过滤（降低回撤），但不会因为"低波动加分"而过度集中在银行股。
+
+## 市场判市
+
+判市决定了因子权重的方向。当前用了三层判断：
+
+### 第一层：技术面 MA 偏离
+
+计算股票池等权均价相对 60 日均线的偏离，用 20 日波动率标准化。**相比原来的固定 3% 阈值，标准化后"偏离几个标准差"在任何市场里含义一致**：日波 1.5% 的市场里 2σ=3%，日波 3% 的市场里 2σ=6%。
+
+### 第二层：CSI 300 指数独立判市
+
+个股等权均价里小盘噪声大。沪深 300 是市值加权的——更能代表"真正的市场"。同一套 MA + 标准化逻辑跑在指数上，做独立确认。
+
+### 第三层：异常覆盖
+
+当近期波动率飙升到历史的 2 倍以上，或收益率/波动率的比值深度为负时，不管 MA 怎么说，强制把牛市/熊市降级为震荡。防止高波噪声市场里的误判。
+
+### 融合规则
+
+两方一致 → 输出共识。一方牛一方震荡 → 偏向非震荡。一方牛一方熊 → 不可能，输出震荡保底。异常覆盖优先于一切。
+
+## IC 分析：我们如何决定因子去留
+
+每个版本迭代时，我们对 8 个 20 日窗口跑 Spearman 秩相关：
+
+```
+IC = corr(因子的 Z-score, 未来 20 日实际收益率, method='spearman')
+```
+
+| 因子 | Mean IC | 判决 | 原因 |
+|------|---------|------|------|
+| momentum_20 | **+0.72** | ✅ | 最强 |
+| turnover_momentum | +0.69 | ❌ | r=0.92 与 mom_20 冗余 |
+| RSI | +0.58 | ❌ | r=0.75 与 mom_20 冗余 |
+| momentum_60 | **+0.41** | ✅ | r=0.48 独立 |
+| reversal_5（翻转后） | **+0.39** | ✅ | r=0.48 独立 |
+| max_drawdown | **-0.38** | ✅ | 独立 |
+| volatility | +0.07 | ➡️ | 改为硬约束 |
+| PE/PB/ROE | -0.01~+0.08 | ❌ | IC≈0，完全无用 |
+| volume_trend | 0.00 | ❌ | 死了 |
+
+## 选股流程
+
+每 20 个交易日，执行以下步骤：
+
+1. **判市** → 三层融合给出 bull/bear/range
+2. **赋权** → 根据市态调整 4 个因子的权重倍率
+3. **打分** → 每个因子在板块内 Z-score 标准化，加权得到 composite
+4. **过滤** → 排除 vol_z > 2.0 的股票
+5. **分散** → 每个板块至少选 1 只，最多 15 只，composite > -0.5 才纳入
+6. **配仓** → 风险平价（逆波动率加权），单只 ≤10%，单板块 ≤25%
+7. **回测** → 向量化回测计算收益率、回撤、Sharpe
+
+### 空仓/轻仓规则
+
+| 触发条件 | 动作 |
+|----------|------|
+| 超半数股票 composite < 0 | 仓位降至 30% |
+| 市场均价 20 日跌幅 > 5% | 仓位降至 30% |
+| 两者同时触发 | 100% 空仓 |
+
+## 评分演进
+
+| 版本 | 日期 | 总分 | 因子数 | 核心变化 |
+|------|------|------|--------|----------|
+| v1.0 | 7/12 | — | 5 | 单 Agent 流水线 |
+| v2.0 | 7/16 | 76.9 | 8 | 多 Agent 重构（Coordinator+Bull+Bear） |
+| v2.1 | 7/17 | 78.5 | 8 | 多源数据 + bug 修复 |
+| v2.2 | 7/17 | 78.5 | 8 | 波动率标准化判市 + CSI300 融合 |
+| v2.3 | 7/17 | 77.2 | 11 | 加 PE/PB/ROE（退步——验证了信号时间尺度不匹配） |
+| **v2.4** | **7/17** | **79.7** | **4+1** | **IC 砍 7 死因子，精简化** |
+
+## 数据源
+
+三层级联兜底，每层只补充上一层没拉到的股票：
+
+```
+akshare (东方财富)  →  快但可能被封
+    ↓ 失败
+baostock (自营服务器)  →  稳定，无频率限制，含基本面数据
+    ↓ 失败
+yfinance (Yahoo)  →  国际备用，国内慢
+```
+
+## 风险控制
+
+| 约束 | 阈值 | 类型 |
 |------|------|------|
-| 收益率 | 39.2/56 | 中位 +3.84% (8窗口, ~20交易日/窗口) |
-| 最大回撤 | 20.3/24 | 中位 1.83% |
-| Token 消耗 | 10.0/10 | 多 Agent 估计 ~15,200 (待官方基线) |
-| 运行时 | 5.0/5 | 数据获取 27s (多源) |
-| 计算经济 | 4.0/5 | CPU only, 峰值内存 <500MB |
-| **总分** | **78.5/100** | |
+| 单只股票 | ≤ 10% | 硬约束 |
+| 单板块 | ≤ 25% | 硬约束 |
+| 波动率排除 | vol_z > 2.0 | 硬约束 |
+| 最低现金 | ≥ 5% | 软约束 |
+| 回撤止损 | 组合回撤 > 15% | 动态触发（减半仓） |
+| 空仓触发 | 个股面差 + 市场面差 | 动态触发 |
+| 判市异常覆盖 | vol 飙升或收益/波动背离 | 牛市/熊市 → 震荡 |
 
-### 评分历史
+## 技术栈
 
-| 日期 | 总分 | 收益率 | 回撤 | 数据 |
-|------|------|--------|------|------|
-| 7/16 | 76.9 | 36.8/56 | 21.1/24 | yfinance 49/49 |
-| 7/17 上午 | 73.1 | 34.0/56 | 21.1/24 | yfinance 35/49 ❌ |
-| **7/17 现在** | **78.5** | **39.2/56** | **20.3/24** | **多源 49/49** ✅ |
+| 组件 | 选型 | 理由 |
+|------|------|------|
+| Agent 框架 | JiuwenSwarm | 比赛要求 |
+| LLM | DeepSeek (deepseek-chat) | 性价比 |
+| 数据源 | akshare + baostock + yfinance | 三层兜底 |
+| 策略引擎 | 4 因子 IC 驱动 | 数据验证最优 |
+| 因子验证 | IC (Spearman 秩相关) | 统计显著性 |
+| 市场判市 | MA 波动率标准化 + 指数交叉验证 + 异常覆盖 | 三层融合 |
+| 仓位管理 | 风险平价 | 低波多配、高波少配 |
+| 回测引擎 | 向量化计算 | 纯 Python/numpy，零依赖 |
 
-### 数据源
+## 快速开始
 
-三层级联兜底：`akshare → baostock → yfinance`，每层只补充上一层缺失的股票，自动切换。
+```bash
+cd jiuwenswarm
+pip install akshare baostock yfinance pandas numpy
+
+# 运行自评估
+python evaluation/scoring.py --windows 8
+
+# 运行单次策略
+python scripts/run_quant_pipeline.py
+
+# 多 Agent 模式（需配置 LLM）
+python evaluation/run_multi_agent.py
+```
 
 ## 目录结构
 
 ```
 Track_2/
-├── jiuwenswarm/                     # 项目代码
-│   ├── evaluation/
-│   │   ├── scoring.py               # 自评估框架 (比赛评分标准)
-│   │   └── run_multi_agent.py       # 多 Agent 程序化验证脚本
+├── README.md
+├── jiuwenswarm/
+│   ├── evaluation/               # 自评估框架
+│   │   ├── scoring.py            # 8 窗口滚动回测评分
+│   │   └── run_multi_agent.py    # 多 Agent 程序化验证
 │   ├── jiuwenswarm/
-│   │   ├── agents/                  # Agent 系统
-│   │   │   └── swarm/providers/     # 工具 Provider (含 quant_toolkit)
-│   │   ├── extensions/
-│   │   │   └── quant-finance/       # 量化金融扩展 (8个 RPC handler)
-│   │   │       ├── extension.py     # 数据获取/因子/选股/仓位/回测/报告
-│   │   │       └── skills/          # 6个 Skill 定义 (含 Team Skill)
-│   │   └── quant/                   # 量化核心模块
-│   │       ├── stock_pool.py        # 股票池 (6板块×49只)
-│   │       ├── factors.py           # 8因子模型 + 仓位分配
-│   │       ├── market_regime.py     # 市场状态检测
-│   │       └── backtest_engine.py   # 回测引擎
-│   └── scripts/
-│       └── run_quant_pipeline.py    # 直接执行脚本 (无 Agent 层)
-│
-├── output/                          # 运行产物 (不入 git)
-├── 策略实验/                        # 实验记录
-├── 量化学习/                        # 学习笔记
-└── 赛题文档/                        # 官方赛题资料
+│   │   ├── agents/swarm/providers/  # 量化工具 Provider
+│   │   ├── extensions/quant-finance/ # 8 个 RPC handler
+│   │   ├── quant/                   # 量化核心
+│   │   │   ├── factors.py           # 4 因子模型 + 权重 + 市态调整
+│   │   │   ├── market_regime.py     # 波动率标准化判市
+│   │   │   ├── market_index.py      # CSI 300 指数独立判市
+│   │   │   ├── regime_fusion.py     # 多信号融合 + 异常覆盖
+│   │   │   ├── fundamental.py       # PE/PB/ROE 数据（v2.4 不再使用）
+│   │   │   ├── backtest_engine.py   # 向量化回测
+│   │   │   └── stock_pool.py        # 6 板块 × 49 只股票池
+│   │   └── symphony/                # 任务编排引擎
+│   ├── scripts/run_quant_pipeline.py
+│   └── requirements.txt
+├── output/submission/            # 竞赛交付物
+├── 策略实验/                     # 版本化实验记录
+├── 量化学习/                     # 教学文档
+└── 赛题文档/                     # 官方赛题资料
 ```
 
-## 快速开始
+## 多 Agent 协作（框架模式）
 
-### 环境要求
-
-- Python 3.11+
-- pip
-
-### 安装
-
-```bash
-cd jiuwenswarm
-
-# 数据源 (三层级联兜底)
-pip install akshire baostock yfinance
-
-# 核心依赖
-pip install pandas numpy
 ```
-
-### 运行策略 (单 Agent 直连)
-
-```bash
-cd jiuwenswarm
-python scripts/run_quant_pipeline.py
+Coordinator (Quant PM)
+  │  1. 获取数据 → 2. 计算因子 → 3. 判市
+  │
+  ├─→ Bull Analyst (看多视角)
+  │     quant_bull_view: 动量信号 + 资金流向
+  │
+  ├─→ Bear Analyst (风控视角)
+  │     quant_bear_view: 波动率预警 + 回撤审查
+  │
+  └─→ 综合裁决 → 选股配仓 → 生成报告
 ```
-
-输出: `output/pipeline_results.json`, `output/portfolio_weights.csv`
-
-### 运行自评估
-
-```bash
-cd jiuwenswarm
-python evaluation/scoring.py --windows 8
-```
-
-输出: `evaluation/latest_score.json`
-
-### 运行多 Agent 团队 (框架模式)
-
-需要先配置 `~/.jiuwenswarm/config/config.yaml`，包含 LLM API 密钥和团队配置。
-
-```bash
-# 方式1: 启动完整框架
-jiuwenswarm-app
-
-# 方式2: 程序化调用 (无需启动服务器)
-python evaluation/run_multi_agent.py
-```
-
-### 生成竞赛提交物
-
-```bash
-cd jiuwenswarm
-python scripts/generate_submission.py
-```
-
-输出: `output/submission/` 目录，包含:
-- `Portfolio.json` — 投资组合结果
-- `量化投资报告.md` — 完整投资分析报告
-- `资源消耗日志.md` — Token/运行时/CPU 统计
-- `框架优化说明.md` — 框架改进详情
-
-### 关键参数释义
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--windows` | 8 | 回测窗口数量 (每个 20 交易日) |
-| `lookback_days` | 252 | 数据回溯天数 (含缓冲) |
-| `top_n` | 15 | 最大持仓股票数 |
-| `min_score` | -0.5 | 选股最低综合得分阈值 |
-| `single_stock_cap` | 0.10 | 单只股票最大权重 |
-| `sector_cap` | 0.25 | 单板块最大权重 |
-
-### 常见问题
-
-**Q: 数据获取失败怎么办？**
-系统内置三层数据源级联：akshare → baostock → yfinance。任意单源失效自动切换。
-若全部失败，检查网络并确保三个包均已安装。
-
-**Q: 多 Agent 模式需要什么额外配置？**
-需要在 `~/.jiuwenswarm/config/config.yaml` 中配置 LLM API 密钥 (DeepSeek 或其他 OpenAI 兼容接口) 和 `modes.team.quant_team` 团队配置。
-
-**Q: 如何切换单 Agent / 多 Agent 模式？**
-单 Agent: `python scripts/run_quant_pipeline.py`
-多 Agent: `python evaluation/run_multi_agent.py` 或 `jiuwenswarm-app`
-自评估: `python evaluation/scoring.py` (使用单 Agent 策略逻辑)
-
-## 多 Agent 协作流程
-
-1. **Phase 1**: Coordinator 获取 A 股数据 (akshare/yfinance) → 存入缓存
-2. **Phase 2**: Coordinator 计算 8 因子得分 → 检测市场状态
-3. **Phase 3**: Coordinator 广播给 Bull 和 Bear → 并行分析
-   - Bull: 动量信号 + 资金流向 + 看多推荐
-   - Bear: 波动率预警 + 回撤审查 + 风险名单
-4. **Phase 4**: Coordinator 综合双方 → 最终选股 + 仓位配置
-5. **Phase 5**: 回测验证 → 生成 Markdown 投资报告
-
-## 已知问题
-
-- Bull/Bear 工具权限需进一步验证 (leader-only 限制已移除)
-- 网络受限时数据获取不完整 (akshare 部分请求失败)
-- 多 Agent 端到端完整 Pipeline 待跑通
-
-## 提交记录
-
-| 日期 | 版本 | 文件 |
-|------|------|------|
-| 2026-07-16 | v2.0 多 Agent 重构 | Dream Fire_0716-第2次提交.zip |
-| 2026-07-17 | v2.1 Bug 修复 + 验证 | (当前版本) |
 
 ---
 
-*Dream Fire — 华为 openJiuwen Track 2 参赛项目*
+*Dream Fire — 华为 openJiuwen Track 2 参赛项目 | 策略评分 79.7/100 (v2.4)*
