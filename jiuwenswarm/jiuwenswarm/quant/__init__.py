@@ -4,6 +4,7 @@ from jiuwenswarm.quant.stock_pool import STOCK_POOL, ALL_STOCKS, SECTOR_MAP, TIC
 from jiuwenswarm.quant.market_regime import MarketRegime
 from jiuwenswarm.quant.market_index import MarketIndex
 from jiuwenswarm.quant.regime_fusion import RegimeFusion
+from jiuwenswarm.quant.fundamental import FundamentalData
 from jiuwenswarm.quant.factors import (
     FactorConfig,
     PositionConfig,

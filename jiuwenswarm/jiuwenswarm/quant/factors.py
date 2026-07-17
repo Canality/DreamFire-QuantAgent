@@ -15,16 +15,25 @@ from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
 
 @dataclass
 class FactorConfig:
-    """Weights for each factor. Supports regime-based dynamic weights."""
+    """Weights for each factor. Supports regime-based dynamic weights.
 
-    w_momentum_20: float = 0.15
-    w_momentum_60: float = 0.10
-    w_turnover_mom: float = 0.08
-    w_reversal_5: float = 0.18
-    w_rsi: float = 0.09
-    w_volatility: float = 0.15
-    w_volume_trend: float = 0.10
-    w_max_drawdown: float = 0.15
+    11 factors: 8 technical + 3 fundamental (PE, PB, ROE).
+    """
+
+    # Technical factor base weights
+    w_momentum_20: float = 0.12
+    w_momentum_60: float = 0.08
+    w_turnover_mom: float = 0.06
+    w_reversal_5: float = 0.14
+    w_rsi: float = 0.07
+    w_volatility: float = 0.12
+    w_volume_trend: float = 0.08
+    w_max_drawdown: float = 0.12
+
+    # Fundamental factor base weights
+    w_pe_ttm: float = 0.07
+    w_pb_mrq: float = 0.07
+    w_roe: float = 0.07
 
     def get_regime_weights(self, regime: str) -> Dict[str, float]:
         """Return factor weights adjusted for market regime."""
@@ -37,6 +46,9 @@ class FactorConfig:
             "volatility_z": -self.w_volatility,
             "volume_trend_z": self.w_volume_trend,
             "max_drawdown_z": -self.w_max_drawdown,
+            "pe_ttm_z": self.w_pe_ttm,
+            "pb_mrq_z": self.w_pb_mrq,
+            "roe_z": self.w_roe,
         }
 
         if regime == MarketRegime.BULL:
@@ -45,6 +57,7 @@ class FactorConfig:
                 "turnover_momentum_z": 1.3,
                 "reversal_5_z": 0.3, "rsi_z": 0.5,
                 "volatility_z": 0.7, "max_drawdown_z": 0.7,
+                "pe_ttm_z": 0.7, "pb_mrq_z": 0.7, "roe_z": 1.2,
             }
         elif regime == MarketRegime.BEAR:
             adjustments = {
@@ -53,12 +66,14 @@ class FactorConfig:
                 "reversal_5_z": 1.5, "rsi_z": 1.3,
                 "volatility_z": 1.5, "max_drawdown_z": 2.0,
                 "volume_trend_z": 0.5,
+                "pe_ttm_z": 1.5, "pb_mrq_z": 1.5, "roe_z": 1.5,
             }
         else:  # RANGE
             adjustments = {
                 "momentum_20_z": 0.8, "momentum_60_z": 0.7,
                 "reversal_5_z": 1.3, "rsi_z": 1.1,
                 "volatility_z": 1.1, "max_drawdown_z": 1.0,
+                "pe_ttm_z": 1.2, "pb_mrq_z": 1.2, "roe_z": 1.1,
             }
 
         result = {}
@@ -144,10 +159,21 @@ class FactorCalculator:
 
         return factors
 
-    def compute_scores(self, factors: pd.DataFrame) -> pd.DataFrame:
-        """Z-score normalize within sector, then regime-weighted composite."""
+    def compute_scores(
+        self,
+        factors: pd.DataFrame,
+        fundamental_z: Optional[pd.DataFrame] = None,
+    ) -> pd.DataFrame:
+        """Z-score normalize within sector, then regime-weighted composite.
+
+        Args:
+            factors: Raw technical factor values per stock.
+            fundamental_z: Pre-computed fundamental Z-scores (PE, PB, ROE).
+                           If None, only technical factors are used.
+        """
         scores = factors.copy()
 
+        # Z-score technical factors within each sector
         for col in factors.columns:
             col_scores = pd.Series(index=factors.index, dtype=float)
             for sector, stocks in STOCK_POOL.items():
@@ -159,6 +185,15 @@ class FactorCalculator:
                 z = (raw - raw.mean()) / (raw.std() + 1e-10)
                 col_scores.loc[sector_stocks] = z
             scores[f"{col}_z"] = col_scores
+
+        # Merge fundamental Z-scores if provided
+        if fundamental_z is not None:
+            for col in fundamental_z.columns:
+                if col not in scores.columns:
+                    scores[col] = 0.0
+                for ticker in fundamental_z.index:
+                    if ticker in scores.index:
+                        scores.loc[ticker, col] = fundamental_z.loc[ticker, col]
 
         weights = self.config.get_regime_weights(self.regime)
 

@@ -255,6 +255,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         FactorCalculator, FactorConfig, PositionSizer, PositionConfig,
         BacktestEngine, MarketRegime, ALL_STOCKS, RegimeFusion, MarketIndex,
     )
+    from jiuwenswarm.quant.fundamental import FundamentalData
     from jiuwenswarm.quant.stock_pool import STOCK_POOL as SP
 
     print("=" * 60)
@@ -273,6 +274,14 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
     )
     if index_prices is not None:
         print(f"  CSI 300: {len(index_prices)} days loaded for index regime signal")
+
+    # --- Fetch fundamental data (PE/PB/ROE) ---
+    print("  Fetching fundamental data (PE/PB/ROE)...")
+    fund_pe_pb = FundamentalData.fetch_pe_pb(ALL_STOCKS)
+    fund_roe = FundamentalData.fetch_roe(ALL_STOCKS)
+    fund_z = FundamentalData.compute_scores(fund_pe_pb, fund_roe)
+    if not fund_z.empty:
+        print(f"  Fundamental factors: {len(fund_z)} stocks (PE, PB, ROE)")
     data_time = time.time() - t0
 
     n_days = len(prices_df)
@@ -318,7 +327,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         calc = FactorCalculator(FactorConfig())
         calc.regime = regime
         factors = calc.compute_factors(history)
-        scores = calc.compute_scores(factors)
+        scores = calc.compute_scores(factors, fundamental_z=fund_z)
 
         # Stock selection with sector diversification
         selected, selected_set = [], set()

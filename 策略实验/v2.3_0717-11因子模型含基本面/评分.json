@@ -1,0 +1,146 @@
+{
+  "evaluation_date": "2026-07-17 13:00",
+  "n_test_windows": 8,
+  "data": {
+    "source": "yfinance (REAL)",
+    "n_stocks": 49,
+    "n_days": 189,
+    "date_range": "2025-10-09 ~ 2026-07-17"
+  },
+  "version": "v2.0 (multi-agent Bull/Bear + percentile scoring)",
+  "scores": {
+    "dimension_1_portfolio": {
+      "total": 58.2,
+      "max": 80,
+      "return": {
+        "score": 39.7,
+        "max": 56,
+        "tier": "decent",
+        "median": 0.039424,
+        "worst": -0.00149,
+        "mean": 0.032124
+      },
+      "max_drawdown": {
+        "score": 18.5,
+        "max": 24,
+        "tier": "good",
+        "median": 0.022453,
+        "worst": 0.036518,
+        "mean": 0.02149
+      }
+    },
+    "dimension_2_resource": {
+      "total": 19.0,
+      "max": 20,
+      "token_consumption": {
+        "score": 10.0,
+        "max": 10,
+        "tier": "pending_baseline",
+        "estimated_tokens": 15200,
+        "baseline_tokens": 6000
+      },
+      "runtime_efficiency": {
+        "score": 5.0,
+        "max": 5,
+        "tier": "under_budget",
+        "avg_elapsed_s": 0.1
+      },
+      "compute_economy": {
+        "score": 4.0,
+        "max": 5,
+        "tier": "good"
+      }
+    }
+  },
+  "total_score": 77.2,
+  "window_details": [
+    {
+      "idx": 0,
+      "date_range": "2026-02-02 ~ 2026-03-09",
+      "regime": "range",
+      "n_stocks": 15,
+      "total_return": 0.030616,
+      "max_drawdown": 0.015272,
+      "sharpe_ratio": 4.3,
+      "ann_vol": 0.1144,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 1,
+      "date_range": "2026-02-25 ~ 2026-03-24",
+      "regime": "range",
+      "n_stocks": 15,
+      "total_return": 0.008585,
+      "max_drawdown": 0.036518,
+      "sharpe_ratio": 0.88,
+      "ann_vol": 0.1369,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 2,
+      "date_range": "2026-03-12 ~ 2026-04-09",
+      "regime": "range",
+      "n_stocks": 15,
+      "total_return": -0.00149,
+      "max_drawdown": 0.029633,
+      "sharpe_ratio": -0.15,
+      "ann_vol": 0.1286,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 3,
+      "date_range": "2026-03-27 ~ 2026-04-24",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.06281,
+      "max_drawdown": 0.008448,
+      "sharpe_ratio": 11.41,
+      "ann_vol": 0.1089,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 4,
+      "date_range": "2026-04-14 ~ 2026-05-14",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.048233,
+      "max_drawdown": 0.006098,
+      "sharpe_ratio": 10.46,
+      "ann_vol": 0.083,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 5,
+      "date_range": "2026-04-29 ~ 2026-05-29",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.049622,
+      "max_drawdown": 0.00971,
+      "sharpe_ratio": 9.22,
+      "ann_vol": 0.0977,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 6,
+      "date_range": "2026-05-19 ~ 2026-06-15",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.051081,
+      "max_drawdown": 0.034497,
+      "sharpe_ratio": 5.55,
+      "ann_vol": 0.1687,
+      "elapsed_s": 0.07
+    },
+    {
+      "idx": 7,
+      "date_range": "2026-06-03 ~ 2026-07-01",
+      "regime": "bull",
+      "n_stocks": 15,
+      "total_return": 0.007532,
+      "max_drawdown": 0.031747,
+      "sharpe_ratio": 0.49,
+      "ann_vol": 0.2138,
+      "elapsed_s": 0.07
+    }
+  ]
+}
