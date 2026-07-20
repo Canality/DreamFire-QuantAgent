@@ -15,24 +15,25 @@ from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
 
 @dataclass
 class FactorConfig:
-    """Weights for 5 alpha factors + 1 risk constraint.
+    """Weights for 6 alpha factors + 1 risk constraint.
 
     Factor selection based on IC analysis:
-      - 5 alpha factors: momentum_20 (IC=+0.084), momentum_60 (IC=+0.055),
-        reversal_5 (IC=-0.094), max_drawdown (IC=-0.114), volume_corr (IC=+0.049)
-      - 1 risk constraint: volatility (excluded from composite, applied as
-        hard filter in stock selection: vol_z > 2.0 → excluded)
+      - 4 price factors: momentum_20 (IC=+0.084), momentum_60 (IC=+0.055),
+        reversal_5 (IC=-0.094), max_drawdown (IC=-0.114)
+      - 2 volume factors: volume_corr (IC=+0.049), volume_trend (IC=+0.073)
+      - 1 risk constraint: volatility (hard filter: vol_z > 2.0 → excluded)
 
-    Weights are proportional to |IC|, with volume_corr up-weighted
-    for its exceptional stability (Std IC=0.094, lowest of all factors).
+    Volume factors are orthogonal to price factors (r<0.25 with momentum_20),
+    providing independent alpha from the "capital flow" dimension.
     """
 
     # IC-weighted base weights (sum to 1.0)
     w_momentum_20: float = 0.34   # IC=+0.084 → largest weight
-    w_momentum_60: float = 0.18   # IC=+0.055
-    w_max_drawdown: float = 0.18  # IC=-0.114 (inverted: low drawdown = high score)
-    w_reversal_5: float = 0.10    # IC=-0.094 (volatile → low weight)
-    w_volume_corr: float = 0.20   # IC=+0.049 (lowest std → up-weighted for stability)
+    w_momentum_60: float = 0.17   # IC=+0.055
+    w_max_drawdown: float = 0.16  # IC=-0.114 (inverted: low drawdown = high score)
+    w_reversal_5: float = 0.08    # IC=-0.094 (volatile → lowest weight)
+    w_volume_corr: float = 0.19   # IC=+0.049 (stability anchor)
+    w_volume_trend: float = 0.06  # IC=+0.073 (minimal — high std IC 0.191)
 
     # Volatility constraint (not a composite weight)
     vol_exclusion_sigma: float = 2.0  # exclude stocks with vol_z > 2.0
@@ -41,7 +42,7 @@ class FactorConfig:
         """Return factor weights adjusted for market regime.
 
         reversal_5_z is flipped: higher score = stronger 5-day momentum.
-        volume_corr_z is regime-invariant (stable across all market states).
+        Volume factors (volume_corr_z, volume_trend_z) are regime-invariant.
         """
         base = {
             "momentum_20_z": self.w_momentum_20,
@@ -49,6 +50,7 @@ class FactorConfig:
             "reversal_5_z": -self.w_reversal_5,
             "max_drawdown_z": -self.w_max_drawdown,
             "volume_corr_z": self.w_volume_corr,
+            "volume_trend_z": self.w_volume_trend,
         }
 
         if regime == MarketRegime.BULL:
@@ -56,21 +58,21 @@ class FactorConfig:
                 "momentum_20_z": 1.5, "momentum_60_z": 1.5,
                 "reversal_5_z": 0.3,
                 "max_drawdown_z": 0.7,
-                "volume_corr_z": 1.0,  # regime-invariant
+                "volume_corr_z": 1.0, "volume_trend_z": 1.0,  # regime-invariant
             }
         elif regime == MarketRegime.BEAR:
             adjustments = {
                 "momentum_20_z": 0.3, "momentum_60_z": 0.3,
                 "reversal_5_z": 1.5,
                 "max_drawdown_z": 2.0,
-                "volume_corr_z": 1.0,
+                "volume_corr_z": 1.0, "volume_trend_z": 1.0,
             }
         else:  # RANGE
             adjustments = {
                 "momentum_20_z": 0.8, "momentum_60_z": 0.7,
                 "reversal_5_z": 1.3,
                 "max_drawdown_z": 1.0,
-                "volume_corr_z": 1.0,
+                "volume_corr_z": 1.0, "volume_trend_z": 1.0,
             }
 
         result = {}
@@ -170,6 +172,26 @@ class FactorCalculator:
                 r = ra.corr(rb)
                 vol_corr[ticker] = 0.0 if pd.isna(r) else float(r)
             factors["volume_corr"] = pd.Series(vol_corr, index=factors.index)
+
+            # Volume trend: late 10d avg / early 10d avg - 1
+            # Positive = volume expanding (increasing attention)
+            # Orthogonal to momentum_20 (r=0.19) and volume_corr (r=0.17)
+            vol_trend = {}
+            for ticker in price_data.columns:
+                if ticker not in volume_data.columns:
+                    vol_trend[ticker] = 0.0
+                    continue
+                v = volume_data[ticker].tail(20).dropna()
+                if len(v) < 15:
+                    vol_trend[ticker] = 0.0
+                    continue
+                v_early = v.iloc[:10].mean()
+                v_late = v.iloc[-10:].mean()
+                if v_early < 1:
+                    vol_trend[ticker] = 1.0
+                else:
+                    vol_trend[ticker] = float(v_late / v_early - 1.0)
+            factors["volume_trend"] = pd.Series(vol_trend, index=factors.index)
         else:
             factors["volume_trend"] = 1.0
             factors["volume_corr"] = 0.0

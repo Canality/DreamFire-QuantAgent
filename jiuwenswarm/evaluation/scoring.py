@@ -272,7 +272,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         FactorCalculator, FactorConfig, PositionSizer, PositionConfig,
         BacktestEngine, MarketRegime, ALL_STOCKS, RegimeFusion, MarketIndex,
     )
-    from jiuwenswarm.quant.stock_pool import STOCK_POOL as SP
+    from jiuwenswarm.quant.stock_pool import STOCK_POOL as SP, SECTOR_MAP
 
     print("=" * 60)
     print("  Quant Investment Agent — Self Evaluation")
@@ -348,20 +348,31 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         scores = calc.filter_high_volatility(scores)
 
         # Stock selection with sector diversification
+        # Phase 1: 1 per sector (guarantees coverage)
+        # Phase 2: fill remaining, max 3 per sector (prevents concentration)
+        MAX_PER_SECTOR = 3
         selected, selected_set = [], set()
+        sector_counts = {s: 0 for s in SP}
+
         for sector in SP:
             for t in scores.index:
                 if (t in SP[sector] and t not in selected_set
                         and scores.loc[t, "composite"] > -0.5):
                     selected.append(t)
                     selected_set.add(t)
+                    sector_counts[sector] += 1
                     break
         for t in scores.index:
             if len(selected) >= 15:
                 break
             if t not in selected_set and scores.loc[t, "composite"] > 0:
+                s = SECTOR_MAP.get(t, "")
+                if s in sector_counts and sector_counts[s] >= MAX_PER_SECTOR:
+                    continue  # skip: sector at capacity
                 selected.append(t)
                 selected_set.add(t)
+                if s in sector_counts:
+                    sector_counts[s] += 1
 
         # Position sizing + backtest
         sizer = PositionSizer(PositionConfig())
