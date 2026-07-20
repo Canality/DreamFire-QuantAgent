@@ -164,11 +164,15 @@ def _extract_column(df: pd.DataFrame, col_name: str) -> pd.Series:
     return df.get(col_name, pd.Series(dtype=float))
 
 
-def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFrame:
+def fetch_real_data(tickers: list[str], lookback_days: int = 252
+                    ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     """Fetch real stock data via multi-source chain: akshare → baostock → yfinance.
 
     Each source fills in only the stocks still missing from previous tiers.
     Aborts with clear error message if all sources fail.
+
+    Returns:
+        (prices_df, volumes_df): volumes may be None if no volume data available.
     """
     start_date = (datetime.now() - timedelta(days=lookback_days + 30)).strftime("%Y-%m-%d")
     end_date = datetime.now().strftime("%Y-%m-%d")
@@ -187,11 +191,13 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFram
     _fetch_yfinance = _ext_mod._fetch_yfinance
 
     all_prices = {}
+    all_volumes = {}
     failed = []
 
     # Tier 1: akshare
-    prices, _volumes, errors = _fetch_akshare(tickers, start_date, end_date)
+    prices, volumes, errors = _fetch_akshare(tickers, start_date, end_date)
     all_prices.update(prices)
+    all_volumes.update(volumes)
     for e in errors:
         ticker = e.split(":")[1] if ":" in e else ""
         failed.append(e)
@@ -200,8 +206,9 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFram
     missing = [t for t in tickers if t not in all_prices]
     if missing:
         print(f"    akshare: {len(all_prices)}/{len(tickers)}, baostock filling {len(missing)} missing...")
-        prices2, _volumes2, errors2 = _fetch_baostock(missing, start_date, end_date)
+        prices2, volumes2, errors2 = _fetch_baostock(missing, start_date, end_date)
         all_prices.update(prices2)
+        all_volumes.update(volumes2)
         for e in errors2:
             failed.append(e)
 
@@ -209,8 +216,9 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFram
     still_missing = [t for t in tickers if t not in all_prices]
     if still_missing:
         print(f"    baostock: {len(all_prices)}/{len(tickers)}, yfinance filling {len(still_missing)} missing...")
-        prices3, _volumes3, errors3 = _fetch_yfinance(still_missing, start_date, end_date)
+        prices3, volumes3, errors3 = _fetch_yfinance(still_missing, start_date, end_date)
         all_prices.update(prices3)
+        all_volumes.update(volumes3)
         for e in errors3:
             failed.append(e)
 
@@ -234,15 +242,24 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252) -> pd.DataFram
     if failed:
         print(f"  Warning: {len(failed)} errors across all sources, proceeding with {len(all_prices)}")
 
-    result = pd.DataFrame(all_prices).sort_index()
-    result = result.dropna(how="all")
+    prices_df = pd.DataFrame(all_prices).sort_index()
+    prices_df = prices_df.dropna(how="all")
 
-    if len(result) < 80:
-        print(f"\nERROR: Only {len(result)} trading days available (need >= 80 for reliable backtest)")
+    if len(prices_df) < 80:
+        print(f"\nERROR: Only {len(prices_df)} trading days available (need >= 80 for reliable backtest)")
         print("Try increasing lookback_days or check data completeness")
         sys.exit(1)
 
-    return result
+    # Build volume DataFrame (may have fewer stocks than prices)
+    if all_volumes:
+        volumes_df = pd.DataFrame(all_volumes).sort_index()
+        # Align indices with prices
+        common_dates = prices_df.index.intersection(volumes_df.index)
+        volumes_df = volumes_df.loc[common_dates] if len(common_dates) > 0 else None
+    else:
+        volumes_df = None
+
+    return prices_df, volumes_df
 
 
 # ============================================================
@@ -265,7 +282,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
     # --- Fetch real data ---
     print("\n[Step 0] Fetching REAL stock data (no simulated fallback)...")
     t0 = time.time()
-    prices_df = fetch_real_data(ALL_STOCKS)
+    prices_df, volumes_df = fetch_real_data(ALL_STOCKS)
 
     # --- Fetch CSI 300 for index-based regime signal ---
     index_prices = MarketIndex.fetch_csi300(
@@ -318,7 +335,13 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         regime = RegimeFusion.detect(history, index_prices=idx_slice)
         calc = FactorCalculator(FactorConfig())
         calc.regime = regime
-        factors = calc.compute_factors(history)
+        # Pass volume data aligned to history window
+        history_vol = None
+        if volumes_df is not None:
+            history_vol = volumes_df[volumes_df.index <= history.index[-1]]
+            if history_vol.empty:
+                history_vol = None
+        factors = calc.compute_factors(history, history_vol)
         scores = calc.compute_scores(factors)
 
         # Volatility hard constraint: exclude stocks with vol_z > 2.0

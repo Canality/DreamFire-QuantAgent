@@ -15,22 +15,24 @@ from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
 
 @dataclass
 class FactorConfig:
-    """Weights for 4 core alpha factors + 1 risk constraint.
+    """Weights for 5 alpha factors + 1 risk constraint.
 
-    Factor selection based on IC analysis (2026-07-17):
-      - 4 alpha factors: momentum_20 (IC=+0.72), momentum_60 (IC=+0.41),
-        reversal_5_flipped (IC=+0.39), max_drawdown (IC=-0.38)
+    Factor selection based on IC analysis:
+      - 5 alpha factors: momentum_20 (IC=+0.084), momentum_60 (IC=+0.055),
+        reversal_5 (IC=-0.094), max_drawdown (IC=-0.114), volume_corr (IC=+0.049)
       - 1 risk constraint: volatility (excluded from composite, applied as
         hard filter in stock selection: vol_z > 2.0 → excluded)
 
-    Weights are proportional to |IC| (Information Coefficient).
+    Weights are proportional to |IC|, with volume_corr up-weighted
+    for its exceptional stability (Std IC=0.094, lowest of all factors).
     """
 
     # IC-weighted base weights (sum to 1.0)
-    w_momentum_20: float = 0.38   # IC=+0.72 → largest weight
-    w_momentum_60: float = 0.22   # IC=+0.41
-    w_max_drawdown: float = 0.20  # IC=-0.38 (inverted: low drawdown = high score)
-    w_reversal_5: float = 0.20    # IC=+0.39 (flipped: was -0.39, now 5d momentum)
+    w_momentum_20: float = 0.34   # IC=+0.084 → largest weight
+    w_momentum_60: float = 0.18   # IC=+0.055
+    w_max_drawdown: float = 0.18  # IC=-0.114 (inverted: low drawdown = high score)
+    w_reversal_5: float = 0.10    # IC=-0.094 (volatile → low weight)
+    w_volume_corr: float = 0.20   # IC=+0.049 (lowest std → up-weighted for stability)
 
     # Volatility constraint (not a composite weight)
     vol_exclusion_sigma: float = 2.0  # exclude stocks with vol_z > 2.0
@@ -39,12 +41,14 @@ class FactorConfig:
         """Return factor weights adjusted for market regime.
 
         reversal_5_z is flipped: higher score = stronger 5-day momentum.
+        volume_corr_z is regime-invariant (stable across all market states).
         """
         base = {
             "momentum_20_z": self.w_momentum_20,
             "momentum_60_z": self.w_momentum_60,
             "reversal_5_z": -self.w_reversal_5,
             "max_drawdown_z": -self.w_max_drawdown,
+            "volume_corr_z": self.w_volume_corr,
         }
 
         if regime == MarketRegime.BULL:
@@ -52,18 +56,21 @@ class FactorConfig:
                 "momentum_20_z": 1.5, "momentum_60_z": 1.5,
                 "reversal_5_z": 0.3,
                 "max_drawdown_z": 0.7,
+                "volume_corr_z": 1.0,  # regime-invariant
             }
         elif regime == MarketRegime.BEAR:
             adjustments = {
                 "momentum_20_z": 0.3, "momentum_60_z": 0.3,
                 "reversal_5_z": 1.5,
                 "max_drawdown_z": 2.0,
+                "volume_corr_z": 1.0,
             }
         else:  # RANGE
             adjustments = {
                 "momentum_20_z": 0.8, "momentum_60_z": 0.7,
                 "reversal_5_z": 1.3,
                 "max_drawdown_z": 1.0,
+                "volume_corr_z": 1.0,
             }
 
         result = {}
@@ -141,8 +148,31 @@ class FactorCalculator:
             v5 = volume_data.tail(5).mean()
             v20 = volume_data.tail(20).mean().replace(0, np.nan)
             factors["volume_trend"] = (v5 / v20).reindex(factors.index)
+
+            # Volume-price correlation: Spearman rank corr of 20d returns vs volume
+            # Positive = volume confirms price direction (healthy trend)
+            # Negative = volume diverges from price (trend weakness)
+            returns = price_data.pct_change()
+            vol_corr = {}
+            for ticker in price_data.columns:
+                if ticker not in volume_data.columns:
+                    vol_corr[ticker] = 0.0
+                    continue
+                ret_20 = returns[ticker].tail(20).dropna()
+                vol_20 = volume_data[ticker].tail(20).dropna()
+                common_idx = ret_20.index.intersection(vol_20.index)
+                if len(common_idx) < 10:
+                    vol_corr[ticker] = 0.0
+                    continue
+                # Rank correlation: rank both series, then Pearson
+                ra = ret_20[common_idx].rank()
+                rb = vol_20[common_idx].rank()
+                r = ra.corr(rb)
+                vol_corr[ticker] = 0.0 if pd.isna(r) else float(r)
+            factors["volume_corr"] = pd.Series(vol_corr, index=factors.index)
         else:
             factors["volume_trend"] = 1.0
+            factors["volume_corr"] = 0.0
 
         max_dd = self._calc_max_drawdown(price_data.tail(60))
         factors["max_drawdown"] = pd.Series(max_dd, index=factors.index)
