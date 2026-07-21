@@ -1,8 +1,8 @@
 ---
 name: stock-selector
 description: >
-  Selects stocks from factor scores with sector diversification constraints.
-  Ensures at least 1 stock per sector, maximum top_n stocks total.
+  Selects top-N stocks from factor scores by descending composite score.
+  No forced sector diversification — pure score ranking, composite > 0 only.
   Use when: need to pick final stock list from factor scores.
 allowed_tools:
   - quant_select_stocks
@@ -11,15 +11,14 @@ allowed_tools:
 
 # 选股决策 Skill
 
-从因子得分中选出最终投资标的，确保板块分散化。
+从因子得分中按裸分排序选出最终投资标的。
 
 ## 选股规则
 
-1. 每个板块至少选择 1 只得分最高的股票（得分 > min_score 阈值）
-2. 剩余名额按综合得分从高到低补充
-3. 最多持仓 top_n 只（默认 15）
-4. 综合得分 > 0 的股票才纳入备选
-5. 确保 6 大板块全覆盖
+1. 按综合得分从高到低选取，composite > 0 才纳入
+2. 最多持仓 top_n 只（默认 15）
+3. 不做板块分散强制约束——裸分 Top 15 天然跨 5-6 个板块
+4. 选股结果不足 15 只（或不足 6 板块覆盖）则失败关闭
 
 ## 执行流程
 

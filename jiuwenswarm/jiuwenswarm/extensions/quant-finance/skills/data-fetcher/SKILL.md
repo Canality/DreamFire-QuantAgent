@@ -2,7 +2,10 @@
 name: data-fetcher
 description: >
   Fetches historical A-share stock price and volume data for the competition
-  stock pool (49 stocks across 6 sectors). Uses yfinance with akshare fallback.
+  stock pool (49 stocks across 6 sectors). Uses five-source chain:
+  Sina → Tencent → akshare → baostock → yfinance, each tier fills only
+  missing stocks. Unified raw (unadjusted) close prices. Fails closed if
+  fewer than 49 stocks obtained.
   Use when: need to load stock data for factor calculation or backtesting.
 allowed_tools:
   - quant_fetch_data
@@ -44,6 +47,7 @@ allowed_tools:
 
 ## 注意事项
 
-- 如果 yfinance 获取失败，会自动降级到模拟数据
+- 五源级联兜底：Sina → Tencent → akshare → baostock → yfinance，每层只请求缺失股票
+- 任一环节不足49只立即失败关闭，禁止残缺股票池继续计算
 - 后续工具直接读取服务端缓存；不要构造或转述 prices/volumes
-- 数据已前复权处理
+- 统一使用原始（未复权）收盘价
