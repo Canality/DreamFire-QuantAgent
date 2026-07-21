@@ -1,6 +1,6 @@
 # 协作讨论 — 历史归档
 
-> Round 1 已关闭。当前活跃讨论见 `discussion.md`。
+> Round 1-2 已关闭。当前活跃讨论见 `discussion.md`。
 
 ---
 

@@ -15,6 +15,8 @@ allowed_tools:
   - quant_allocate_positions
   - quant_run_backtest
   - quant_generate_report
+  - quant_bull_view
+  - quant_bear_view
 ---
 
 # 量化投资分析 Team Skill（多 Agent 协作模式）
@@ -263,10 +265,11 @@ allowed_tools:
 
 ## 策略背景
 
-采用 4 因子模型（经 IC 分析筛选）：
-- **alpha 因子**：momentum_20 (IC=+0.72)、momentum_60 (IC=+0.41)、5 日动量 (IC=+0.39)、最大回撤 (IC=-0.38)
+采用 **6 因子多维度模型**（经 IC 分析验证，v2.6, 81.7 分）：
+- **价格因子（4 个）**：momentum_20 (IC=+0.084), momentum_60 (IC=+0.055), reversal_5 (IC=-0.094), max_drawdown (IC=-0.114)
+- **量能因子（2 个）**：volume_corr (IC=+0.049, 稳定器), volume_trend (IC=+0.073)
 - **风险约束**：波动率硬约束（vol_z > 2.0 → 排除）
-- **权重方案**：市场状态（牛/熊/震荡）动态调整因子权重
+- **权重方案**：市场状态（牛/熊/震荡）动态调整因子权重，量能因子市态不变
 - **仓位分配**：风险平价方法，单只≤10%，单板块≤25%，最低现金≥5%
 
 **已知局限性（必须在报告中披露）**：

@@ -185,7 +185,7 @@ class QuantFinanceExtension(BaseExtension):
         params: dict[str, Any] | None = None,
         request: Any = None,
     ) -> dict[str, Any]:
-        """Compute 8-factor scores with market regime detection.
+        """Compute 6-factor scores with market regime detection (v2.6).
 
         Reads price data from cache if 'prices' param is not provided.
         Always call quant_fetch_data before this tool.
@@ -424,35 +424,44 @@ class QuantFinanceExtension(BaseExtension):
         params: dict[str, Any] | None = None,
         request: Any = None,
     ) -> dict[str, Any]:
-        """Extract bullish signals using bull-market factor weights and percentile thresholds."""
+        """Extract bullish signals using trend-factor set (direction 8 factor separation).
+
+        Bull Analyst uses 3 trend factors:
+          - momentum_20: short-term trend strength (primary)
+          - momentum_60: medium-term trend confirmation
+          - volume_corr: volume-price alignment (healthy trend validator)
+
+        This is NOT the same factors as Bear — verified overlap ~28%, Spearman r≈-0.10.
+        """
         del request
         params = params or {}
 
         prices_json = params.get("prices")
+        volumes_json = params.get("volumes")
         if not prices_json:
             return {"success": False, "detail": "prices data is required"}
 
         def _analyze() -> dict:
             prices = _json_to_df(prices_json)
+            volumes = _json_to_df(volumes_json) if volumes_json else None
             from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
             from jiuwenswarm.quant.market_regime import MarketRegime
 
             regime = MarketRegime.detect(prices)
 
-            # Bull uses bull-market weights: momentum boosted, reversal/risk reduced
+            # Bull uses trend-focused weights (direction 8: factor separation)
+            # momentum_20/60 boosted, risk factors minimal
             bull_cfg = FactorConfig(
-                w_momentum_20=0.25,      # boosted from 0.15
-                w_momentum_60=0.15,      # boosted from 0.10
-                w_turnover_mom=0.12,     # boosted from 0.08
-                w_reversal_5=0.08,       # reduced from 0.18
-                w_rsi=0.05,              # reduced from 0.09
-                w_volatility=0.10,       # reduced from 0.15
-                w_volume_trend=0.15,     # boosted from 0.10
-                w_max_drawdown=0.10,     # reduced from 0.15
+                w_momentum_20=0.50,      # primary trend signal
+                w_momentum_60=0.25,      # trend confirmation
+                w_max_drawdown=0.05,     # not Bull's concern — Bear handles this
+                w_reversal_5=0.05,       # not Bull's concern
+                w_volume_corr=0.15,      # volume confirms trend health
+                w_volume_trend=0.00,     # not in Bull's factor set
             )
             calc = FactorCalculator(bull_cfg)
             calc.regime = regime
-            factors = calc.compute_factors(prices)
+            factors = calc.compute_factors(prices, volumes)
 
             # Compute percentiles from cross-sectional distribution
             pct = _factor_percentiles(factors)
@@ -461,32 +470,34 @@ class QuantFinanceExtension(BaseExtension):
             for ticker in factors.index:
                 mom_20 = float(factors.loc[ticker, "momentum_20"])
                 mom_60 = float(factors.loc[ticker, "momentum_60"])
-                vol_ann = float(factors.loc[ticker, "volatility"])
-                vol_trend = float(factors.loc[ticker, "volume_trend"])
+                vol_corr = float(factors.loc[ticker, "volume_corr"])
 
                 score = 0
                 signals = []
+                # Signal 1: strong short-term momentum (top 20%)
                 if mom_20 >= pct["momentum_20_p80"]:
                     score += 3
                     signals.append(
                         f"20日动量 {mom_20:+.1%}（全市场前20%，阈值 {pct['momentum_20_p80']:+.1%}) — 短期趋势强劲"
                     )
+                # Signal 2: confirmed medium-term trend (top 30%)
                 if mom_60 >= pct["momentum_60_p70"]:
                     score += 2
                     signals.append(
                         f"60日动量 {mom_60:+.1%}（全市场前30%，阈值 {pct['momentum_60_p70']:+.1%}) — 中期趋势确认"
                     )
-                if vol_trend >= pct["volume_trend_p70"]:
+                # Signal 3: volume confirms price direction (top 30%)
+                if vol_corr >= pct["volume_corr_p70"]:
                     score += 2
                     signals.append(
-                        f"成交量放大 {vol_trend:.1f}x（全市场前30%，阈值 {pct['volume_trend_p70']:.1f}x) — 资金关注度上升"
+                        f"量价配合 r={vol_corr:+.2f}（全市场前30%，阈值 {pct['volume_corr_p70']:+.2f}) — 放量上涨，趋势健康"
                     )
-                if vol_ann <= pct["volatility_p30"]:
-                    score += 2
-                    signals.append(
-                        f"低波动 {vol_ann:.1%}（全市场后30%，阈值 {pct['volatility_p30']:.1%}) — 涨得稳"
-                    )
-                if mom_20 >= pct["momentum_20_p80"] and vol_trend >= pct["volume_trend_p70"]:
+                # Signal 4: trend alignment — both momentums agree (bonus)
+                if mom_20 >= pct["momentum_20_p80"] and mom_60 >= pct["momentum_60_p70"]:
+                    score += 1
+                    signals.append("双周期趋势共振 — 20日+60日动量方向一致")
+                # Signal 5: price + volume double confirmation (bonus)
+                if mom_20 >= pct["momentum_20_p80"] and vol_corr >= pct["volume_corr_p70"]:
                     score += 2
                     signals.append("量价齐升 — 动量+放量双信号叠加")
 
@@ -499,8 +510,7 @@ class QuantFinanceExtension(BaseExtension):
                         "key_metrics": {
                             "momentum_20": round(mom_20, 4),
                             "momentum_60": round(mom_60, 4),
-                            "volatility": round(vol_ann, 4),
-                            "volume_trend": round(vol_trend, 2),
+                            "volume_corr": round(vol_corr, 4),
                         },
                     })
 
@@ -509,12 +519,11 @@ class QuantFinanceExtension(BaseExtension):
             return {
                 "success": True,
                 "regime": regime,
-                "factor_weights": "bull-market (momentum boosted, risk reduced)",
+                "factor_weights": "bull-trend (momentum_20=0.50, momentum_60=0.25, volume_corr=0.15)",
                 "percentile_thresholds": {
                     "momentum_20_p80": round(pct["momentum_20_p80"], 4),
                     "momentum_60_p70": round(pct["momentum_60_p70"], 4),
-                    "volume_trend_p70": round(pct["volume_trend_p70"], 2),
-                    "volatility_p30": round(pct["volatility_p30"], 4),
+                    "volume_corr_p70": round(pct["volume_corr_p70"], 4),
                 },
                 "n_bullish": len(bullish),
                 "bullish_stocks": bullish[:12],
@@ -530,76 +539,84 @@ class QuantFinanceExtension(BaseExtension):
         params: dict[str, Any] | None = None,
         request: Any = None,
     ) -> dict[str, Any]:
-        """Extract bearish signals using bear-market factor weights and percentile thresholds."""
+        """Extract bearish/risk signals using risk-factor set (direction 8 factor separation).
+
+        Bear Analyst uses 3 risk factors:
+          - max_drawdown: historical max drawdown (larger = riskier)
+          - reversal_5: 5-day return reversal (negative = falling, risk of continuation)
+          - volume_corr (REVERSED): volume-price divergence = risk signal
+
+        This is NOT the same factors as Bull — verified overlap ~28%, Spearman r≈-0.10.
+        """
         del request
         params = params or {}
 
         prices_json = params.get("prices")
+        volumes_json = params.get("volumes")
         if not prices_json:
             return {"success": False, "detail": "prices data is required"}
 
         def _analyze() -> dict:
             prices = _json_to_df(prices_json)
+            volumes = _json_to_df(volumes_json) if volumes_json else None
             from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
             from jiuwenswarm.quant.market_regime import MarketRegime
 
             regime = MarketRegime.detect(prices)
 
-            # Bear uses bear-market weights: risk factors boosted, momentum reduced
+            # Bear uses risk-focused weights (direction 8: factor separation)
+            # max_drawdown + reversal_5 boosted, momentum minimal
             bear_cfg = FactorConfig(
-                w_momentum_20=0.06,      # heavily reduced from 0.15
-                w_momentum_60=0.04,      # heavily reduced from 0.10
-                w_turnover_mom=0.05,     # reduced from 0.08
-                w_reversal_5=0.22,       # boosted from 0.18
-                w_rsi=0.12,              # boosted from 0.09
-                w_volatility=0.22,       # boosted from 0.15
-                w_volume_trend=0.07,     # reduced from 0.10
-                w_max_drawdown=0.22,     # boosted from 0.15
+                w_momentum_20=0.05,      # not Bear's concern — Bull handles this
+                w_momentum_60=0.05,      # not Bear's concern
+                w_max_drawdown=0.45,     # primary risk signal
+                w_reversal_5=0.25,       # short-term reversal risk
+                w_volume_corr=0.15,      # REVERSED: divergence = risk
+                w_volume_trend=0.05,     # minimal — secondary confirmation only
             )
             calc = FactorCalculator(bear_cfg)
             calc.regime = regime
-            factors = calc.compute_factors(prices)
+            factors = calc.compute_factors(prices, volumes)
 
             # Compute percentiles from cross-sectional distribution
             pct = _factor_percentiles(factors)
 
             bearish = []
             for ticker in factors.index:
-                vol_ann = float(factors.loc[ticker, "volatility"])
                 max_dd = float(factors.loc[ticker, "max_drawdown"])
-                vol_trend = float(factors.loc[ticker, "volume_trend"])
-                rsi = float(factors.loc[ticker, "rsi"])
+                rev_5 = float(factors.loc[ticker, "reversal_5"])
+                vol_corr = float(factors.loc[ticker, "volume_corr"])
 
                 score = 0
                 warnings = []
-                if vol_ann >= pct["volatility_p80"]:
-                    score += 3
-                    warnings.append(
-                        f"高波动 {vol_ann:.1%}（全市场前20%，阈值 {pct['volatility_p80']:.1%}) — 年化波动率显著偏高"
-                    )
+                # Signal 1: large historical drawdown (top 20%)
                 if max_dd >= pct["max_drawdown_p80"]:
                     score += 3
                     warnings.append(
                         f"大幅回撤 {max_dd:.1%}（全市场前20%，阈值 {pct['max_drawdown_p80']:.1%}) — 60日最大回撤显著偏高"
                     )
-                if vol_trend <= pct["volume_trend_p30"]:
+                # Signal 2: stock has been falling recently (bottom 20% of reversal_5)
+                if rev_5 <= pct["reversal_5_p20"]:
+                    score += 3
+                    warnings.append(
+                        f"短期弱势 rev_5={rev_5:+.1%}（全市场后20%，阈值 {pct['reversal_5_p20']:+.1%}) — 5日动量显著偏弱，下跌可能延续"
+                    )
+                # Signal 3: volume-price divergence (bottom 30% of volume_corr)
+                if vol_corr <= pct["volume_corr_p30"]:
                     score += 2
                     warnings.append(
-                        f"成交量萎缩 {vol_trend:.2f}x（全市场后30%，阈值 {pct['volume_trend_p30']:.1f}x) — 市场关注度下降"
+                        f"量价背离 r={vol_corr:+.2f}（全市场后30%，阈值 {pct['volume_corr_p30']:+.2f}) — 量价不配合，趋势质量存疑"
                     )
-                if rsi >= pct["rsi_p80"]:
+                # Signal 4: dual risk — high drawdown + falling reversal (bonus)
+                if max_dd >= pct["max_drawdown_p80"] and rev_5 <= pct["reversal_5_p20"]:
+                    score += 2
+                    warnings.append("回撤+弱势双信号 — 高风险组合，趋势可能加速恶化")
+                # Signal 5: extreme drawdown (top 10%)
+                if max_dd >= pct["max_drawdown_p90"]:
                     score += 2
                     warnings.append(
-                        f"RSI={rsi:.0f}（全市场前20%，阈值 {pct['rsi_p80']:.0f}) — 超买区域，回调风险"
+                        f"极端回撤 {max_dd:.1%}（全市场前10%，阈值 {pct['max_drawdown_p90']:.1%}) — 回撤幅度远超同板块"
                     )
-                if rsi <= pct["rsi_p20"]:
-                    score += 2
-                    warnings.append(
-                        f"RSI={rsi:.0f}（全市场后20%，阈值 {pct['rsi_p20']:.0f}) — 极端超卖，警惕死猫反弹"
-                    )
-                if vol_ann >= pct["volatility_p90"] and max_dd >= pct["max_drawdown_p90"]:
-                    score += 2
-                    warnings.append("高波动+大回撤双极端 — 极高风险组合")
 
                 if score >= 4:
                     bearish.append({
@@ -608,10 +625,9 @@ class QuantFinanceExtension(BaseExtension):
                         "bear_score": score,
                         "warnings": warnings,
                         "key_metrics": {
-                            "volatility": round(vol_ann, 4),
                             "max_drawdown": round(max_dd, 4),
-                            "volume_trend": round(vol_trend, 2),
-                            "rsi": round(rsi, 1),
+                            "reversal_5": round(rev_5, 4),
+                            "volume_corr": round(vol_corr, 4),
                         },
                     })
 
@@ -620,15 +636,12 @@ class QuantFinanceExtension(BaseExtension):
             return {
                 "success": True,
                 "regime": regime,
-                "factor_weights": "bear-market (risk boosted, momentum reduced)",
+                "factor_weights": "bear-risk (max_drawdown=0.45, reversal_5=0.25, volume_corr=0.15)",
                 "percentile_thresholds": {
-                    "volatility_p80": round(pct["volatility_p80"], 4),
-                    "volatility_p90": round(pct["volatility_p90"], 4),
                     "max_drawdown_p80": round(pct["max_drawdown_p80"], 4),
                     "max_drawdown_p90": round(pct["max_drawdown_p90"], 4),
-                    "volume_trend_p30": round(pct["volume_trend_p30"], 2),
-                    "rsi_p80": round(pct["rsi_p80"], 1),
-                    "rsi_p20": round(pct["rsi_p20"], 1),
+                    "reversal_5_p20": round(pct["reversal_5_p20"], 4),
+                    "volume_corr_p30": round(pct["volume_corr_p30"], 4),
                 },
                 "n_bearish": len(bearish),
                 "bearish_stocks": bearish[:12],
@@ -888,6 +901,10 @@ def _factor_percentiles(factors: pd.DataFrame) -> dict:
     Returns dict of percentile values used by bull_view and bear_view scoring.
     Percentiles adapt to current market conditions — e.g. in a raging bull
     market, the momentum thresholds will be higher because everyone is up.
+
+    Factor separation (direction 8):
+      - Bull: momentum_20, momentum_60, volume_corr (trend factors)
+      - Bear: max_drawdown, reversal_5, volume_corr (risk factors)
     """
     pct = {}
 
@@ -897,20 +914,16 @@ def _factor_percentiles(factors: pd.DataFrame) -> dict:
         sign = 1 if v >= 0 else -1
         return v - sign * abs(v) * 1e-6
 
-    # Bull uses: p80/p70 for momentum, p30 for volatility, p70 for volume
+    # Bull trend factors: p80/p70 for momentum, p70 for volume correlation
     pct["momentum_20_p80"] = _p(factors["momentum_20"], 80)
     pct["momentum_60_p70"] = _p(factors["momentum_60"], 70)
-    pct["volatility_p30"] = _p(factors["volatility"], 30)
-    pct["volume_trend_p70"] = _p(factors["volume_trend"], 70)
+    pct["volume_corr_p70"] = _p(factors["volume_corr"], 70)
 
-    # Bear uses: p80/p90 for volatility and drawdown, p30 for volume, p20/p80 for RSI
-    pct["volatility_p80"] = _p(factors["volatility"], 80)
-    pct["volatility_p90"] = _p(factors["volatility"], 90)
+    # Bear risk factors: p80/p90 for drawdown, p20 for reversal, p30 for volume corr
     pct["max_drawdown_p80"] = _p(factors["max_drawdown"], 80)
     pct["max_drawdown_p90"] = _p(factors["max_drawdown"], 90)
-    pct["volume_trend_p30"] = _p(factors["volume_trend"], 30)
-    pct["rsi_p80"] = _p(factors["rsi"], 80)
-    pct["rsi_p20"] = _p(factors["rsi"], 20)
+    pct["reversal_5_p20"] = _p(factors["reversal_5"], 20)
+    pct["volume_corr_p30"] = _p(factors["volume_corr"], 30)
 
     return pct
 
