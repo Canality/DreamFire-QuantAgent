@@ -16,8 +16,9 @@ from jiuwenswarm.quant.factors import FactorCalculator, PositionSizer
 from jiuwenswarm.quant.market_regime import MarketRegime
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP, TICKER_NAME_MAP
 from jiuwenswarm.quant.strategy_configs import (
-    production_factor_config,
-    production_position_config,
+    PRODUCTION_STRATEGY,
+    STRATEGY_SPECS,
+    get_strategy_spec,
 )
 
 
@@ -80,6 +81,16 @@ def _validate_weights(weights: dict[str, float]) -> dict[str, float]:
 
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--strategy", default=PRODUCTION_STRATEGY,
+                        choices=sorted(STRATEGY_SPECS),
+                        help="Strategy spec to use (default: production_six_factor)")
+    args = parser.parse_args()
+    strategy_spec = get_strategy_spec(args.strategy)
+    factor_cfg = strategy_spec.factor_config()
+    position_cfg = strategy_spec.position_config()
+
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -111,7 +122,7 @@ def main() -> None:
 
     print("\n[2/6] Computing factors on training data...")
     regime = MarketRegime.detect(prices_train)
-    calculator = FactorCalculator(production_factor_config())
+    calculator = FactorCalculator(factor_cfg)
     calculator.regime = regime
     factors = calculator.compute_factors(prices_train, volumes_train if not volumes_train.empty else None)
     scores = calculator.compute_scores(factors)
@@ -125,7 +136,7 @@ def main() -> None:
     print(f"  {len(tickers)} stocks from {sectors_covered} sectors")
 
     print("\n[4/6] Allocating positions...")
-    weights = PositionSizer(production_position_config()).allocate(
+    weights = PositionSizer(position_cfg).allocate(
         scores.loc[tickers], prices_train[tickers]
     )
     if set(weights) != set(tickers):
