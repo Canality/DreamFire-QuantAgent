@@ -13,12 +13,34 @@ Usage:
 """
 
 import asyncio
+import importlib.util
 import json
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
+
+
+def _make_cached_extension(prices_df, volumes_df):
+    path = (
+        Path(__file__).resolve().parent.parent
+        / "jiuwenswarm" / "extensions" / "quant-finance" / "extension.py"
+    )
+    spec = importlib.util.spec_from_file_location("quant_finance_smoke", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module._data_cache.clear()
+    module._set_cached_data({
+        "success": True,
+        "_start": str(prices_df.index[0].date()),
+        "_end": str(prices_df.index[-1].date()),
+        "_prices_df": prices_df,
+        "_volumes_df": volumes_df,
+    })
+    return module.QuantFinanceExtension()
 
 
 def _generate_synthetic_data(tickers: list, n_days: int = 120):
@@ -91,14 +113,8 @@ async def test_bull_view_smoke():
 
     prices_df, volumes_df = _generate_synthetic_data(TEST_TICKERS)
 
-    from jiuwenswarm.extensions.quant_finance.extension import QuantFinanceExtension
-
-    ext = QuantFinanceExtension()
-
-    result = await ext.bull_view({
-        "prices": _df_to_json(prices_df),
-        "volumes": _df_to_json(volumes_df),
-    })
+    ext = _make_cached_extension(prices_df, volumes_df)
+    result = await ext.bull_view({})
 
     assert result["success"], f"bull_view failed: {result.get('detail', 'unknown')}"
     assert "n_bullish" in result, f"Missing n_bullish in result: {list(result.keys())}"
@@ -134,14 +150,8 @@ async def test_bear_view_smoke():
 
     prices_df, volumes_df = _generate_synthetic_data(TEST_TICKERS)
 
-    from jiuwenswarm.extensions.quant_finance.extension import QuantFinanceExtension
-
-    ext = QuantFinanceExtension()
-
-    result = await ext.bear_view({
-        "prices": _df_to_json(prices_df),
-        "volumes": _df_to_json(volumes_df),
-    })
+    ext = _make_cached_extension(prices_df, volumes_df)
+    result = await ext.bear_view({})
 
     assert result["success"], f"bear_view failed: {result.get('detail', 'unknown')}"
     assert "n_bearish" in result, f"Missing n_bearish in result: {list(result.keys())}"
@@ -184,14 +194,9 @@ async def test_factor_separation_overlap():
 
     prices_df, volumes_df = _generate_synthetic_data(TEST_TICKERS, n_days=120)
 
-    from jiuwenswarm.extensions.quant_finance.extension import QuantFinanceExtension
-
-    ext = QuantFinanceExtension()
-    prices_json = _df_to_json(prices_df)
-    volumes_json = _df_to_json(volumes_df)
-
-    bull_result = await ext.bull_view({"prices": prices_json, "volumes": volumes_json})
-    bear_result = await ext.bear_view({"prices": prices_json, "volumes": volumes_json})
+    ext = _make_cached_extension(prices_df, volumes_df)
+    bull_result = await ext.bull_view({})
+    bear_result = await ext.bear_view({})
 
     bull_tickers = {s["ticker"] for s in bull_result.get("bullish_stocks", [])}
     bear_tickers = {s["ticker"] for s in bear_result.get("bearish_stocks", [])}

@@ -22,13 +22,14 @@ allowed_tools:
    - `tickers`: 留空获取全部 49 只股票，或指定特定股票列表
 
 2. 工具返回的数据包含:
-   - `prices`: 价格矩阵 (JSON 格式，按日期索引)
-   - `volumes`: 成交量矩阵
+   - `n_stocks` / `expected_stocks`: 实际与预期覆盖数
+   - `coverage_complete`: 是否完整覆盖
+   - `date_range`: 缓存行情日期范围
    - `n_stocks`: 成功获取的股票数
    - `n_days`: 交易日数
    - `date_range`: 数据日期范围
 
-3. 将返回的 `prices` 和 `volumes` 传递给下一个 skill (factor-engine)
+3. 只把紧凑摘要传给下一个 skill；原始行情由 Extension 缓存，不得经 LLM 传递
 
 ## 股票池覆盖范围
 
@@ -44,5 +45,5 @@ allowed_tools:
 ## 注意事项
 
 - 如果 yfinance 获取失败，会自动降级到模拟数据
-- 返回的 prices 和 volumes 是 JSON 格式，需要原样传递给后续工具
+- 后续工具直接读取服务端缓存；不要构造或转述 prices/volumes
 - 数据已前复权处理

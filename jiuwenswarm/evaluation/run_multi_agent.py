@@ -20,6 +20,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 # ── Early init ─────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -60,6 +64,63 @@ from openjiuwen.core.runner import Runner
 # ── Constants ───────────────────────────────────────────────
 OUTPUT_DIR = PROJECT_ROOT.parent / "output"
 SESSION_ID = f"multi-agent-validation-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+QUANT_PHASE_METHODS = {
+    "fetch": "quant.fetch_data",
+    "factors": "quant.compute_factors",
+    "bull_view": "quant.bull_view",
+    "bear_view": "quant.bear_view",
+    "select": "quant.select_stocks",
+    "allocate": "quant.allocate_positions",
+    "backtest": "quant.run_backtest",
+    "report": "quant.generate_report",
+}
+
+
+def _phase_payload_valid(phase: str, payload: dict) -> bool:
+    """Validate successful output, not merely that a tool name appeared."""
+    if not isinstance(payload, dict) or payload.get("success") is not True:
+        return False
+    if phase == "fetch":
+        return (
+            payload.get("coverage_complete") is True
+            and payload.get("n_stocks") == 49
+            and payload.get("expected_stocks") == 49
+        )
+    if phase == "factors":
+        return payload.get("n_stocks_analyzed") == 49 and len(payload.get("all_composite", {})) == 49
+    if phase == "select":
+        return payload.get("n_selected") == 15 and payload.get("n_sectors_covered") == 6
+    if phase == "allocate":
+        portfolio = payload.get("portfolio", [])
+        sector_totals = {}
+        for holding in portfolio:
+            weight = float(holding.get("weight", 0.0))
+            if weight > 0.10 + 1e-9:
+                return False
+            sector = holding.get("sector")
+            sector_totals[sector] = sector_totals.get(sector, 0.0) + weight
+        return (
+            payload.get("n_holdings") == 15
+            and float(payload.get("cash_reserve", 0.0)) >= 0.05 - 1e-9
+            and all(weight <= 0.25 + 1e-9 for weight in sector_totals.values())
+        )
+    if phase == "backtest":
+        return payload.get("n_forward_returns") == 20
+    if phase == "report":
+        return bool(payload.get("report")) and payload.get("summary", {}).get("n_holdings") == 15
+    return True
+
+
+def _validate_quant_rpc_calls(calls: list[dict]) -> tuple[dict[str, bool], list[str]]:
+    phases = {}
+    issues = []
+    for phase, method in QUANT_PHASE_METHODS.items():
+        matching = [call for call in calls if call.get("method") == method]
+        phases[phase] = any(_phase_payload_valid(phase, call.get("payload", {})) for call in matching)
+        if matching and not phases[phase]:
+            issues.append(f"{method} was called but no result passed output validation")
+    return phases, issues
 
 
 def _serialize_chunk(chunk) -> dict:
@@ -147,6 +208,38 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     print("\n[0/5] Initializing extensions...")
     await _init_extensions()
 
+    # Record actual RPC returns. Stream chunks are presentation events and are
+    # not reliable evidence that a tool completed successfully.
+    from jiuwenswarm.agents.harness.common.tools.quant_toolkits import QuantToolkit
+
+    quant_rpc_calls = []
+    failure_counts = {}
+    failure_guard = {"triggered": False, "detail": None}
+    pipeline_completed_at = {"monotonic": None}
+    original_call_rpc = QuantToolkit._call_rpc
+
+    async def audited_call_rpc(toolkit, method, params):
+        payload = await original_call_rpc(toolkit, method, params)
+        quant_rpc_calls.append({
+            "method": method,
+            "params_keys": sorted(params) if params else [],
+            "payload": payload,
+            "timestamp": datetime.now().isoformat(),
+        })
+        phases, _ = _validate_quant_rpc_calls(quant_rpc_calls)
+        if all(phases.values()) and pipeline_completed_at["monotonic"] is None:
+            pipeline_completed_at["monotonic"] = time.monotonic()
+        if isinstance(payload, dict) and payload.get("success") is True:
+            failure_counts[method] = 0
+        else:
+            failure_counts[method] = failure_counts.get(method, 0) + 1
+            if failure_counts[method] >= 3:
+                failure_guard["triggered"] = True
+                failure_guard["detail"] = f"{method} failed {failure_counts[method]} times"
+        return payload
+
+    QuantToolkit._call_rpc = audited_call_rpc
+
     # 1. Get team manager and build spec
     print("\n[1/5] Building team spec for quant_team...")
     tm = get_team_manager()
@@ -172,13 +265,27 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     final_result = None
 
     t_start = time.time()
+    stream = None
 
     try:
-        async for chunk in Runner.run_agent_team_streaming(
+        stream = Runner.run_agent_team_streaming(
             agent_team=spec,
             inputs=prompt,
             session=SESSION_ID,
-        ):
+        ).__aiter__()
+        while True:
+            remaining = timeout_seconds - (time.time() - t_start)
+            if pipeline_completed_at["monotonic"] is not None:
+                remaining = min(
+                    remaining,
+                    90.0 - (time.monotonic() - pipeline_completed_at["monotonic"]),
+                )
+            if remaining <= 0:
+                raise asyncio.TimeoutError
+            try:
+                chunk = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
+            except StopAsyncIteration:
+                break
             chunk_time = time.time() - t_start
             serialized = _serialize_chunk(chunk)
             serialized["_elapsed_s"] = round(chunk_time, 1)
@@ -205,18 +312,32 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
                 errors.append(err)
                 print(f"  [ERROR] {err}", flush=True)
 
+            if failure_guard["triggered"]:
+                errors.append(failure_guard["detail"])
+                print(f"\n  Repeated-failure guard: {failure_guard['detail']}")
+                break
+
             # Timeout check
             if chunk_time > timeout_seconds:
                 print(f"\n  ⚠ Timeout reached ({timeout_seconds}s), stopping...")
                 break
 
     except asyncio.TimeoutError:
+        if pipeline_completed_at["monotonic"] is None:
+            errors.append(f"overall timeout after {timeout_seconds}s")
         print(f"\n  ⚠ Async timeout after {time.time() - t_start:.0f}s")
     except Exception as e:
         errors.append(str(e))
         print(f"\n  ✗ Exception: {e}")
         import traceback
         traceback.print_exc()
+    finally:
+        QuantToolkit._call_rpc = original_call_rpc
+        if stream is not None:
+            try:
+                await asyncio.wait_for(stream.aclose(), timeout=15.0)
+            except (asyncio.TimeoutError, RuntimeError):
+                pass
 
     elapsed = time.time() - t_start
 
@@ -229,19 +350,10 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
 
     # 4. Validate: did we complete the full quant loop?
     print(f"\n[4/5] Validating quant loop completion...")
-    quant_tool_names = [tc.get("name", "") for tc in tool_calls]
-    phases_completed = {
-        "fetch": any("fetch_data" in n for n in quant_tool_names),
-        "factors": any("compute_factors" in n for n in quant_tool_names),
-        "select": any("select_stocks" in n for n in quant_tool_names),
-        "allocate": any("allocate_positions" in n for n in quant_tool_names),
-        "backtest": any("run_backtest" in n for n in quant_tool_names),
-        "report": any("generate_report" in n for n in quant_tool_names),
-        "bull_view": any("bull_view" in n for n in quant_tool_names),
-        "bear_view": any("bear_view" in n for n in quant_tool_names),
-    }
+    phases_completed, validation_issues = _validate_quant_rpc_calls(quant_rpc_calls)
+    errors.extend(issue for issue in validation_issues if issue not in errors)
     completed_count = sum(1 for v in phases_completed.values() if v)
-    loop_complete = completed_count >= 5  # At minimum: fetch+factors+select+allocate+backtest
+    loop_complete = completed_count == len(QUANT_PHASE_METHODS) and not failure_guard["triggered"]
     print(f"  Phases: {', '.join(f'{k}={v}' for k, v in phases_completed.items())}")
     print(f"  Completed: {completed_count}/8, Loop complete: {loop_complete}")
 
@@ -258,27 +370,32 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             "tool_calls": len(tool_calls),
             "errors": len(errors),
             "total_chunks": len(chunks_log),
+            "quant_rpc_calls": len(quant_rpc_calls),
         },
         "quant_phases": phases_completed,
         "loop_complete": loop_complete,
         "multi_agent_working": loop_complete,  # v2: real quant loop, not just "has text"
+        "success_criterion": "8/8 validated RPC outputs",
+        "repeated_failure_guard": failure_guard,
+        "quant_rpc_calls": quant_rpc_calls,
         "issues": errors if errors else None,
     }
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     # Full chunk log
-    chunks_path = OUTPUT_DIR / "multi_agent_chunks.json"
+    artifact_id = SESSION_ID.removeprefix("multi-agent-validation-")
+    chunks_path = OUTPUT_DIR / f"multi_agent_chunks_{artifact_id}.json"
     with open(chunks_path, "w", encoding="utf-8") as f:
         json.dump(chunks_log, f, ensure_ascii=False, indent=2, default=str)
 
     # Summary
-    summary_path = OUTPUT_DIR / "multi_agent_summary.json"
+    summary_path = OUTPUT_DIR / f"multi_agent_summary_{artifact_id}.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
 
     # Combined text output
-    text_path = OUTPUT_DIR / "multi_agent_output.md"
+    text_path = OUTPUT_DIR / f"multi_agent_output_{artifact_id}.md"
     with open(text_path, "w", encoding="utf-8") as f:
         f.write(f"# Multi-Agent Quant Team Output\n\n")
         f.write(f"**Session**: {SESSION_ID}\n")
@@ -397,7 +514,7 @@ async def main():
         for issue in summary["issues"]:
             print(f"    - {issue}")
     print(f"  Elapsed: {summary['elapsed_seconds']:.0f}s")
-    print(f"\nFull output: {OUTPUT_DIR / 'multi_agent_output.md'}")
+    print("\nFull output path is recorded in the timestamped validation artifacts above.")
 
 
 if __name__ == "__main__":

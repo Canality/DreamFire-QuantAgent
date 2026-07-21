@@ -75,18 +75,9 @@ class QuantToolkit:
             params["tickers"] = tickers
         return await self._call_rpc("quant.fetch_data", params)
 
-    async def compute_factors(
-        self,
-        prices: dict[str, Any] | None = None,
-        volumes: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Compute 8-factor scores with market regime detection and sector-neutral Z-score."""
-        params: dict[str, Any] = {}
-        if prices:
-            params["prices"] = prices
-        if volumes:
-            params["volumes"] = volumes
-        return await self._call_rpc("quant.compute_factors", params)
+    async def compute_factors(self) -> dict[str, Any]:
+        """Compute 6-factor scores with market regime detection and sector-neutral Z-score."""
+        return await self._call_rpc("quant.compute_factors", {})
 
     async def select_stocks(
         self,
@@ -97,36 +88,30 @@ class QuantToolkit:
         """Select top stocks with sector diversification (at least 1 per sector)."""
         params: dict[str, Any] = {
             "all_composite": all_composite or {},
-            "top_n": top_n,
-            "min_score": min_score,
+            "top_n": 15 if top_n is None else top_n,
+            "min_score": -0.5 if min_score is None else min_score,
         }
         return await self._call_rpc("quant.select_stocks", params)
 
     async def allocate_positions(
         self,
-        prices: dict[str, Any] | None = None,
         tickers: list[str] | None = None,
     ) -> dict[str, Any]:
         """Allocate risk-parity portfolio weights with single-stock and sector caps."""
         params: dict[str, Any] = {}
-        if prices:
-            params["prices"] = prices
         if tickers:
             params["tickers"] = tickers
         return await self._call_rpc("quant.allocate_positions", params)
 
     async def run_backtest(
         self,
-        prices: dict[str, Any] | None = None,
         weights: dict[str, float] | None = None,
         initial_capital: float = 1_000_000.0,
     ) -> dict[str, Any]:
         """Run vectorized backtest; returns cumulative return, Sharpe, max drawdown, win rate."""
         params: dict[str, Any] = {
-            "initial_capital": initial_capital,
+            "initial_capital": 1_000_000.0 if initial_capital is None else initial_capital,
         }
-        if prices:
-            params["prices"] = prices
         if weights:
             params["weights"] = weights
         return await self._call_rpc("quant.run_backtest", params)
@@ -148,25 +133,13 @@ class QuantToolkit:
             params["top_stocks"] = top_stocks
         return await self._call_rpc("quant.generate_report", params)
 
-    async def bull_view(
-        self,
-        prices: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Extract bullish signals: high momentum, low volatility, volume expansion."""
-        params: dict[str, Any] = {}
-        if prices:
-            params["prices"] = prices
-        return await self._call_rpc("quant.bull_view", params)
+    async def bull_view(self) -> dict[str, Any]:
+        """Extract bullish signals from momentum and price-volume alignment."""
+        return await self._call_rpc("quant.bull_view", {})
 
-    async def bear_view(
-        self,
-        prices: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Extract bearish signals: high volatility, large drawdown, volume contraction."""
-        params: dict[str, Any] = {}
-        if prices:
-            params["prices"] = prices
-        return await self._call_rpc("quant.bear_view", params)
+    async def bear_view(self) -> dict[str, Any]:
+        """Extract bearish signals from drawdown, reversal, and price-volume divergence."""
+        return await self._call_rpc("quant.bear_view", {})
 
     # -- get_tools --
 
@@ -192,7 +165,7 @@ class QuantToolkit:
             make_tool(
                 "quant_fetch_data",
                 "Fetch A-share stock price and volume data for the competition stock pool "
-                "(49 stocks across 6 sectors). Returns price/volume matrices and date range.",
+                "(49 stocks across 6 sectors). Caches raw matrices server-side and returns only a compact summary.",
                 {
                     "type": "object",
                     "properties": {
@@ -215,24 +188,11 @@ class QuantToolkit:
             ),
             make_tool(
                 "quant_compute_factors",
-                "Compute 8-factor scores (momentum_20/60, turnover_momentum, reversal_5, "
-                "RSI, volatility, volume_trend, max_drawdown) with market regime detection "
+                "Compute 6-factor scores (momentum_20/60, reversal_5, max_drawdown, "
+                "volume_corr, volume_trend) with market regime detection "
                 "(Bull/Bear/Range) and sector-neutral Z-score normalization. "
                 "Returns top stocks and composite scores.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "prices": {
-                            "type": "object",
-                            "description": "Price data dict from quant_fetch_data.",
-                        },
-                        "volumes": {
-                            "type": "object",
-                            "description": "Optional volume data dict from quant_fetch_data.",
-                        },
-                    },
-                    "required": ["prices"],
-                },
+                {"type": "object", "properties": {}},
                 self.compute_factors,
             ),
             make_tool(
@@ -266,17 +226,13 @@ class QuantToolkit:
                 {
                     "type": "object",
                     "properties": {
-                        "prices": {
-                            "type": "object",
-                            "description": "Price data dict from quant_fetch_data.",
-                        },
                         "tickers": {
                             "type": "array",
                             "items": {"type": "string"},
                             "description": "List of selected ticker symbols from quant_select_stocks.",
                         },
                     },
-                    "required": ["prices", "tickers"],
+                    "required": ["tickers"],
                 },
                 self.allocate_positions,
             ),
@@ -288,10 +244,6 @@ class QuantToolkit:
                 {
                     "type": "object",
                     "properties": {
-                        "prices": {
-                            "type": "object",
-                            "description": "Price data dict from quant_fetch_data.",
-                        },
                         "weights": {
                             "type": "object",
                             "description": "Dict of ticker -> weight from quant_allocate_positions.",
@@ -301,7 +253,7 @@ class QuantToolkit:
                             "description": "Initial capital in CNY. Default: 1,000,000.",
                         },
                     },
-                    "required": ["prices", "weights"],
+                    "required": ["weights"],
                 },
                 self.run_backtest,
             ),
@@ -338,38 +290,20 @@ class QuantToolkit:
             ),
             make_tool(
                 "quant_bull_view",
-                "Extract bullish signals from factor data. Analyzes momentum strength, "
-                "volume expansion, and low-volatility patterns to identify stocks with "
+                "Extract bullish signals from factor data. Analyzes 20/60-day momentum "
+                "and price-volume alignment to identify stocks with "
                 "strong bullish characteristics. Returns scored list with specific signals "
                 "and recommended position range. Use for Bull Analyst perspective.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "prices": {
-                            "type": "object",
-                            "description": "Price data dict from quant_fetch_data.",
-                        },
-                    },
-                    "required": ["prices"],
-                },
+                {"type": "object", "properties": {}},
                 self.bull_view,
             ),
             make_tool(
                 "quant_bear_view",
-                "Extract bearish/warning signals from factor data. Analyzes high volatility, "
-                "large drawdowns, volume contraction, and RSI extremes to identify risky "
+                "Extract bearish/warning signals from factor data. Analyzes large drawdowns, "
+                "short-term reversal, and price-volume divergence to identify risky "
                 "stocks. Returns scored list with specific warnings and recommended cash "
                 "reserve range. Use for Bear Analyst perspective.",
-                {
-                    "type": "object",
-                    "properties": {
-                        "prices": {
-                            "type": "object",
-                            "description": "Price data dict from quant_fetch_data.",
-                        },
-                    },
-                    "required": ["prices"],
-                },
+                {"type": "object", "properties": {}},
                 self.bear_view,
             ),
         ]

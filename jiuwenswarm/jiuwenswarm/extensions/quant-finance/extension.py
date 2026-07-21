@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -31,6 +32,10 @@ logger = logging.getLogger(__name__)
 # Keyed by a deterministic cache key derived from (tickers, start_date, end_date).
 _data_cache: dict = {}
 _cache_lock = threading.Lock()
+_FORWARD_TEST_DAYS = 20
+_MIN_TRAIN_DAYS = 61
+_PROVIDER_FAILURE_TTL_SECONDS = 300
+_provider_failure: dict | None = None
 
 
 def _cache_key(tickers: list, start: str, end: str) -> str:
@@ -49,6 +54,43 @@ def _set_cached_data(data: dict) -> None:
         keys = [k for k in _data_cache if k != "_last"]
         for k in keys[:-2]:
             del _data_cache[k]
+
+
+def _public_cache_summary(cached: dict) -> dict:
+    """Return only JSON-safe metadata; raw market matrices never reach the LLM."""
+    return {key: value for key, value in cached.items() if not key.startswith("_")}
+
+
+def _cached_frames() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame] | None:
+    """Return (training prices, training volumes, forward-test prices)."""
+    cached = _get_cached_data()
+    if not cached:
+        return None
+    prices = cached.get("_prices_df")
+    volumes = cached.get("_volumes_df")
+    if not isinstance(prices, pd.DataFrame) or prices.empty:
+        return None
+    split_at = len(prices) - _FORWARD_TEST_DAYS
+    if split_at < _MIN_TRAIN_DAYS:
+        return None
+    train_prices = prices.iloc[:split_at].copy()
+    # Include the decision-date close, yielding exactly 20 forward returns.
+    test_prices = prices.iloc[split_at - 1:].copy()
+    if isinstance(volumes, pd.DataFrame) and not volumes.empty:
+        train_volumes = volumes.reindex(train_prices.index).copy()
+    else:
+        train_volumes = pd.DataFrame()
+    return train_prices, train_volumes, test_prices
+
+
+def _cache_required_error() -> dict[str, Any]:
+    return {
+        "success": False,
+        "detail": (
+            "完整缓存行情不可用或交易日不足；请先成功调用 quant_fetch_data，"
+            f"至少需要 {_MIN_TRAIN_DAYS + _FORWARD_TEST_DAYS} 个交易日。"
+        ),
+    }
 
 QUANT_FETCH_DATA = "quant.fetch_data"
 QUANT_COMPUTE_FACTORS = "quant.compute_factors"
@@ -134,27 +176,52 @@ class QuantFinanceExtension(BaseExtension):
         start_date = str(params.get("start_date") or _default_start_date())
         end_date = str(params.get("end_date") or _default_end_date())
         ticker_filter = params.get("tickers")
+        force_refresh = bool(params.get("force_refresh", False))
 
         from jiuwenswarm.quant.stock_pool import ALL_STOCKS
 
-        tickers = ticker_filter if ticker_filter else ALL_STOCKS
+        tickers = list(ticker_filter) if ticker_filter else list(ALL_STOCKS)
 
         def _fetch() -> dict:
+            global _provider_failure
             # Check cache first
             cached = _get_cached_data()
-            if cached and cached.get("_start") == start_date and cached.get("_end") == end_date:
+            if (not force_refresh and cached and cached.get("_start") == start_date
+                    and cached.get("_end") == end_date
+                    and cached.get("_tickers") == tickers):
                 logger.info("[QuantFinance] Using cached data for %s ~ %s", start_date, end_date)
-                return cached
+                return _public_cache_summary(cached)
+            if (not force_refresh and _provider_failure is not None
+                    and time.monotonic() - _provider_failure["_failed_at"]
+                    < _PROVIDER_FAILURE_TTL_SECONDS):
+                logger.warning("[QuantFinance] Provider circuit breaker open; skipping repeated fetch")
+                return _public_cache_summary(_provider_failure)
 
             prices, volumes, errors = _fetch_real_data(tickers, start_date, end_date)
 
-            if not prices:
+            missing = [
+                ticker for ticker in tickers
+                if not _ticker_data_usable(prices, volumes, ticker)
+            ]
+            if missing:
                 error_detail = _build_fetch_error_message(errors)
-                return {
+                failure = {
                     "success": False,
-                    "detail": error_detail,
+                    "_start": start_date,
+                    "_end": end_date,
+                    "_tickers": tickers,
+                    "detail": f"行情覆盖不足：{len(prices)}/{len(tickers)}；缺失 {missing}.\n{error_detail}",
+                    "n_stocks": len(prices),
+                    "expected_stocks": len(tickers),
+                    "missing_tickers": missing,
                     "errors": errors,
+                    "_failed_at": time.monotonic(),
                 }
+                # Cache this run's failure so an Agent retry does not hammer all
+                # three providers again. force_refresh=true explicitly bypasses it.
+                _set_cached_data(failure)
+                _provider_failure = failure
+                return _public_cache_summary(failure)
 
             prices_df = pd.DataFrame(prices).sort_index()
             volumes_df = pd.DataFrame(volumes).sort_index() if volumes else pd.DataFrame()
@@ -164,17 +231,21 @@ class QuantFinanceExtension(BaseExtension):
                 "success": True,
                 "_start": start_date,
                 "_end": end_date,
+                "_tickers": tickers,
                 "_prices_df": prices_df,
                 "_volumes_df": volumes_df,
                 # Compact summary for LLM
                 "n_stocks": len(prices),
+                "expected_stocks": len(tickers),
+                "coverage_complete": True,
                 "n_days": len(prices_df),
                 "date_range": f"{prices_df.index[0]} ~ {prices_df.index[-1]}",
                 "top_movers": _summarize_top_movers(prices_df, 10),
                 "fetch_errors": errors[:5] if errors else [],
             }
             _set_cached_data(result)
-            return result
+            _provider_failure = None
+            return _public_cache_summary(result)
 
         return await asyncio.to_thread(_fetch)
 
@@ -187,31 +258,18 @@ class QuantFinanceExtension(BaseExtension):
     ) -> dict[str, Any]:
         """Compute 6-factor scores with market regime detection (v2.6).
 
-        Reads price data from cache if 'prices' param is not provided.
-        Always call quant_fetch_data before this tool.
+        Raw matrices are read exclusively from the server-side cache. Any legacy
+        prices/volumes parameters are deliberately ignored.
         """
         del request
         params = params or {}
 
-        prices_json = params.get("prices")
-        volumes_json = params.get("volumes")
-
-        # If no prices passed, read from cache
-        if not prices_json:
-            cached = _get_cached_data()
-            if cached and cached.get("_prices_df") is not None:
-                logger.info("[QuantFinance] Using cached data for factor computation")
-                prices_json = _df_to_json(cached["_prices_df"])
-                if cached.get("_volumes_df") is not None and not cached["_volumes_df"].empty:
-                    volumes_json = _df_to_json(cached["_volumes_df"])
-
-        if not prices_json:
-            return {"success": False, "detail": "prices data is required. Call quant_fetch_data first."}
+        frames = _cached_frames()
+        if frames is None:
+            return _cache_required_error()
+        prices, volumes, _ = frames
 
         def _compute() -> dict:
-            prices = _json_to_df(prices_json)
-            volumes = _json_to_df(volumes_json) if volumes_json else None
-
             from jiuwenswarm.quant.market_regime import MarketRegime
             from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
 
@@ -219,7 +277,7 @@ class QuantFinanceExtension(BaseExtension):
             factor_cfg = FactorConfig()
             factor_calc = FactorCalculator(factor_cfg)
             factor_calc.regime = regime
-            factors = factor_calc.compute_factors(prices, volumes)
+            factors = factor_calc.compute_factors(prices, volumes if not volumes.empty else None)
             scores = factor_calc.compute_scores(factors)
 
             top_stocks = []
@@ -235,6 +293,7 @@ class QuantFinanceExtension(BaseExtension):
                 "success": True,
                 "regime": regime,
                 "n_stocks_analyzed": len(scores),
+                "decision_date": str(prices.index[-1].date()),
                 "top_stocks": top_stocks,
                 "all_composite": {t: round(float(scores.loc[t, "composite"]), 4)
                                   for t in scores.index},
@@ -254,8 +313,8 @@ class QuantFinanceExtension(BaseExtension):
         params = params or {}
 
         all_composite = params.get("all_composite", {})
-        top_n = int(params.get("top_n", 15))
-        min_score = float(params.get("min_score", -0.5))
+        top_n = int(params.get("top_n") if params.get("top_n") is not None else 15)
+        min_score = float(params.get("min_score") if params.get("min_score") is not None else -0.5)
 
         from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
 
@@ -280,12 +339,19 @@ class QuantFinanceExtension(BaseExtension):
         for ticker, score in sorted_stocks:
             if len(selected) >= top_n:
                 break
-            if ticker not in selected_set and score > 0:
+            if ticker not in selected_set and score > min_score:
                 sector = SECTOR_MAP.get(ticker, "其他")
                 selected.append({"ticker": ticker, "composite": score, "sector": sector})
                 selected_set.add(ticker)
 
         sectors_covered = len(set(s["sector"] for s in selected))
+
+        if len(selected) != top_n or sectors_covered != len(STOCK_POOL):
+            return {
+                "success": False,
+                "detail": f"选股覆盖不足：{len(selected)}/{top_n} 只，{sectors_covered}/{len(STOCK_POOL)} 个板块",
+                "selected_stocks": selected,
+            }
 
         return {
             "success": True,
@@ -306,14 +372,19 @@ class QuantFinanceExtension(BaseExtension):
         del request
         params = params or {}
 
-        prices_json = params.get("prices")
         tickers = params.get("tickers", [])
 
-        if not prices_json or not tickers:
-            return {"success": False, "detail": "prices and tickers are required"}
+        frames = _cached_frames()
+        if frames is None:
+            return _cache_required_error()
+        prices, _, _ = frames
+        if not tickers:
+            return {"success": False, "detail": "tickers are required"}
+        missing = [ticker for ticker in tickers if ticker not in prices.columns]
+        if missing:
+            return {"success": False, "detail": f"selected tickers missing from cache: {missing}"}
 
         def _allocate() -> dict:
-            prices = _json_to_df(prices_json)
             from jiuwenswarm.quant.factors import PositionSizer, PositionConfig
             from jiuwenswarm.quant.stock_pool import SECTOR_MAP
 
@@ -327,9 +398,7 @@ class QuantFinanceExtension(BaseExtension):
             )
 
             sizer = PositionSizer(PositionConfig())
-            weights = sizer.allocate(scores, prices[tickers] if all(
-                t in prices.columns for t in tickers
-            ) else prices)
+            weights = sizer.allocate(scores, prices[tickers])
 
             portfolio = []
             total_weight = 0.0
@@ -366,15 +435,24 @@ class QuantFinanceExtension(BaseExtension):
         del request
         params = params or {}
 
-        prices_json = params.get("prices")
         weights = params.get("weights", {})
-        initial_capital = float(params.get("initial_capital", 1_000_000.0))
+        initial_capital = float(
+            params.get("initial_capital")
+            if params.get("initial_capital") is not None
+            else 1_000_000.0
+        )
 
-        if not prices_json or not weights:
-            return {"success": False, "detail": "prices and weights are required"}
+        frames = _cached_frames()
+        if frames is None:
+            return _cache_required_error()
+        _, _, prices = frames
+        if not weights:
+            return {"success": False, "detail": "weights are required"}
+        missing = [ticker for ticker in weights if ticker not in prices.columns]
+        if missing:
+            return {"success": False, "detail": f"weighted tickers missing from cache: {missing}"}
 
         def _backtest() -> dict:
-            prices = _json_to_df(prices_json)
             from jiuwenswarm.quant.backtest_engine import BacktestEngine
 
             engine = BacktestEngine(initial_capital=initial_capital)
@@ -385,6 +463,9 @@ class QuantFinanceExtension(BaseExtension):
                 **result.metrics,
                 "start_value": result.start_value,
                 "end_value": round(result.end_value, 2),
+                "test_start": str(prices.index[0].date()),
+                "test_end": str(prices.index[-1].date()),
+                "n_forward_returns": len(prices) - 1,
             }
 
         return await asyncio.to_thread(_backtest)
@@ -404,6 +485,9 @@ class QuantFinanceExtension(BaseExtension):
         backtest = params.get("backtest", {})
         regime = params.get("regime", "range")
         top_stocks = params.get("top_stocks", [])
+
+        if not portfolio or not backtest:
+            return {"success": False, "detail": "portfolio and backtest are required"}
 
         return {
             "success": True,
@@ -438,14 +522,12 @@ class QuantFinanceExtension(BaseExtension):
         del request
         params = params or {}
 
-        prices_json = params.get("prices")
-        volumes_json = params.get("volumes")
-        if not prices_json:
-            return {"success": False, "detail": "prices data is required"}
+        frames = _cached_frames()
+        if frames is None:
+            return _cache_required_error()
+        prices, volumes, _ = frames
 
         def _analyze() -> dict:
-            prices = _json_to_df(prices_json)
-            volumes = _json_to_df(volumes_json) if volumes_json else None
             from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
             from jiuwenswarm.quant.market_regime import MarketRegime
 
@@ -463,7 +545,7 @@ class QuantFinanceExtension(BaseExtension):
             )
             calc = FactorCalculator(bull_cfg)
             calc.regime = regime
-            factors = calc.compute_factors(prices, volumes)
+            factors = calc.compute_factors(prices, volumes if not volumes.empty else None)
 
             # Compute percentiles from cross-sectional distribution
             pct = _factor_percentiles(factors)
@@ -553,14 +635,12 @@ class QuantFinanceExtension(BaseExtension):
         del request
         params = params or {}
 
-        prices_json = params.get("prices")
-        volumes_json = params.get("volumes")
-        if not prices_json:
-            return {"success": False, "detail": "prices data is required"}
+        frames = _cached_frames()
+        if frames is None:
+            return _cache_required_error()
+        prices, volumes, _ = frames
 
         def _analyze() -> dict:
-            prices = _json_to_df(prices_json)
-            volumes = _json_to_df(volumes_json) if volumes_json else None
             from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
             from jiuwenswarm.quant.market_regime import MarketRegime
 
@@ -578,7 +658,7 @@ class QuantFinanceExtension(BaseExtension):
             )
             calc = FactorCalculator(bear_cfg)
             calc.regime = regime
-            factors = calc.compute_factors(prices, volumes)
+            factors = calc.compute_factors(prices, volumes if not volumes.empty else None)
 
             # Compute percentiles from cross-sectional distribution
             pct = _factor_percentiles(factors)
@@ -713,6 +793,18 @@ def _json_to_df(data: dict) -> pd.DataFrame:
     return df.sort_index()
 
 
+def _ticker_data_usable(prices: dict, volumes: dict, ticker: str) -> bool:
+    """A covered ticker must support 61 training days plus 20 forward days."""
+    price_series = prices.get(ticker)
+    volume_series = volumes.get(ticker)
+    if price_series is None or volume_series is None:
+        return False
+    return (
+        len(pd.Series(price_series).dropna()) >= _MIN_TRAIN_DAYS + _FORWARD_TEST_DAYS
+        and len(pd.Series(volume_series).dropna()) >= _MIN_TRAIN_DAYS + _FORWARD_TEST_DAYS
+    )
+
+
 def _fetch_real_data(tickers, start_date, end_date):
     """Fetch real stock data with multi-source fallback chain.
 
@@ -732,7 +824,7 @@ def _fetch_real_data(tickers, start_date, end_date):
     all_volumes.update(volumes)
     all_errors.extend(errors)
 
-    missing = [t for t in tickers if t not in all_prices]
+    missing = [t for t in tickers if not _ticker_data_usable(all_prices, all_volumes, t)]
     if missing:
         logger.info("[QuantFinance] akshare: %d/%d stocks, trying baostock for %d missing...",
                     len(all_prices), len(tickers), len(missing))
@@ -742,7 +834,7 @@ def _fetch_real_data(tickers, start_date, end_date):
         all_volumes.update(volumes2)
         all_errors.extend(errors2)
 
-    still_missing = [t for t in tickers if t not in all_prices]
+    still_missing = [t for t in tickers if not _ticker_data_usable(all_prices, all_volumes, t)]
     if still_missing:
         logger.info("[QuantFinance] baostock: %d/%d stocks, trying yfinance for %d missing...",
                     len(all_prices), len(tickers), len(still_missing))
@@ -870,11 +962,13 @@ def _build_fetch_error_message(errors: list) -> str:
     """Build a clear error message when all data sources fail."""
     yf_count = sum(1 for e in errors if "yfinance:" in e)
     ak_count = sum(1 for e in errors if "akshare:" in e)
+    bs_count = sum(1 for e in errors if "baostock" in e)
     import_count = sum(1 for e in errors if "not installed" in e)
 
     lines = [
-        f"无法获取真实股票数据。已尝试 yfinance 和 akshare 两个数据源，均失败。",
-        f"错误摘要: yfinance 错误 {yf_count} 条, akshare 错误 {ak_count} 条, 缺少依赖 {import_count} 条。",
+        "无法完整获取真实股票数据。已按 akshare -> baostock -> yfinance 逐层补缺。",
+        f"错误摘要: akshare {ak_count} 条, baostock {bs_count} 条, "
+        f"yfinance {yf_count} 条, 缺少依赖 {import_count} 条。",
         "",
         "解决方案:",
     ]
@@ -888,6 +982,7 @@ def _build_fetch_error_message(errors: list) -> str:
     lines.extend([
         "  2. 检查网络连接: yfinance 需要访问 Yahoo Finance API",
         "     akshare 需要访问东方财富/新浪等国内数据源",
+        "     baostock 需要连接其行情服务器",
         "  3. 如果在内网环境，可能需要配置代理:",
         "     export HTTP_PROXY=http://your-proxy:port",
         "     export HTTPS_PROXY=http://your-proxy:port",

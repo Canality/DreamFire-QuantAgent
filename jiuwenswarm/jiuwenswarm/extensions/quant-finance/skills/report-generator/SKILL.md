@@ -18,7 +18,7 @@ allowed_tools:
 ### 步骤 1: 运行回测
 
 调用 `quant_run_backtest`:
-- `prices`: 价格数据 (来自 quant_fetch_data)
+- 行情不作为参数传递；工具只使用服务端缓存中的前向测试段
 - `weights`: ticker → weight 字典 (来自 quant_allocate_positions)
 - `initial_capital`: 初始资金 (默认 1,000,000)
 

@@ -40,7 +40,7 @@ allowed_tools:
    - 确认数据覆盖率和日期范围
 
 2. **计算因子得分**：调用 `quant_compute_factors`
-   - 传入 `prices` 和 `volumes`
+   - 不传入行情参数；原始矩阵只保存在 Extension 服务端缓存
    - 获取 `regime`（市场状态）、`top_stocks`（Top 15）、`all_composite`（综合得分）
 
 3. **整理数据摘要**，将以下信息打包准备分发给分析师：
@@ -255,6 +255,14 @@ allowed_tools:
     - **多 Agent 差异化证明**：Bull 和 Bear 使用不同因子集，选股 overlap ~28%，证实多视角互补
 
 ## 风险控制约束
+
+## 工具失败协议（强制）
+
+- 任何量化工具只有返回 `success=true` 才算完成；工具名出现过不算成功。
+- `quant_fetch_data` 返回失败时，不得通过改日期、缩小股票池、伪造行情或调用 shell 修改网络配置来绕过。
+- 同一个量化工具连续失败 3 次后立即停止本轮，明确报告失败工具与原始错误，不得继续生成投资结论。
+- 原始价格/成交量矩阵只存在于 Extension 服务端缓存。任何 Agent 都不得在消息、文件或工具参数中重建、转述行情矩阵。
+- 必须依次获得 8 个有效结果：fetch、factors、bull_view、bear_view、select、allocate、backtest、report；缺一项即判定未完成。
 
 无论 Bull 和 Bear 持什么观点，最终组合必须遵守：
 - 单只股票 ≤ 10%

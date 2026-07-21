@@ -31,10 +31,10 @@ $$
 
 ## 执行流程
 
-1. 从前一步 (stock-selector) 接收选中的 `tickers` 列表和原始 `prices` 数据
+1. 从前一步 (stock-selector) 接收选中的 `tickers` 列表
 
 2. 调用 `quant_allocate_positions`:
-   - `prices`: 价格数据 (来自 quant_fetch_data)
+   - 行情不作为参数传递；工具从服务端缓存读取训练段行情
    - `tickers`: 选中的股票代码列表 (来自 quant_select_stocks)
 
 3. 工具返回:
