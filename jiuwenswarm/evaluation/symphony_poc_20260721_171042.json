@@ -1,0 +1,75 @@
+{
+  "run_id": "symphony_poc_20260721_171042",
+  "created_at": "2026-07-21T17:10:42.469319+08:00",
+  "validator_version": "p1_poc_v1",
+  "policy_rules": [
+    "R1: phase-coverage (8 quant phases must be present)",
+    "R2: fetch-before-factor (dependency order)",
+    "R3: coverage-fail-closed (<49 stocks → abort)",
+    "R4: frozen-strategy-id (backtest must reference registered StrategySpec)",
+    "R5: dependency-order (no step depends on later step)",
+    "R6: agent-role-isolation (Bull/Bear skills called by Bull/Bear, not Coordinator)"
+  ],
+  "results": {
+    "normal_investment_analysis": {
+      "task": "normal_investment_analysis",
+      "description": "Standard 20-day investment cycle: fetch → factor → Bull/Bear → select → allocate → backtest → report",
+      "strategy_id": "phase_b_t2_score_alloc",
+      "n_steps": 8,
+      "step_sequence": [
+        "fetch_data",
+        "compute_factors",
+        "bull_view",
+        "bear_view",
+        "select_stocks",
+        "allocate_positions",
+        "run_backtest",
+        "generate_report"
+      ],
+      "violations": [],
+      "verdict": "PASSED",
+      "warnings": 0
+    },
+    "data_coverage_failure_recovery": {
+      "task": "data_coverage_failure_recovery",
+      "description": "Sina returns 32/49 → fallback through Tencent → akshare → baostock → yfinance; if still <49, abort with clear error",
+      "strategy_id": "phase_b_t2_score_alloc",
+      "n_steps": 7,
+      "step_sequence": [
+        "fetch_data",
+        "coverage_check",
+        "compute_factors",
+        "select_stocks",
+        "allocate_positions",
+        "run_backtest",
+        "generate_report"
+      ],
+      "violations": [],
+      "verdict": "PASSED",
+      "warnings": 0
+    },
+    "candidate_decay_diagnosis": {
+      "task": "candidate_decay_diagnosis",
+      "description": "T2 recent 4 windows only 2/4 utility wins → diagnose whether decay is regime-specific or structural",
+      "strategy_id": "phase_b_t2_score_alloc",
+      "n_steps": 7,
+      "step_sequence": [
+        "fetch_data",
+        "compute_factors",
+        "regime_analysis",
+        "decay_diagnosis",
+        "bull_view",
+        "bear_view",
+        "generate_report"
+      ],
+      "violations": [],
+      "verdict": "PASSED",
+      "warnings": 0
+    }
+  },
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "blocked": 0
+  }
+}

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Symphony P1 POC: Policy-validated quant workflow planning.
+"""Policy Validator prototype: validates quant workflow plans before execution.
+
+Note: This is NOT a Symphony integration — it validates hand-written task
+templates against invariant rules. Symphony integration requires actual
+Symphony plan generation, which is future work (P1 proper).
 
 Three task types, each with a pre-registered skill sequence.
 PolicyValidator enforces invariants before any plan executes.
@@ -231,7 +235,7 @@ def run_validation(task_name: str) -> dict[str, Any]:
 
 def main() -> int:
     print("=" * 70)
-    print("  Symphony P1 POC: Policy-Validated Quant Workflow Planning")
+    print("  Policy Validator Prototype: Quant Workflow Planning Rules")
     print("=" * 70)
 
     all_results = {}
@@ -251,11 +255,12 @@ def main() -> int:
             print(f"  [WARN] {result['warnings']} warning(s) — plan can proceed with review")
 
     # Save POC artifact
-    run_id = datetime.now().strftime("symphony_poc_%Y%m%d_%H%M%S")
+    run_id = datetime.now().strftime("policy_validator_%Y%m%d_%H%M%S")
     artifact = {
         "run_id": run_id,
         "created_at": datetime.now().astimezone().isoformat(),
-        "validator_version": "p1_poc_v1",
+        "validator_version": "prototype_v1",
+        "note": "This is a policy validator prototype, NOT a Symphony integration. Symphony P1 proper is future work.",
         "policy_rules": [
             "R1: phase-coverage (8 quant phases must be present)",
             "R2: fetch-before-factor (dependency order)",
