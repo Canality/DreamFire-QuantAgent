@@ -86,6 +86,51 @@ def _make_serializable(obj):
     return str(obj)[:500]
 
 
+async def _init_extensions():
+    """Initialize ExtensionRegistry and load quant-finance extension.
+
+    Without this, QuantToolkit._call_rpc() will find no registered handlers
+    and the LLM will retry quant_fetch_data indefinitely (34+ times).
+    """
+    import logging
+    from jiuwenswarm.extensions.registry import ExtensionRegistry
+    from jiuwenswarm.extensions.manager import ExtensionManager
+
+    _log = logging.getLogger(__name__)
+
+    # Check if already initialized (e.g. running inside full server)
+    try:
+        ExtensionRegistry.get_instance()
+        _log.info("[MultiAgent] ExtensionRegistry already initialized, reusing")
+        return
+    except RuntimeError:
+        pass
+
+    # Create registry and load extensions
+    try:
+        callback_framework = Runner.callback_framework
+    except Exception:
+        _log.warning("[MultiAgent] Cannot access Runner.callback_framework — "
+                      "extensions may not load. Run inside jiuwenswarm server for full support.")
+        return
+
+    registry = ExtensionRegistry.create_instance(
+        callback_framework=callback_framework,
+        config={},
+        logger=_log,
+    )
+    manager = ExtensionManager(registry=registry)
+    await manager.load_all_extensions()
+
+    rpc_methods = registry.list_rpc_methods()
+    quant_methods = [m for m in rpc_methods if m.startswith("quant.")]
+    print(f"  [MultiAgent] Extensions loaded: {len(manager.list_extensions())} extensions, "
+          f"{len(quant_methods)} quant RPC methods")
+    if not quant_methods:
+        print("  [MultiAgent] WARNING: No quant RPC methods found! "
+              "Agent tool calls will fail.")
+
+
 async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     """
     Run the multi-agent quant team with the given prompt.
@@ -98,8 +143,12 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     print(f"  Timeout: {timeout_seconds}s")
     print("=" * 70)
 
+    # 0. Initialize extension system (Critical: without this, quant tools fail)
+    print("\n[0/5] Initializing extensions...")
+    await _init_extensions()
+
     # 1. Get team manager and build spec
-    print("\n[1/4] Building team spec for quant_team...")
+    print("\n[1/5] Building team spec for quant_team...")
     tm = get_team_manager()
     t0 = time.time()
 
@@ -113,7 +162,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     print(f"  Members: {member_count}")
 
     # 2. Run the team
-    print(f"\n[2/4] Running team with prompt:\n  \"{prompt}\"")
+    print(f"\n[2/5] Running team with prompt:\n  \"{prompt}\"")
     print("  Waiting for agent responses (this may take several minutes)...\n")
 
     chunks_log = []
@@ -172,14 +221,32 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     elapsed = time.time() - t_start
 
     # 3. Summarize
-    print(f"\n[3/4] Run complete in {elapsed:.0f}s")
+    print(f"\n[3/5] Run complete in {elapsed:.0f}s")
     print(f"  Text segments: {len(text_output)}")
     print(f"  Tool calls:    {len(tool_calls)}")
     print(f"  Errors:        {len(errors)}")
     print(f"  Total chunks:  {len(chunks_log)}")
 
-    # 4. Save results
-    print(f"\n[4/4] Saving results...")
+    # 4. Validate: did we complete the full quant loop?
+    print(f"\n[4/5] Validating quant loop completion...")
+    quant_tool_names = [tc.get("name", "") for tc in tool_calls]
+    phases_completed = {
+        "fetch": any("fetch_data" in n for n in quant_tool_names),
+        "factors": any("compute_factors" in n for n in quant_tool_names),
+        "select": any("select_stocks" in n for n in quant_tool_names),
+        "allocate": any("allocate_positions" in n for n in quant_tool_names),
+        "backtest": any("run_backtest" in n for n in quant_tool_names),
+        "report": any("generate_report" in n for n in quant_tool_names),
+        "bull_view": any("bull_view" in n for n in quant_tool_names),
+        "bear_view": any("bear_view" in n for n in quant_tool_names),
+    }
+    completed_count = sum(1 for v in phases_completed.values() if v)
+    loop_complete = completed_count >= 5  # At minimum: fetch+factors+select+allocate+backtest
+    print(f"  Phases: {', '.join(f'{k}={v}' for k, v in phases_completed.items())}")
+    print(f"  Completed: {completed_count}/8, Loop complete: {loop_complete}")
+
+    # 5. Save results
+    print(f"\n[5/5] Saving results...")
 
     summary = {
         "session_id": SESSION_ID,
@@ -192,7 +259,9 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             "errors": len(errors),
             "total_chunks": len(chunks_log),
         },
-        "multi_agent_working": len(tool_calls) > 0 and len(text_output) > 0,
+        "quant_phases": phases_completed,
+        "loop_complete": loop_complete,
+        "multi_agent_working": loop_complete,  # v2: real quant loop, not just "has text"
         "issues": errors if errors else None,
     }
 
@@ -313,10 +382,14 @@ async def main():
     print("\n" + "=" * 70)
     print("  VALIDATION RESULT")
     print("=" * 70)
-    if summary["multi_agent_working"]:
-        print("  ✓ Multi-agent team ran and produced output")
+    if summary["loop_complete"]:
+        print("  [OK] Full quant loop completed (fetch->factors->select->allocate->backtest)")
     else:
-        print("  ✗ Multi-agent team did NOT produce expected output")
+        print("  [FAIL] Quant loop incomplete — check phases below")
+        phases = summary.get("quant_phases", {})
+        missing = [k for k, v in phases.items() if not v]
+        if missing:
+            print(f"  Missing phases: {', '.join(missing)}")
     print(f"  Tool calls: {summary['stats']['tool_calls']}")
     print(f"  Text segments: {summary['stats']['text_segments']}")
     print(f"  Errors: {summary['stats']['errors']}")

@@ -137,26 +137,39 @@ def select_stocks(scores, top_n=15):
 
 
 def main():
-    start_date = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+    # Split: train for factor selection, test for backtest evaluation
     end_date = datetime.now().strftime("%Y-%m-%d")
+    train_end = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
 
     print("=" * 60)
     print("  Quant Investment Pipeline (JiuwenSwarm Native)")
-    print(f"  Period: {start_date} → {end_date}")
+    print(f"  Train: {start_date} → {train_end}")
+    print(f"  Test:  {train_end} → {end_date}")
     print("=" * 60)
 
-    # Step 1: Data
+    # Step 1: Data — fetch full period, split for honest backtest
     print("\n[1/6] Fetching data...")
-    prices_df, volumes_df = fetch_data(ALL_STOCKS, start_date, end_date)
-    print(f"  {len(prices_df.columns)} stocks, {len(prices_df)} days")
+    prices_full, volumes_full = fetch_data(ALL_STOCKS, start_date, end_date)
+    print(f"  {len(prices_full.columns)} stocks, {len(prices_full)} days")
 
-    # Step 2: Factors
-    print("\n[2/6] Computing factors...")
-    regime = MarketRegime.detect(prices_df)
+    # Split: train for factor computation + selection, test for evaluation
+    prices_train = prices_full[prices_full.index <= train_end]
+    prices_test = prices_full[prices_full.index > train_end]
+    volumes_train = volumes_full[volumes_full.index <= train_end] if not volumes_full.empty else pd.DataFrame()
+
+    if prices_test.empty:
+        print("  WARNING: No test period data — using last 20 days of train for backtest")
+        prices_test = prices_train.tail(20)
+        prices_train = prices_train.iloc[:-20] if len(prices_train) > 20 else prices_train
+
+    # Step 2: Factors — compute on TRAINING data only (no look-ahead)
+    print("\n[2/6] Computing factors on training data...")
+    regime = MarketRegime.detect(prices_train)
     print(f"  Market Regime: {regime.upper()}")
     calc = FactorCalculator(FactorConfig())
     calc.regime = regime
-    factors = calc.compute_factors(prices_df, volumes_df)
+    factors = calc.compute_factors(prices_train, volumes_train)
     scores = calc.compute_scores(factors)
     for t in scores.head(10).index:
         print(f"  {t} {TICKER_NAME_MAP.get(t, '?'):<8s} | {scores.loc[t, 'composite']:+.3f} | {scores.loc[t, 'sector']}")
@@ -166,17 +179,28 @@ def main():
     tickers = select_stocks(scores)
     print(f"  {len(tickers)} stocks from {len(set(SECTOR_MAP.get(t) for t in tickers))} sectors")
 
-    # Step 4: Position sizing
+    # Step 4: Position sizing — pass ONLY selected tickers (Bug 1 fix)
     print("\n[4/6] Allocating positions...")
+    selected_scores = scores.loc[tickers]
     sizer = PositionSizer(PositionConfig())
-    weights = sizer.allocate(scores, prices_df)
+    weights = sizer.allocate(selected_scores, prices_train)
     for t, w in weights.items():
         print(f"  {t} {TICKER_NAME_MAP.get(t, '?'):<8s} | {w*100:5.1f}% | {SECTOR_MAP.get(t, '?')}")
 
-    # Step 5: Backtest
-    print("\n[5/6] Running backtest...")
+    # Verify sector caps
+    sector_totals = {}
+    for t, w in weights.items():
+        sec = SECTOR_MAP.get(t, "其他")
+        sector_totals[sec] = sector_totals.get(sec, 0.0) + w
+    print("  Sector weights:")
+    for sec, w in sorted(sector_totals.items(), key=lambda x: x[1], reverse=True):
+        flag = " ⚠ OVER CAP" if w > 0.25 else ""
+        print(f"    {sec}: {w*100:.1f}%{flag}")
+
+    # Step 5: Backtest — evaluate on TEST data (forward period)
+    print("\n[5/6] Running backtest on test period...")
     engine = BacktestEngine()
-    bt = engine.run(prices_df, weights)
+    bt = engine.run(prices_test, weights)
     print(f"  Total Return: {bt.total_return*100:+.2f}%")
     print(f"  Ann. Return:  {bt.annualized_return*100:+.2f}%")
     print(f"  Max DD:       {bt.max_drawdown*100:.2f}%")
@@ -201,6 +225,12 @@ def main():
 
     results = {
         "regime": regime,
+        "train_period": f"{start_date} → {train_end}",
+        "test_period": f"{train_end} → {end_date}",
+        "n_stocks_fetched": len(prices_full.columns),
+        "n_stocks_selected": len(tickers),
+        "n_sectors_covered": len(set(SECTOR_MAP.get(t) for t in tickers)),
+        "sector_weights": {sec: round(w, 4) for sec, w in sector_totals.items()},
         "portfolio": portfolio,
         "backtest": bt.metrics,
         "top_stocks": [

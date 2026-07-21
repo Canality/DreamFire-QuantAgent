@@ -342,6 +342,7 @@ class PositionSizer:
         cfg = self.config
         weights = dict(raw_weights)
 
+        # --- Single-stock cap with redistribution ---
         for ticker in list(weights.keys()):
             if weights[ticker] > cfg.max_single_stock:
                 excess = weights[ticker] - cfg.max_single_stock
@@ -352,22 +353,47 @@ class PositionSizer:
                     for t in others:
                         weights[t] += redist
 
-        sector_totals = {}
-        for ticker, w in weights.items():
-            sector = sectors.get(ticker, "其他")
-            sector_totals[sector] = sector_totals.get(sector, 0.0) + w
+        # --- Sector cap with redistribution to uncapped sectors ---
+        # Iterative: after each sector cap, redistribute excess to other sectors.
+        # This avoids the re-normalization bug where scaling all weights back up
+        # undoes the sector cap.
+        max_iterations = 10
+        for _ in range(max_iterations):
+            sector_totals = {}
+            for ticker, w in weights.items():
+                sec = sectors.get(ticker, "其他")
+                sector_totals[sec] = sector_totals.get(sec, 0.0) + w
 
-        for sector, total in sector_totals.items():
-            if total > cfg.max_single_sector:
-                scale = cfg.max_single_sector / total
-                for ticker in weights:
-                    if sectors.get(ticker) == sector:
-                        weights[ticker] *= scale
+            # Find sectors over cap
+            over_cap = {sec: total for sec, total in sector_totals.items()
+                        if total > cfg.max_single_sector}
+            if not over_cap:
+                break  # All sectors within limits
 
+            # Cap the worst offender
+            sec_to_cap = max(over_cap, key=over_cap.get)
+            total_in_sector = over_cap[sec_to_cap]
+            excess = total_in_sector - cfg.max_single_sector
+            scale = cfg.max_single_sector / total_in_sector
+
+            # Scale down stocks in capped sector
+            for ticker in weights:
+                if sectors.get(ticker) == sec_to_cap:
+                    weights[ticker] *= scale
+
+            # Redistribute excess to stocks NOT in the capped sector
+            uncapped = [t for t in weights if sectors.get(ticker) != sec_to_cap]
+            if uncapped:
+                redist = excess / len(uncapped)
+                for t in uncapped:
+                    weights[t] += redist
+
+        # Cash reserve: scale down if needed (but preserve sector ratios)
         target_sum = 1.0 - cfg.min_cash
         current_sum = sum(weights.values())
-        if current_sum > 0:
-            weights = {t: w / current_sum * target_sum for t, w in weights.items()}
+        if current_sum > target_sum:
+            scale = target_sum / current_sum
+            weights = {t: w * scale for t, w in weights.items()}
 
         weights = {t: round(w, 4) for t, w in weights.items()}
         return dict(sorted(weights.items(), key=lambda x: x[1], reverse=True))
