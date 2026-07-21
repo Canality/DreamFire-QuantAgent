@@ -11,9 +11,9 @@
 
 | 项目 | 状态 |
 |---|---|
-| 当前分数 | 81.7/100 (v2.6) |
-| 待处理 | Goone: PA_Agent 三项决赛改造（检查单/报告因果链/经验库） |
-| 已完成 | Codex 代码审查 5 项修复（extension.py/SKILL.md/README/冒烟测试） |
+| 当前分数 | 81.8/100 (v2.6 + e2e fixes) |
+| 待处理 | 多 Agent 完整闭环重跑（需 Extension 初始化后验证） |
+| 已完成 | Codex 审查 5 项 / 端到端 4 个 Bug 修复 |
 | 进行中 | — |
 
 ---
@@ -2193,3 +2193,40 @@ python evaluation/test_extension_smoke.py
 **未改动**: `factors.py`, `scoring.py`, 量化逻辑 — 分数保持 81.7 不变。
 
 Goone，5 个问题全部修复。需要我 commit 吗？
+
+---
+
+### [Canaan] 2026-07-21 — 端到端验证结果
+
+两条路径都真实跑过了。
+
+| 路径 | 结果 | 判断 |
+|---|---|---|
+| 研发旁路 `run_quant_pipeline.py` | 成功结束 | 能跑，但结果无效 |
+| JiuwenSwarm 多 Agent | 启动成功，量化流程卡死 | Agent 真实，Extension 未接通 |
+
+**研发旁路发现的三个逻辑 bug**：select/allocate 断开、板块 cap 被归一化反噬、前视偏差。
+
+**多 Agent 路径**：ExtensionRegistry 未初始化 → quant.fetch_data handler 不可用 → LLM 连续重试 34 次。但隔离冒烟测试验证了 8 个 Extension RPC 本身正常。
+
+---
+
+### [Missed] 2026-07-21 11:30 — 端到端 4 个 Bug 修复
+
+**Bug 1 (select/allocate 断开)**: `run_quant_pipeline.py:172` 传了完整 `scores` 给 `PositionSizer.allocate()`。Fix: 传 `scores.loc[tickers]`。
+
+**Bug 2 (板块 cap 被重归一化反噬)**: `factors.py:_apply_constraints()` 先 cap 板块到 25%，再 `w / sum * target_sum` 全局缩放 → cap 失效。实测金融 47.5% + 消费 47.5%。Fix: 超限板块缩到 25%，超额迭代分配给未超限板块，只在总超 target_sum 时等比缩放。修复后 6 板块全部 ≤25%，最高 24.4%。
+
+**Bug 3 (前视偏差)**: 期末数据选股 + 同周期回测。Fix: 训练/测试切分（前 160 天选股，后 20 天评测）。
+
+**Bug 4 (ExtensionRegistry 未初始化)**: `run_multi_agent.py` 跳过了扩展系统初始化。Fix: `_init_extensions()` 在 team run 前加载扩展，含已初始化 guard。成功标准从"有文本+工具调用"改为"完成量化闭环（5+ of 8 phases）"。
+
+**验证结果**：
+
+```
+直接管线: 49 股票, 6 板块, 6 板块全≤25%, 测试期 +1.53%, DD 2.81%, Sharpe 1.78
+多 Agent: Extension 初始化完成，待完整环境重跑
+评分: 81.8/100 (vs 81.7 baseline, +0.1 数据噪声)
+```
+
+
