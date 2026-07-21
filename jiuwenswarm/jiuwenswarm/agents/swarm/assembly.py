@@ -8,7 +8,7 @@ provider-based assembly. Given a ``TeamAgentSpec`` it:
 * registers all swarm providers / rail types (idempotent),
 * builds the per-team base :class:`SwarmBuildContext` carrying the live runtime
   handles every provider needs,
-* rewrites each present member spec ("leader" / "teammate") with its
+* rewrites each present member spec (the leader plus every named teammate template) with its
   config-sourced rails and tools, and
 * attaches the base context to ``spec.build_context`` so openjiuwen's
   ``setup_agent`` derives a per-member view through ``derive()``.
@@ -35,10 +35,6 @@ from jiuwenswarm.common.mcp_config import build_enabled_mcp_server_configs
 from jiuwenswarm.common.utils import get_agent_skills_dir
 
 logger = logging.getLogger(__name__)
-
-# Member roles enriched in place, in deterministic order.
-_MEMBER_ROLES: tuple[str, ...] = ("leader", "teammate")
-
 
 def _with_project_workspace(member_spec: Any, project_dir: str | None) -> Any:
     """Default a member workspace to the request project directory."""
@@ -120,19 +116,24 @@ def enrich_team_spec_for_swarm(
         server_id_scope=f"team:{spec.team_name}",
     )
 
-    for role in _MEMBER_ROLES:
-        if role in spec.agents:
-            member_spec = build_member_deep_agent_spec(
-                config,
-                mode,
-                role,
-                spec.agents[role],
-                enable_permissions=spec.enable_permissions,
-                mcp_configs=mcp_configs,
-            )
-            if _worktree_enabled(spec):
-                member_spec = _with_project_workspace(member_spec, project_dir)
-            spec.agents[role] = member_spec
+    # Agent template keys can be named roles (for example bull_analyst and
+    # bear_analyst), not only the literal key "teammate".  Treat every
+    # non-leader template as a teammate so it receives the same rails/tools.
+    enriched_roles: list[str] = []
+    for template_name, base_spec in list(spec.agents.items()):
+        capability_role = "leader" if template_name == "leader" else "teammate"
+        member_spec = build_member_deep_agent_spec(
+            config,
+            mode,
+            capability_role,
+            base_spec,
+            enable_permissions=spec.enable_permissions,
+            mcp_configs=mcp_configs,
+        )
+        if _worktree_enabled(spec):
+            member_spec = _with_project_workspace(member_spec, project_dir)
+        spec.agents[template_name] = member_spec
+        enriched_roles.append(template_name)
 
     spec.build_context = base
     # Carry a serializable seed alongside the live context so members rebuilt
@@ -142,7 +143,7 @@ def enrich_team_spec_for_swarm(
     logger.info(
         "[swarm.assembly] enriched team spec '%s' (roles=%s, session=%s, mcps=%d)",
         spec.team_name,
-        [role for role in _MEMBER_ROLES if role in spec.agents],
+        enriched_roles,
         session_id,
         len(mcp_configs),
     )

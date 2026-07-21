@@ -95,19 +95,21 @@ v2.4 核心变化：IC 分析砍掉 7 个死因子（PE/PB/ROE/volume_trend/turn
 
 ### 数据源
 
-三层级联兜底：`akshare → baostock → yfinance`，每层只补充缺失
+五源逐只补缺：`Sina → Tencent → akshare → baostock → yfinance`。每层只请求仍缺失股票，记录覆盖统计，最终不足49只失败关闭；五源统一使用原始收盘价。
 
 ### 当前待处理问题
 
-1. **生产三数据源不可用且失败耗时长**：最新直跑0/49，正式路径0/8；Sina 统一快照可用，但尚未接入生产 fallback。
-2. **策略没有晋级候选**：两因子全期改善但最近失效，单动量配对稳定性不足；生产保持六因子。
-3. **正式运行仍是旧 close-to-close 回测接口**：Phase A 新增了首日开盘固定股数接口，待最终策略确定后再统一生产报告口径。
-4. **无反馈循环**：比赛条件下暂时跳过。
+1. **策略没有晋级候选**：两因子全期改善但最近失效，单动量配对稳定性不足；生产保持六因子。最新20日前向收益-6.74%，不得把数据链恢复当作提分。
+2. **策略实验仍须与工程验收分离**：最新正式运行已做到8/8和Bull/Bear专属RPC归属，但回测仍为-6.74%；不得把Agent链路修复当作策略有效。
+3. **网页行情源没有正式 SLA**：本轮 Sina 49/49 且 Tencent 独立探测49/49，但必须保留五源兜底、超时、覆盖统计和失败关闭。
+4. **正式运行仍是旧 close-to-close 回测接口**：Phase A 新增了首日开盘固定股数接口，待最终策略确定后再统一生产报告口径。
+5. **无反馈循环**：比赛条件下暂时跳过。
 
 ### 已修复 (v2.1/v2.2)
 
 1. ~~yfinance/akshare 未安装~~ → 已安装
-2. **数据源级联仅在 QuantFinance Extension 中实现** → akshare → baostock → yfinance，逐只补缺；`scripts/run_quant_pipeline.py` 仍是 yfinance → akshare，且只在 yfinance 全部失败时 fallback，尚未修复
+2. ~~研发直跑与 Extension 数据源分叉~~ → 两条路径现共享 `Sina → Tencent → akshare → baostock → yfinance` 五源逐只补缺链；23/23量化单测、最新直跑49/49、正式8/8通过
+3. ~~命名Bull/Bear模板未装配QuantToolkit~~ → assembly现将所有非leader命名模板按teammate装配；强制审计要求两位成员亲自调用专属RPC
 3. ~~全量价格矩阵通过 LLM 上下文~~ → 内存缓存 + 摘要返回
 4. ~~Bull/Bear 缺少量化工具~~ → 移除 leader-only 限制
 5. ~~判市固定阈值 3%~~ → 波动率标准化 (v2.2)

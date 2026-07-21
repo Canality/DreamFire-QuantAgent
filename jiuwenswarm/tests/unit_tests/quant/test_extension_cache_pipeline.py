@@ -135,9 +135,13 @@ def test_real_data_chain_requests_only_still_missing_tickers(monkeypatch):
             )
         return fetch
 
-    ak_covered = set(ALL_STOCKS[:10])
-    bao_covered = set(ALL_STOCKS[10:40])
+    sina_covered = set(ALL_STOCKS[:10])
+    tencent_covered = set(ALL_STOCKS[10:20])
+    ak_covered = set(ALL_STOCKS[20:30])
+    bao_covered = set(ALL_STOCKS[30:40])
     yf_covered = set(ALL_STOCKS[40:])
+    monkeypatch.setattr(module, "_fetch_sina", source("sina", sina_covered))
+    monkeypatch.setattr(module, "_fetch_tencent", source("tencent", tencent_covered))
     monkeypatch.setattr(module, "_fetch_akshare", source("akshare", ak_covered))
     monkeypatch.setattr(module, "_fetch_baostock", source("baostock", bao_covered))
     monkeypatch.setattr(module, "_fetch_yfinance", source("yfinance", yf_covered))
@@ -147,6 +151,59 @@ def test_real_data_chain_requests_only_still_missing_tickers(monkeypatch):
     )
     assert errors == []
     assert set(fetched_prices) == set(fetched_volumes) == set(ALL_STOCKS)
-    assert calls[0] == ("akshare", list(ALL_STOCKS))
-    assert calls[1] == ("baostock", list(ALL_STOCKS[10:]))
-    assert calls[2] == ("yfinance", list(ALL_STOCKS[40:]))
+    assert calls[0] == ("sina", list(ALL_STOCKS))
+    assert calls[1] == ("tencent", list(ALL_STOCKS[10:]))
+    assert calls[2] == ("akshare", list(ALL_STOCKS[20:]))
+    assert calls[3] == ("baostock", list(ALL_STOCKS[30:]))
+    assert calls[4] == ("yfinance", list(ALL_STOCKS[40:]))
+    assert module._last_fetch_provider_stats == {
+        "sina": {"requested": 49, "newly_covered": 10, "errors": 0},
+        "tencent": {"requested": 39, "newly_covered": 10, "errors": 0},
+        "akshare": {"requested": 29, "newly_covered": 10, "errors": 0},
+        "baostock": {"requested": 19, "newly_covered": 10, "errors": 0},
+        "yfinance": {"requested": 9, "newly_covered": 9, "errors": 0},
+    }
+
+
+def test_sina_and_tencent_parsers_use_raw_close_and_volume(monkeypatch):
+    module = _load_extension_module()
+    ticker = "600000.SH"
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    def fake_get(url, params, **_):
+        if "sina" in url:
+            return FakeResponse([
+                {"day": "2025-01-02", "close": "10.10", "volume": "1000"},
+                {"day": "2025-01-03", "close": "10.20", "volume": "1100"},
+            ])
+        symbol = params["param"].split(",", 1)[0]
+        return FakeResponse({
+            "code": 0,
+            "msg": "",
+            "data": {symbol: {"day": [
+                ["2025-01-02", "10.00", "10.10", "10.30", "9.90", "100"],
+                ["2025-01-03", "10.10", "10.20", "10.40", "10.00", "110"],
+            ]}},
+        })
+
+    monkeypatch.setattr(module.requests, "get", fake_get)
+    sina_prices, sina_volumes, sina_errors = module._fetch_sina(
+        [ticker], "2025-01-01", "2025-01-31"
+    )
+    tx_prices, tx_volumes, tx_errors = module._fetch_tencent(
+        [ticker], "2025-01-01", "2025-01-31"
+    )
+
+    assert sina_errors == tx_errors == []
+    assert sina_prices[ticker].tolist() == tx_prices[ticker].tolist() == [10.1, 10.2]
+    assert sina_volumes[ticker].tolist() == [1000, 1100]
+    assert tx_volumes[ticker].tolist() == [100, 110]

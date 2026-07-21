@@ -35,7 +35,7 @@ def _load_data_provider():
 
 
 def fetch_data(tickers: list[str], start_date: str, end_date: str) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Use the Extension's akshare -> baostock -> yfinance missing-only chain."""
+    """Use the Extension's five-source missing-only fallback chain."""
     provider = _load_data_provider()
     prices, volumes, errors = provider._fetch_real_data(tickers, start_date, end_date)
     missing = [
@@ -50,6 +50,8 @@ def fetch_data(tickers: list[str], start_date: str, end_date: str) -> tuple[pd.D
     prices_df = pd.DataFrame(prices).sort_index().reindex(columns=tickers)
     volumes_df = pd.DataFrame(volumes).sort_index().reindex(columns=tickers)
     print(f"  Missing-only fallback complete: {len(prices_df.columns)}/{len(tickers)} stocks")
+    print(f"  Coverage evidence: {len(prices_df.columns)} stocks, {len(prices_df)} days")
+    print(f"  Provider coverage: {provider._last_fetch_provider_stats}")
     return prices_df, volumes_df
 
 
@@ -147,6 +149,7 @@ def main() -> None:
         "n_train_trading_days": len(prices_train),
         "n_forward_returns": len(prices_test) - 1,
         "n_stocks_fetched": len(prices_full.columns),
+        "data_source_chain": "sina -> tencent -> akshare -> baostock -> yfinance",
         "n_stocks_selected": len(tickers),
         "n_sectors_covered": sectors_covered,
         "sector_weights": {sector: round(weight, 4) for sector, weight in sector_totals.items()},

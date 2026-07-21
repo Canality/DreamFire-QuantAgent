@@ -1,4 +1,5 @@
-# 数据源 (三层级联兜底: akshare → baostock → yfinance)
+# 数据源 (五层逐只补缺: Sina → Tencent → akshare → baostock → yfinance)
+requests>=2.31.0
 akshare>=1.12.0
 baostock>=0.8.8
 yfinance>=0.2.0

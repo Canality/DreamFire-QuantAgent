@@ -166,7 +166,7 @@ def _extract_column(df: pd.DataFrame, col_name: str) -> pd.Series:
 
 def fetch_real_data(tickers: list[str], lookback_days: int = 252
                     ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
-    """Fetch real stock data via multi-source chain: akshare → baostock → yfinance.
+    """Fetch real data via the Extension's five-source missing-only chain.
 
     Each source fills in only the stocks still missing from previous tiers.
     Aborts with clear error message if all sources fail.
@@ -186,41 +186,9 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252
     _ext_spec = _iu.spec_from_file_location("_quant_fetch_ext", str(_ext_path))
     _ext_mod = _iu.module_from_spec(_ext_spec)
     _ext_spec.loader.exec_module(_ext_mod)
-    _fetch_akshare = _ext_mod._fetch_akshare
-    _fetch_baostock = _ext_mod._fetch_baostock
-    _fetch_yfinance = _ext_mod._fetch_yfinance
-
-    all_prices = {}
-    all_volumes = {}
-    failed = []
-
-    # Tier 1: akshare
-    prices, volumes, errors = _fetch_akshare(tickers, start_date, end_date)
-    all_prices.update(prices)
-    all_volumes.update(volumes)
-    for e in errors:
-        ticker = e.split(":")[1] if ":" in e else ""
-        failed.append(e)
-
-    # Tier 2: baostock
-    missing = [t for t in tickers if t not in all_prices]
-    if missing:
-        print(f"    akshare: {len(all_prices)}/{len(tickers)}, baostock filling {len(missing)} missing...")
-        prices2, volumes2, errors2 = _fetch_baostock(missing, start_date, end_date)
-        all_prices.update(prices2)
-        all_volumes.update(volumes2)
-        for e in errors2:
-            failed.append(e)
-
-    # Tier 3: yfinance
-    still_missing = [t for t in tickers if t not in all_prices]
-    if still_missing:
-        print(f"    baostock: {len(all_prices)}/{len(tickers)}, yfinance filling {len(still_missing)} missing...")
-        prices3, volumes3, errors3 = _fetch_yfinance(still_missing, start_date, end_date)
-        all_prices.update(prices3)
-        all_volumes.update(volumes3)
-        for e in errors3:
-            failed.append(e)
+    all_prices, all_volumes, failed = _ext_mod._fetch_real_data(
+        tickers, start_date, end_date
+    )
 
     elapsed = time.time() - t0
     print(f"  Done in {elapsed:.0f}s: {len(all_prices)}/{len(tickers)} stocks fetched")
@@ -234,8 +202,8 @@ def fetch_real_data(tickers: list[str], lookback_days: int = 252
             for f in failed[:10]:
                 print(f"  - {f}")
         print("\n请检查:")
-        print("  1. pip install akshare baostock yfinance")
-        print("  2. 网络可以访问东方财富 / BaoStock / Yahoo Finance")
+        print("  1. pip install requests akshare baostock yfinance")
+        print("  2. 网络可以访问 Sina / Tencent / 东方财富 / BaoStock / Yahoo Finance")
         print("  3. 如在内网，配置代理: set HTTPS_PROXY=http://proxy:port")
         sys.exit(1)
 
@@ -270,7 +238,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
     """Run complete self-evaluation using ONLY real data."""
     from jiuwenswarm.quant import (
         FactorCalculator, FactorConfig, PositionSizer, PositionConfig,
-        BacktestEngine, MarketRegime, ALL_STOCKS, RegimeFusion, MarketIndex,
+        BacktestEngine, ALL_STOCKS, RegimeFusion, MarketIndex,
     )
     from jiuwenswarm.quant.stock_pool import STOCK_POOL as SP, SECTOR_MAP
 

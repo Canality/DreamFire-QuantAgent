@@ -121,6 +121,7 @@ _COMMON_TOOL_NAMES: frozenset[str] = frozenset(
         # Skill retrieval is a separate self-gated tool provider.
         registry.SKILL_RETRIEVAL,
         registry.SYMPHONY_TOOLKIT,
+        registry.QUANT_TOOLKIT,
         registry.USER_TODOS,
         registry.VIDEO,
         registry.IMAGE_GEN,
@@ -710,6 +711,28 @@ def test_enrich_team_spec_for_swarm_rewrites_spec_in_place() -> None:
     # The parent-free contract: openjiuwen removed the imperative customizer
     # hook entirely, so the field no longer exists on the spec.
     assert not hasattr(spec, "agent_customizer")
+
+
+def test_enrich_team_spec_rewrites_named_teammate_templates() -> None:
+    """Bull/Bear template keys must receive teammate rails and quant tools."""
+    spec = TeamAgentSpec(
+        agents={
+            "leader": DeepAgentSpec(),
+            "bull_analyst": DeepAgentSpec(),
+            "bear_analyst": DeepAgentSpec(),
+        },
+        team_name="quant_unit_team",
+        leader=LeaderSpec(member_name="quant-leader"),
+    )
+
+    enrich_team_spec_for_swarm(spec, session_id="s", mode="team", channel_id="web")
+
+    for template_name in ("bull_analyst", "bear_analyst"):
+        member = spec.agents[template_name]
+        rail_names = {rail.type for rail in (member.rails or [])}
+        tool_names = {tool.type for tool in (member.tools or [])}
+        assert registry.MEMBER_SKILL_EVOLUTION in rail_names
+        assert registry.QUANT_TOOLKIT in tool_names
 
 
 def test_enrich_team_spec_defaults_member_workspace_to_project_dir() -> None:
@@ -1418,6 +1441,7 @@ def test_code_capability_specs_rail_and_tool_names(mode: str) -> None:
         registry.IMAGE_GEN,
         registry.XIAOYI_PHONE,
         registry.SYMPHONY_TOOLKIT,
+        registry.QUANT_TOOLKIT,
         registry.CODE_EXTRA_TOOLS,
         registry.CRON_TOOLS,
         registry.SEND_FILE,

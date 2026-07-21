@@ -16,11 +16,13 @@ import asyncio
 import logging
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
+import requests
 
 from jiuwenswarm.extensions.sdk.base import BaseExtension
 from jiuwenswarm.extensions.types import ExtensionConfig
@@ -35,6 +37,7 @@ _FORWARD_TEST_DAYS = 20
 _MIN_TRAIN_DAYS = 61
 _PROVIDER_FAILURE_TTL_SECONDS = 300
 _provider_failure: dict | None = None
+_last_fetch_provider_stats: dict[str, dict[str, Any]] = {}
 
 
 def _cache_key(tickers: list, start: str, end: str) -> str:
@@ -214,6 +217,7 @@ class QuantFinanceExtension(BaseExtension):
                     "expected_stocks": len(tickers),
                     "missing_tickers": missing,
                     "errors": errors,
+                    "provider_coverage": _last_fetch_provider_stats,
                     "_failed_at": time.monotonic(),
                 }
                 # Cache this run's failure so an Agent retry does not hammer all
@@ -241,6 +245,7 @@ class QuantFinanceExtension(BaseExtension):
                 "date_range": f"{prices_df.index[0]} ~ {prices_df.index[-1]}",
                 "top_movers": _summarize_top_movers(prices_df, 10),
                 "fetch_errors": errors[:5] if errors else [],
+                "provider_coverage": _last_fetch_provider_stats,
             }
             _set_cached_data(result)
             _provider_failure = None
@@ -809,42 +814,164 @@ def _fetch_real_data(tickers, start_date, end_date):
     """Fetch real stock data with multi-source fallback chain.
 
     Tries sources in order, merging results to maximize coverage:
-      1. akshare (fast, domestic sources, sometimes blocked)
-      2. baostock (dedicated server, stable, no rate limit)
-      3. yfinance (international, slow in China, last resort)
+      1. Sina HTTP daily K-line (fast domestic source)
+      2. Tencent HTTP daily K-line (independent domestic fallback)
+      3. akshare (Eastmoney adapter, sometimes blocked)
+      4. baostock (dedicated server)
+      5. yfinance (international last resort)
     Each level fills in only the tickers still missing.
     """
     all_prices = {}
     all_volumes = {}
     all_errors = []
+    provider_stats: dict[str, dict[str, Any]] = {}
 
-    # Tier 1: akshare
-    prices, volumes, errors = _fetch_akshare(tickers, start_date, end_date)
-    all_prices.update(prices)
-    all_volumes.update(volumes)
-    all_errors.extend(errors)
+    providers = (
+        ("sina", _fetch_sina),
+        ("tencent", _fetch_tencent),
+        ("akshare", _fetch_akshare),
+        ("baostock", _fetch_baostock),
+        ("yfinance", _fetch_yfinance),
+    )
+    for provider_name, provider in providers:
+        missing = [
+            ticker for ticker in tickers
+            if not _ticker_data_usable(all_prices, all_volumes, ticker)
+        ]
+        if not missing:
+            break
+        covered_before = {
+            ticker for ticker in tickers
+            if _ticker_data_usable(all_prices, all_volumes, ticker)
+        }
+        logger.info(
+            "[QuantFinance] %s requesting %d still-missing tickers...",
+            provider_name,
+            len(missing),
+        )
+        prices, volumes, errors = provider(missing, start_date, end_date)
+        all_prices.update(prices)
+        all_volumes.update(volumes)
+        all_errors.extend(errors)
+        covered_after = {
+            ticker for ticker in tickers
+            if _ticker_data_usable(all_prices, all_volumes, ticker)
+        }
+        provider_stats[provider_name] = {
+            "requested": len(missing),
+            "newly_covered": len(covered_after - covered_before),
+            "errors": len(errors),
+        }
+        logger.info(
+            "[QuantFinance] %s complete: %d/%d usable",
+            provider_name,
+            len(covered_after),
+            len(tickers),
+        )
 
-    missing = [t for t in tickers if not _ticker_data_usable(all_prices, all_volumes, t)]
-    if missing:
-        logger.info("[QuantFinance] akshare: %d/%d stocks, trying baostock for %d missing...",
-                    len(all_prices), len(tickers), len(missing))
-        # Tier 2: baostock
-        prices2, volumes2, errors2 = _fetch_baostock(missing, start_date, end_date)
-        all_prices.update(prices2)
-        all_volumes.update(volumes2)
-        all_errors.extend(errors2)
-
-    still_missing = [t for t in tickers if not _ticker_data_usable(all_prices, all_volumes, t)]
-    if still_missing:
-        logger.info("[QuantFinance] baostock: %d/%d stocks, trying yfinance for %d missing...",
-                    len(all_prices), len(tickers), len(still_missing))
-        # Tier 3: yfinance
-        prices3, volumes3, errors3 = _fetch_yfinance(still_missing, start_date, end_date)
-        all_prices.update(prices3)
-        all_volumes.update(volumes3)
-        all_errors.extend(errors3)
-
+    global _last_fetch_provider_stats
+    _last_fetch_provider_stats = provider_stats
     return all_prices, all_volumes, all_errors
+
+
+def _http_symbol(ticker: str) -> str:
+    code, exchange = ticker.split(".")
+    return f"{'sh' if exchange == 'SH' else 'sz'}{code}"
+
+
+def _parallel_http_fetch(tickers, worker, provider_name):
+    """Run bounded concurrent requests and retain per-ticker error evidence."""
+    prices = {}
+    volumes = {}
+    errors = []
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(tickers)))) as pool:
+        futures = {pool.submit(worker, ticker): ticker for ticker in tickers}
+        for future in as_completed(futures):
+            ticker = futures[future]
+            try:
+                price, volume = future.result()
+                if price is None or volume is None or price.empty or volume.empty:
+                    raise ValueError("no data in requested date range")
+                prices[ticker] = price
+                volumes[ticker] = volume
+            except Exception as exc:  # noqa: BLE001 - provider detail is evidence
+                errors.append(f"{provider_name}:{ticker}: {exc}")
+    return prices, volumes, errors
+
+
+def _fetch_sina(tickers, start_date, end_date):
+    """Fetch raw daily close/volume from Sina's public K-line endpoint."""
+    url = (
+        "https://quotes.sina.cn/cn/api/json_v2.php/"
+        "CN_MarketDataService.getKLineData"
+    )
+    start = pd.Timestamp(start_date)
+    end = pd.Timestamp(end_date)
+    # The endpoint is row-count based. Fetch from requested start through now
+    # so historical end dates still remain available, then filter exactly.
+    datalen = min(1023, max(120, (pd.Timestamp.now().normalize() - start).days + 30))
+
+    def worker(ticker):
+        response = requests.get(
+            url,
+            params={
+                "symbol": _http_symbol(ticker),
+                "scale": "240",
+                "ma": "no",
+                "datalen": datalen,
+            },
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=12,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list) or not payload:
+            raise ValueError(f"invalid payload: {str(payload)[:100]}")
+        frame = pd.DataFrame(payload)
+        if not {"day", "close", "volume"}.issubset(frame.columns):
+            raise ValueError(f"missing fields: {list(frame.columns)}")
+        frame["day"] = pd.to_datetime(frame["day"], errors="raise")
+        frame = frame.set_index("day").sort_index().loc[start:end]
+        price = pd.to_numeric(frame["close"], errors="coerce").dropna()
+        volume = pd.to_numeric(frame["volume"], errors="coerce").dropna()
+        return price, volume
+
+    return _parallel_http_fetch(tickers, worker, "sina")
+
+
+def _fetch_tencent(tickers, start_date, end_date):
+    """Fetch raw daily close/volume from Tencent's independent K-line endpoint."""
+    url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+
+    def worker(ticker):
+        symbol = _http_symbol(ticker)
+        response = requests.get(
+            url,
+            params={
+                "param": f"{symbol},day,{start_date},{end_date},1023,none",
+            },
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=12,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise ValueError(f"provider code={payload.get('code')}: {payload.get('msg')}")
+        rows = payload.get("data", {}).get(symbol, {}).get("day", [])
+        if not rows:
+            raise ValueError("empty day series")
+        normalized = [row[:6] for row in rows if len(row) >= 6]
+        frame = pd.DataFrame(
+            normalized,
+            columns=["date", "open", "close", "high", "low", "volume"],
+        )
+        frame["date"] = pd.to_datetime(frame["date"], errors="raise")
+        frame = frame.set_index("date").sort_index()
+        price = pd.to_numeric(frame["close"], errors="coerce").dropna()
+        volume = pd.to_numeric(frame["volume"], errors="coerce").dropna()
+        return price, volume
+
+    return _parallel_http_fetch(tickers, worker, "tencent")
 
 
 def _fetch_yfinance(tickers, start_date, end_date):
@@ -857,8 +984,9 @@ def _fetch_yfinance(tickers, start_date, end_date):
         for ticker in tickers:
             yt = _yf_ticker(ticker)
             try:
+                # Keep all five providers on the same raw-close convention.
                 df = yf.download(yt, start=start_date, end=end_date,
-                                 progress=False, auto_adjust=True)
+                                 progress=False, auto_adjust=False)
                 if df is not None and not df.empty:
                     if isinstance(df.columns, pd.MultiIndex):
                         prices[ticker] = df["Close"].iloc[:, 0]
@@ -892,7 +1020,8 @@ def _fetch_akshare(tickers, start_date, end_date):
                     period="daily",
                     start_date=start_date.replace("-", ""),
                     end_date=end_date.replace("-", ""),
-                    adjust="qfq",
+                    # Keep all five providers on the same raw-close convention.
+                    adjust="",
                 )
                 if df is not None and not df.empty:
                     df["日期"] = pd.to_datetime(df["日期"])
@@ -960,14 +1089,18 @@ def _fetch_baostock(tickers, start_date, end_date):
 
 def _build_fetch_error_message(errors: list) -> str:
     """Build a clear error message when all data sources fail."""
+    sina_count = sum(1 for e in errors if "sina:" in e)
+    tencent_count = sum(1 for e in errors if "tencent:" in e)
     yf_count = sum(1 for e in errors if "yfinance:" in e)
     ak_count = sum(1 for e in errors if "akshare:" in e)
     bs_count = sum(1 for e in errors if "baostock" in e)
     import_count = sum(1 for e in errors if "not installed" in e)
 
     lines = [
-        "无法完整获取真实股票数据。已按 akshare -> baostock -> yfinance 逐层补缺。",
-        f"错误摘要: akshare {ak_count} 条, baostock {bs_count} 条, "
+        "无法完整获取真实股票数据。已按 Sina -> Tencent -> akshare -> "
+        "baostock -> yfinance 逐层补缺。",
+        f"错误摘要: Sina {sina_count} 条, Tencent {tencent_count} 条, "
+        f"akshare {ak_count} 条, baostock {bs_count} 条, "
         f"yfinance {yf_count} 条, 缺少依赖 {import_count} 条。",
         "",
         "解决方案:",
@@ -980,8 +1113,9 @@ def _build_fetch_error_message(errors: list) -> str:
                 lines.append(f"     {e}")
 
     lines.extend([
-        "  2. 检查网络连接: yfinance 需要访问 Yahoo Finance API",
-        "     akshare 需要访问东方财富/新浪等国内数据源",
+        "  2. 检查网络连接: Sina/Tencent 是优先国内 HTTP 行情源",
+        "     yfinance 需要访问 Yahoo Finance API",
+        "     akshare 需要访问东方财富等国内数据源",
         "     baostock 需要连接其行情服务器",
         "  3. 如果在内网环境，可能需要配置代理:",
         "     export HTTP_PROXY=http://your-proxy:port",

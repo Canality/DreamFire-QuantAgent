@@ -32,12 +32,14 @@ def main() -> int:
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--direct-log", type=Path, required=True)
     parser.add_argument("--multi-log", type=Path, required=True)
+    parser.add_argument("--multi-chunks", type=Path, required=True)
     args = parser.parse_args()
 
     failures: list[str] = []
     results = json.loads(load_text(args.results))
     direct_log = load_text(args.direct_log)
     multi_log = load_text(args.multi_log)
+    multi_chunks = json.loads(load_text(args.multi_chunks))
 
     if "Done." not in direct_log or "Results saved to" not in direct_log:
         failures.append("direct: run did not complete and save a fresh result")
@@ -95,6 +97,33 @@ def main() -> int:
     if re.search(r"Executing tool: quant_compute_factors with args: \{\"prices\"", multi_log):
         failures.append("multi: raw price matrix passed through LLM instead of Extension cache")
 
+    member_counts = {"quant-leader": 0, "bull_analyst": 0, "bear_analyst": 0}
+    role_rpc_counts = {"bull_analyst": 0, "bear_analyst": 0}
+    expected_role_rpc = {
+        "bull_analyst": "quant_bull_view",
+        "bear_analyst": "quant_bear_view",
+    }
+    for chunk in multi_chunks:
+        member = chunk.get("source_member")
+        if member in member_counts:
+            member_counts[member] += 1
+        if member in expected_role_rpc and chunk.get("type") == "tool_call":
+            tool_name = (
+                chunk.get("payload", {})
+                .get("tool_call", {})
+                .get("name")
+            )
+            if tool_name == expected_role_rpc[member]:
+                role_rpc_counts[member] += 1
+    if member_counts["quant-leader"] == 0:
+        failures.append("multi: quant-leader produced no stream events")
+    for member, count in role_rpc_counts.items():
+        if count == 0:
+            failures.append(
+                f"multi: {member} did not call {expected_role_rpc[member]}; "
+                "creation or leader-owned calls are not delegation"
+            )
+
     if failures:
         print("E2E AUDIT: FAILED")
         for item in failures:
@@ -105,6 +134,8 @@ def main() -> int:
     print(f"- portfolio: {len(portfolio)} stocks, {len(sector_weights)} sectors")
     print(f"- total weight: {total_weight:.2%}")
     print("- multi-agent tools: " + ", ".join(REQUIRED_MULTI_TOOLS))
+    print("- member events: " + ", ".join(f"{k}={v}" for k, v in member_counts.items()))
+    print("- role-owned RPCs: " + ", ".join(f"{k}={v}" for k, v in role_rpc_counts.items()))
     return 0
 
 

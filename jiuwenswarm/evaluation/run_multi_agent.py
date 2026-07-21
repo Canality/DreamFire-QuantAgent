@@ -17,7 +17,7 @@ import asyncio
 import json
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -33,8 +33,8 @@ os_env = __import__("os")
 # paths in config (e.g. jiuwenswarm/extensions) resolve correctly.
 os_env.chdir(str(PROJECT_ROOT))
 
-from dotenv import load_dotenv
-from jiuwenswarm.common.utils import (
+from dotenv import load_dotenv  # noqa: E402
+from jiuwenswarm.common.utils import (  # noqa: E402
     get_env_file,
     get_user_workspace_dir,
     prepare_workspace,
@@ -54,12 +54,12 @@ load_dotenv(dotenv_path=get_env_file(), override=True)
 reset_free_search_runtime_flags()
 
 # ── Now safe to import framework internals ─────────────────
-from jiuwenswarm.agents.harness.team.team_manager import get_team_manager
+from jiuwenswarm.agents.harness.team.team_manager import get_team_manager  # noqa: E402
 
 # Trigger swarm provider registrations
-import jiuwenswarm.agents.swarm.assembly  # noqa: F401
+import jiuwenswarm.agents.swarm.assembly  # noqa: E402, F401
 
-from openjiuwen.core.runner import Runner
+from openjiuwen.core.runner import Runner  # noqa: E402
 
 # ── Constants ───────────────────────────────────────────────
 OUTPUT_DIR = PROJECT_ROOT.parent / "output"
@@ -262,7 +262,6 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     text_output = []
     tool_calls = []
     errors = []
-    final_result = None
 
     t_start = time.time()
     stream = None
@@ -349,16 +348,37 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     print(f"  Total chunks:  {len(chunks_log)}")
 
     # 4. Validate: did we complete the full quant loop?
-    print(f"\n[4/5] Validating quant loop completion...")
+    print("\n[4/5] Validating quant loop completion...")
     phases_completed, validation_issues = _validate_quant_rpc_calls(quant_rpc_calls)
     errors.extend(issue for issue in validation_issues if issue not in errors)
     completed_count = sum(1 for v in phases_completed.values() if v)
     loop_complete = completed_count == len(QUANT_PHASE_METHODS) and not failure_guard["triggered"]
+    participation = _agent_participation(chunks_log)
+    role_rpc_calls = _role_rpc_calls(chunks_log)
+    multi_agent_working = (
+        participation.get("quant-leader", 0) > 0
+        and role_rpc_calls["bull_analyst"] > 0
+        and role_rpc_calls["bear_analyst"] > 0
+    )
+    validation_passed = loop_complete and multi_agent_working
+    if not multi_agent_working:
+        issue = (
+            "multi-agent participation missing: "
+            + ", ".join(
+                member
+                for member in ("bull_analyst", "bear_analyst")
+                if role_rpc_calls[member] == 0
+            )
+        )
+        if issue not in errors:
+            errors.append(issue)
     print(f"  Phases: {', '.join(f'{k}={v}' for k, v in phases_completed.items())}")
     print(f"  Completed: {completed_count}/8, Loop complete: {loop_complete}")
+    print(f"  Agent participation: {participation}, Multi-agent working: {multi_agent_working}")
+    print(f"  Role-owned RPC calls: {role_rpc_calls}")
 
     # 5. Save results
-    print(f"\n[5/5] Saving results...")
+    print("\n[5/5] Saving results...")
 
     summary = {
         "session_id": SESSION_ID,
@@ -374,8 +394,11 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         },
         "quant_phases": phases_completed,
         "loop_complete": loop_complete,
-        "multi_agent_working": loop_complete,  # v2: real quant loop, not just "has text"
-        "success_criterion": "8/8 validated RPC outputs",
+        "agent_participation": participation,
+        "role_rpc_calls": role_rpc_calls,
+        "multi_agent_working": multi_agent_working,
+        "validation_passed": validation_passed,
+        "success_criterion": "8/8 validated RPC outputs plus Bull/Bear-owned view RPCs",
         "repeated_failure_guard": failure_guard,
         "quant_rpc_calls": quant_rpc_calls,
         "issues": errors if errors else None,
@@ -397,7 +420,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     # Combined text output
     text_path = OUTPUT_DIR / f"multi_agent_output_{artifact_id}.md"
     with open(text_path, "w", encoding="utf-8") as f:
-        f.write(f"# Multi-Agent Quant Team Output\n\n")
+        f.write("# Multi-Agent Quant Team Output\n\n")
         f.write(f"**Session**: {SESSION_ID}\n")
         f.write(f"**Time**: {datetime.now().isoformat()}\n")
         f.write(f"**Elapsed**: {elapsed:.0f}s\n\n")
@@ -410,6 +433,37 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     print(f"  Text output: {text_path}")
 
     return summary, chunks_log
+
+
+def _agent_participation(chunks_log: list[dict]) -> dict[str, int]:
+    """Count emitted chunks by member; creation alone is not participation."""
+    counts = {"quant-leader": 0, "bull_analyst": 0, "bear_analyst": 0}
+    for chunk in chunks_log:
+        member = chunk.get("source_member")
+        if member in counts:
+            counts[member] += 1
+    return counts
+
+
+def _role_rpc_calls(chunks_log: list[dict]) -> dict[str, int]:
+    """Require Bull/Bear to call their own view RPC; leader labels are insufficient."""
+    expected = {
+        "bull_analyst": "quant_bull_view",
+        "bear_analyst": "quant_bear_view",
+    }
+    counts = {member: 0 for member in expected}
+    for chunk in chunks_log:
+        member = chunk.get("source_member")
+        if member not in expected or chunk.get("type") != "tool_call":
+            continue
+        tool_name = (
+            chunk.get("payload", {})
+            .get("tool_call", {})
+            .get("name")
+        )
+        if tool_name == expected[member]:
+            counts[member] += 1
+    return counts
 
 
 def _extract_text(chunk) -> str | None:
@@ -484,11 +538,17 @@ def _extract_error(chunk) -> str | None:
 
 
 async def main():
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=400)
     prompt = (
         "请作为量化投资团队，分析当前49只A股股票池，完成以下任务：\n"
-        "1. 获取最近一年的股票数据\n"
+        f"1. 获取 {start_date.isoformat()} 至 {end_date.isoformat()} 的股票数据；"
+        "调用 quant_fetch_data 时必须原样使用这两个日期，不得自行猜测年份\n"
         "2. 计算多因子得分（动量、波动率、回撤、成交量等）\n"
         "3. Bull分析师从看多视角推荐股票，Bear分析师从风控视角审查风险\n"
+        "   必须用 send_message 分别把任务委派给 bull_analyst 和 bear_analyst；"
+        "Coordinator 禁止代为调用 quant_bull_view 或 quant_bear_view，"
+        "必须等待两个成员各自调用其专属工具并返回结果\n"
         "4. 综合双方意见，选择15只股票并分配仓位\n"
         "5. 运行回测并生成简版投资报告\n"
         "请用中文回复。"
@@ -499,14 +559,16 @@ async def main():
     print("\n" + "=" * 70)
     print("  VALIDATION RESULT")
     print("=" * 70)
-    if summary["loop_complete"]:
-        print("  [OK] Full quant loop completed (fetch->factors->select->allocate->backtest)")
+    if summary["validation_passed"]:
+        print("  [OK] Full quant loop completed with leader/Bull/Bear participation")
     else:
-        print("  [FAIL] Quant loop incomplete — check phases below")
+        print("  [FAIL] Formal multi-agent validation did not pass")
         phases = summary.get("quant_phases", {})
         missing = [k for k, v in phases.items() if not v]
         if missing:
             print(f"  Missing phases: {', '.join(missing)}")
+        if not summary.get("multi_agent_working"):
+            print(f"  Agent participation: {summary.get('agent_participation')}")
     print(f"  Tool calls: {summary['stats']['tool_calls']}")
     print(f"  Text segments: {summary['stats']['text_segments']}")
     print(f"  Errors: {summary['stats']['errors']}")
@@ -515,6 +577,8 @@ async def main():
             print(f"    - {issue}")
     print(f"  Elapsed: {summary['elapsed_seconds']:.0f}s")
     print("\nFull output path is recorded in the timestamped validation artifacts above.")
+    if not summary["validation_passed"]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

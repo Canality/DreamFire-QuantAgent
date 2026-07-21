@@ -105,7 +105,9 @@ allowed_tools:
 > ⚠️ **重要架构原则**: Bull 和 Bear 使用**不同的因子集**，而非同一因子集的不同权重。
 > 已验证：因子集分离后 overlap 仅 28%（Spearman r=-0.095），实现真正的多视角分析。
 
-4. **创建两个分析任务**：
+4. **创建并明确委派两个分析任务**：
+
+   `create_task` 只建立任务 DAG，不会自动把任务分给成员。因子计算完成后，Coordinator 必须使用 `send_message` **分别发送**给 `bull_analyst` 和 `bear_analyst`，不得只发广播。Coordinator 禁止自行调用 `quant_bull_view` 或 `quant_bear_view`；这两个工具必须由对应成员亲自调用，随后 Coordinator 等待并收集两份结果。
 
    使用 `create_task` 分别创建 Task A 和 Task B：
 

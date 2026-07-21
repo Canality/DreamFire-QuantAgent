@@ -2,7 +2,7 @@
 
 **比赛**: 华为 openJiuwen Track 2 | **团队**: Dream Fire | **当前可信正式评分**: 暂无（旧 81.7 已确认受前视偏差污染）
 
-> **运行状态（2026-07-21 14:08）**：Phase A 已用不可变的49只/6板块 OHLCV 快照完成21个非重叠窗口、三个基线的首日开盘固定股数评测。两个简化候选均未通过事前晋级标准，生产仍使用六因子；最新正式双路径被原三数据源阻断。旧封存窗口声明已撤销，详见 [VALIDATION.md](VALIDATION.md)。
+> **运行状态（2026-07-21 15:05）**：Phase A 的三个统一基线不变，两个简化候选仍未晋级。生产行情已改为五源逐只补缺；最新研发直跑49/49，正式路径8/8 RPC，Bull/Bear均亲自调用专属工具并返回独立报告，强制审计通过。最近20日前向收益仍为-6.74%，工程恢复不代表策略提分。详见 [VALIDATION.md](VALIDATION.md)。
 
 ---
 
@@ -32,7 +32,8 @@ v2.0: 76.9 → v2.4: 79.7 (+2.8, 砍7死因子)
 
 ```
                     数据层
-    akshare → baostock → yfinance (三层级联)
+ Sina → Tencent → akshare → baostock → yfinance
+          （五源逐只补缺，最终不足49只失败关闭）
                      │
               ┌──────┴───────┐
               ▼              ▼
@@ -204,15 +205,21 @@ Coordinator (Quant PM)
 
 ## 数据源
 
-三层级联兜底，每层只补充上一层没拉到的股票：
+五源级联兜底，每层只请求上一层仍未覆盖的股票，全部统一为原始收盘价口径：
 
 ```
-akshare (东方财富)  →  快但可能被封
+Sina HTTP K-line  →  当前国内主源，快，但无正式 SLA
+    ↓ 缺失
+Tencent HTTP K-line  →  独立国内备用
+    ↓ 缺失
+akshare (东方财富)  →  SDK 备用，可能被封
     ↓ 失败
-baostock (自营服务器)  →  稳定，无频率限制，含基本面数据
+baostock (自营服务器)  →  独立服务器备用
     ↓ 失败
 yfinance (Yahoo)  →  国际备用，国内慢
 ```
+
+每轮响应都会记录各源的 `requested/newly_covered/errors`。最终只要少于49只，研发直跑和正式 Extension 都会失败关闭，不允许残缺股票池继续计算。
 
 ## 风险控制
 
@@ -232,7 +239,7 @@ yfinance (Yahoo)  →  国际备用，国内慢
 |------|------|------|
 | Agent 框架 | JiuwenSwarm | 比赛要求 |
 | LLM | DeepSeek (deepseek-chat) | 性价比 |
-| 数据源 | akshare + baostock + yfinance | 三层兜底 |
+| 数据源 | Sina + Tencent + akshare + baostock + yfinance | 五源逐只补缺、覆盖统计、失败关闭 |
 | 策略引擎 | 6 因子 IC 驱动 | 数据验证最优 |
 | 因子验证 | IC (Spearman 秩相关) | 统计显著性 |
 | 市场判市 | MA 波动率标准化 + 指数交叉验证 + 异常覆盖 | 三层融合 |
@@ -243,7 +250,7 @@ yfinance (Yahoo)  →  国际备用，国内慢
 
 ```bash
 cd jiuwenswarm
-pip install akshare baostock yfinance pandas numpy
+pip install requests akshare baostock yfinance pandas numpy
 
 # 运行自评估
 python evaluation/scoring.py --windows 8

@@ -2,25 +2,28 @@
 
 > 本文件是当前可运行状态的唯一事实源。组件测试、统一离线回测、研发直跑和 JiuwenSwarm 多 Agent 正式路径是四类不同证据，不能互相替代。
 
-## 最新结论（2026-07-21 14:08，Asia/Shanghai）
+## 最新结论（2026-07-21 15:05，Asia/Shanghai）
 
-- 当前实现：v2.9 Phase A 提交；原始评测产物保留运行时的 `afe777a + dirty` Git 状态以便审计。
-- 总体结论：**PARTIAL**。Phase A 统一评测器和三个真实基线已完成；生产双路径仍因原三数据源不可用而失败关闭。
+- 当前实现：v2.9 Phase A 之上新增五源生产数据链、命名成员装配修复与强制成员归属审计。
+- 工程结论：**PASSED**。五源数据链、研发直跑、8个RPC和真正的Bull/Bear成员委派均在本轮真实行情上完成，同轮强制审计通过。
+- 策略结论：**未改善**。最新 20 个前向收益为 -6.74%，数据可用不等于策略有效，不能把本轮工程通过表述为初赛提分。
 - 生产策略仍为历史六因子。两因子和单动量候选均未通过事前验收标准，未切换生产参数。
 - 旧“开发集 +2.21% / 两因子封存 +2.16% / 第二窗口仍封存”的结论撤销：两组数字来自不同模型，且动态验证区间已经与原第二窗口重叠。所有已观察历史现在只视为开发数据。
 
 | 能力 | 状态 | 当前证据 |
 |---|---|---|
-| 量化单元测试 | PASSED | `22 passed`；新增首日开盘、固定股数持有、统一配置和窗口因果测试 |
+| 量化单元测试 | PASSED | `23 passed`；包含五源逐只补缺、Sina/Tencent 解析、失败关闭、因果切分与仓位约束 |
+| Agent装配回归 | PASSED | `88 passed`；新增命名Bull/Bear模板获得teammate rails与QuantToolkit的回归测试 |
 | Phase A 数据快照 | PASSED | Sina 原始 OHLCV，49/49、6/6、500 个指数交易日；CSV gzip + SHA-256 manifest |
 | 三基线统一离线评测 | PASSED | 21 个互不重叠开发窗口；同一快照、同一窗口、同一选股/配仓、首日开盘一次买入后固定股数持有 |
 | 两因子候选 | DOES_NOT_QUALIFY | 全期改善明显，但最近4窗综合效用只赢2窗，未达到3/4护栏 |
 | 单 momentum_20 候选 | DOES_NOT_QUALIFY | 配对中位收益差为 -0.1943 个百分点；综合效用仅赢10/21窗 |
 | 集中策略配置 | PASSED（组件） | 研发直跑和 Extension 均从 `strategy_configs.py` 读取同一个生产六因子/仓位配置；行为未切换 |
-| 研发直跑 | FAILED（外部依赖） | 2026-07-21 13:55，akshare/baostock/yfinance 为 0/49，退出码1并 fail closed |
-| 正式多 Agent 最新摘要 | FAILED（外部依赖） | `loop_complete=false`、0/8；`quant.fetch_data failed 3 times` 护栏触发 |
-| 正式多 Agent 历史成功样本 | PASSED（历史运行证据） | 2026-07-21 13:06~13:09 曾完整执行8个 RPC；只证明链路当时可运行，不代表当前发布通过或策略成绩 |
-| 本轮双路径产物审计 | NOT PASSED | 直跑在抓数阶段失败，按设计没有生成结果 JSON；审计脚本对缺失结果文件抛出 `FileNotFoundError`，不能用旧结果拼接本轮日志 |
+| 五源生产链 | PASSED | `Sina → Tencent → akshare → baostock → yfinance`，只向下一层请求仍缺失股票；五源统一使用原始收盘价口径 |
+| 研发直跑 | PASSED | Sina 49/49、158 个交易日；15只/6板块、现金5.08%；前向20日收益 -6.74%、最大回撤7.98% |
+| 正式8 RPC工具链 | PASSED | session `multi-agent-validation-20260721-150232`；49/49、8/8 RPC、`loop_complete=true` |
+| 真正多 Agent 协作 | PASSED | leader/Bull/Bear事件数1479/271/1904；Bull和Bear分别亲自调用1次专属视角RPC并发回独立报告 |
+| 本轮路径产物审计 | PASSED | 15只、6板块、总仓位94.92%；8工具、成员归属、行情不经LLM、单股/板块/现金约束全部通过 |
 
 ## Phase A 统一基线结果
 
@@ -45,10 +48,12 @@
 - 首次结果：`jiuwenswarm/evaluation/unified_baselines_20260721_135404.json`
 - 确定性复跑：`jiuwenswarm/evaluation/unified_baselines_20260721_140824.json`
 - 最新指针：`jiuwenswarm/evaluation/unified_baselines_latest.json`
-- 研发直跑日志：`output/direct_phasea_20260721_135527.log`、`output/direct_phasea_20260721_135527.err.log`
-- 正式失败摘要：`output/multi_agent_summary_20260721-135921.json`
-- 正式复跑日志（另一独立 session，外层等待超时后人工终止）：`output/multi_phasea_20260721_135936.log`、`output/multi_phasea_20260721_135936.err.log`
-- 历史正式成功日志：`output/multi_e2e_20260721_130620.log`
+- 最新直跑结果：`output/pipeline_results_20260721_144247.json`
+- 最新直跑审计日志：`output/direct_fivesource_final_20260721_utf8.log`
+- 最新正式摘要：`output/multi_agent_summary_20260721-150232.json`
+- 最新正式 chunks：`output/multi_agent_chunks_20260721-150232.json`
+- 最新正式日志：`output/multi_fivesource_named_members_20260721.log`
+- 早期两轮分别暴露输出缓冲和leader代调问题；随后验收器增加成员归属检查，并修复命名成员模板未被装配的问题。旧轮次均未被拼入最新成功证据。
 
 ## 复现命令与退出码
 
@@ -56,7 +61,7 @@
 
 ```powershell
 .venv\Scripts\python.exe -m pytest tests\unit_tests\quant -q --no-cov
-# 退出码 0：22 passed
+# 退出码 0：23 passed
 
 .venv\Scripts\python.exe evaluation\unified_baseline_evaluation.py --datalen 500
 # 退出码 0：创建快照并完成三个基线
@@ -65,13 +70,18 @@
 # 退出码 0：确定性复跑，摘要与首次运行一致
 
 .venv\Scripts\python.exe scripts\run_quant_pipeline.py
-# 退出码 1：原三数据源 0/49，按预期失败关闭
+# 退出码 0：Sina 49/49；若前层部分失败，只对缺失股票调用下一层；最终不足49只仍失败关闭
+
+.venv\Scripts\python.exe -u evaluation\run_multi_agent.py
+# 退出码0：164秒，8/8 RPC，Bull/Bear分别亲自调用专属视角RPC，validation_passed=true。
+# 注意：PowerShell 5 将第三方 warning 写入 stderr 时，管道包装层可能返回1；应以摘要 JSON 和审计为准。
 
 .venv\Scripts\python.exe ..\.agents\skills\verify-quant-e2e\scripts\audit_run_artifacts.py `
-  --results ..\output\pipeline_results_phasea_20260721_135527.json `
-  --direct-log ..\output\direct_phasea_20260721_135527.log `
-  --multi-log ..\output\multi_phasea_20260721_135936.log
-# 退出码 1：本轮没有 direct result；审计脚本抛 FileNotFoundError。禁止改用旧固定结果拼接。
+  --results ..\output\pipeline_results_20260721_144247.json `
+  --direct-log ..\output\direct_fivesource_final_20260721_utf8.log `
+  --multi-log ..\output\multi_fivesource_named_members_20260721.log `
+  --multi-chunks ..\output\multi_agent_chunks_20260721-150232.json
+# 退出码 0：E2E AUDIT PASSED；成员事件和角色专属RPC归属均通过
 ```
 
 ## 发布判断
@@ -80,5 +90,6 @@
 
 1. Phase A 已建立可复现的统一行情快照、因果窗口和首日开盘固定股数回测口径。
 2. 三个基线已在同一开发集上完成比较；目前没有候选达到切换生产模型的完整证据标准。
-3. 生产 Agent 的策略配置已集中，但正式路径仍使用六因子，且最新真实运行被原三数据源阻断。
-4. 下一步应先研究“近期失效/市态稳定性”和配仓信息传递，继续使用同一快照做有预算的开发实验；最终测试只能使用未来未观察数据或赛事正式评测期。
+3. 五源逐只补缺链已解除本轮数据阻断；Sina/Tencent 属于无正式 SLA 的网页行情接口，因此仍须保留多源、超时、覆盖统计与失败关闭。
+4. 命名成员模板现按teammate能力装配，Team Skill要求分别委派，验收器要求Bull/Bear亲自调用专属RPC；本轮已真实通过。
+5. 最新策略前向收益仍为 -6.74%，下一步应研究“近期失效/市态稳定性”和配仓信息传递；最终测试只能使用未来未观察数据或赛事正式评测期。
