@@ -1,0 +1,187 @@
+{
+  "run_id": "phase_b_20260721_160649",
+  "created_at": "2026-07-21T16:06:49.787283+08:00",
+  "git": {
+    "commit": "6fdea0dff545aab25ee5e6b743b03f30982c2e60",
+    "dirty": true
+  },
+  "preregistration": {
+    "hypothesis": "1. Shrinking volume_trend from 0.29 to 0.15 reduces recent decay. 2. Mild score-tilted allocation (inv-vol × exp(0.20×clip(z,-2,2))) converts selection advantage into higher realized returns.",
+    "design": "2×2: factor weights (0.71/0.29 vs 0.85/0.15) × allocation (pure inv-vol vs score-tilted)",
+    "fixed_constraints": {
+      "selection": "positive composite, naked top 15",
+      "max_single_stock": 0.1,
+      "max_single_sector": 0.25,
+      "max_total_weight": 0.95
+    },
+    "success_criteria": {
+      "goal": "Preserve ~+0.77pp pairwise return advantage over production while keeping median DD worsening ≤ +0.30pp and ≥ 2/3 consecutive 7-window time blocks with positive composite utility.",
+      "utility": "0.70 × total_return - 0.30 × max_drawdown"
+    }
+  },
+  "snapshot_id": "sina_20260721_135352",
+  "summaries": {
+    "production_six_factor": {
+      "n_windows": 21,
+      "median_return": -0.000745,
+      "mean_return": 0.004539,
+      "worst_return": -0.073881,
+      "positive_windows": 10,
+      "median_drawdown": 0.034175,
+      "worst_drawdown": 0.102976,
+      "median_annualized_return": -0.009345,
+      "median_annualized_volatility": 0.120732,
+      "median_sharpe": -0.1267,
+      "median_calmar": -0.6651,
+      "median_invested": 0.9493,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {
+        "momentum_20_z": 0.341961,
+        "momentum_60_z": 0.130015,
+        "max_drawdown_z": 0.070099,
+        "reversal_5_z": 0.043551,
+        "volume_corr_z": 0.129224,
+        "volume_trend_z": 0.013112
+      }
+    },
+    "phase_b_t0_control": {
+      "n_windows": 21,
+      "median_return": 0.003819,
+      "mean_return": 0.012134,
+      "worst_return": -0.059758,
+      "positive_windows": 13,
+      "median_drawdown": 0.037342,
+      "worst_drawdown": 0.108589,
+      "median_annualized_return": 0.0492,
+      "median_annualized_volatility": 0.14706,
+      "median_sharpe": 0.5542,
+      "median_calmar": 3.5244,
+      "median_invested": 0.9493,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {
+        "momentum_20_z": 0.73142,
+        "momentum_60_z": 0.0,
+        "max_drawdown_z": 0.0,
+        "reversal_5_z": 0.0,
+        "volume_corr_z": 0.0,
+        "volume_trend_z": 0.143503
+      }
+    },
+    "phase_b_t1_shrink": {
+      "n_windows": 21,
+      "median_return": 0.001558,
+      "mean_return": 0.008766,
+      "worst_return": -0.064022,
+      "positive_windows": 12,
+      "median_drawdown": 0.037625,
+      "worst_drawdown": 0.106044,
+      "median_annualized_return": 0.019804,
+      "median_annualized_volatility": 0.144093,
+      "median_sharpe": 0.1612,
+      "median_calmar": 1.1693,
+      "median_invested": 0.9493,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {
+        "momentum_20_z": 0.921064,
+        "momentum_60_z": 0.0,
+        "max_drawdown_z": 0.0,
+        "reversal_5_z": 0.0,
+        "volume_corr_z": 0.0,
+        "volume_trend_z": 0.045617
+      }
+    },
+    "phase_b_t2_score_alloc": {
+      "n_windows": 21,
+      "median_return": 0.004998,
+      "mean_return": 0.01347,
+      "worst_return": -0.064125,
+      "positive_windows": 12,
+      "median_drawdown": 0.032227,
+      "worst_drawdown": 0.10884,
+      "median_annualized_return": 0.064836,
+      "median_annualized_volatility": 0.150685,
+      "median_sharpe": 0.4025,
+      "median_calmar": 2.12,
+      "median_invested": 0.9494,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {
+        "momentum_20_z": 0.73142,
+        "momentum_60_z": 0.0,
+        "max_drawdown_z": 0.0,
+        "reversal_5_z": 0.0,
+        "volume_corr_z": 0.0,
+        "volume_trend_z": 0.143503
+      }
+    },
+    "phase_b_t3_joint": {
+      "n_windows": 21,
+      "median_return": 0.003307,
+      "mean_return": 0.010329,
+      "worst_return": -0.065574,
+      "positive_windows": 12,
+      "median_drawdown": 0.032243,
+      "worst_drawdown": 0.106779,
+      "median_annualized_return": 0.042472,
+      "median_annualized_volatility": 0.14495,
+      "median_sharpe": 0.4248,
+      "median_calmar": 3.3001,
+      "median_invested": 0.9494,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {
+        "momentum_20_z": 0.921064,
+        "momentum_60_z": 0.0,
+        "max_drawdown_z": 0.0,
+        "reversal_5_z": 0.0,
+        "volume_corr_z": 0.0,
+        "volume_trend_z": 0.045617
+      }
+    }
+  },
+  "comparisons": {
+    "phase_b_t0_control": {
+      "median_return_delta_pp": 0.7673,
+      "mean_return_delta_pp": 0.7595,
+      "median_dd_delta_pp": 0.0998,
+      "utility_wins": "15/21",
+      "utility_win_rate": 0.7143,
+      "recent4_wins": "2/4",
+      "block_7w_positive": "3/3",
+      "worst_return_delta_pp": 1.4123
+    },
+    "phase_b_t1_shrink": {
+      "median_return_delta_pp": 0.0,
+      "mean_return_delta_pp": 0.4227,
+      "median_dd_delta_pp": 0.1363,
+      "utility_wins": "10/21",
+      "utility_win_rate": 0.4762,
+      "recent4_wins": "2/4",
+      "block_7w_positive": "1/3",
+      "worst_return_delta_pp": 0.9859
+    },
+    "phase_b_t2_score_alloc": {
+      "median_return_delta_pp": 0.9102,
+      "mean_return_delta_pp": 0.8931,
+      "median_dd_delta_pp": 0.0986,
+      "utility_wins": "15/21",
+      "utility_win_rate": 0.7143,
+      "recent4_wins": "2/4",
+      "block_7w_positive": "3/3",
+      "worst_return_delta_pp": 0.9756
+    },
+    "phase_b_t3_joint": {
+      "median_return_delta_pp": 0.3216,
+      "mean_return_delta_pp": 0.579,
+      "median_dd_delta_pp": 0.0262,
+      "utility_wins": "13/21",
+      "utility_win_rate": 0.619,
+      "recent4_wins": "2/4",
+      "block_7w_positive": "2/3",
+      "worst_return_delta_pp": 0.8307
+    }
+  }
+}

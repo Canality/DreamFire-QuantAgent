@@ -89,6 +89,7 @@ class PositionConfig:
     min_cash: float = 0.05
     max_drawdown_exit: float = 0.15
     top_n_stocks: int = 15
+    score_tilt: float = 0.0  # 0=inverse-vol only; >0 multiplies by exp(tilt * clip(z,-2,2))
 
 
 @dataclass
@@ -316,7 +317,12 @@ class PositionSizer:
 
     def allocate(self, scores: pd.DataFrame,
                  price_data: pd.DataFrame) -> Dict[str, float]:
-        """Allocate positions using risk-parity among top-N stocks."""
+        """Allocate positions using risk-parity among top-N stocks.
+
+        When config.score_tilt > 0, multiplies inverse-vol by
+        exp(tilt * clip(composite_z, -2, 2)) so stocks with stronger
+        predicted scores receive slightly higher weight.
+        """
         cfg = self.config
         top_n = scores.head(cfg.top_n_stocks)
 
@@ -329,6 +335,17 @@ class PositionSizer:
                 vols[ticker] = 0.02
 
         inv_vol = {t: 1.0 / max(v, 0.005) for t, v in vols.items()}
+
+        # Optional score tilt: modestly overweight higher-composite stocks
+        if cfg.score_tilt > 0 and "composite" in top_n.columns:
+            comp_z = (top_n["composite"] - top_n["composite"].mean()) / (
+                top_n["composite"].std() + 1e-10)
+            comp_z = comp_z.clip(-2, 2)
+            tilt = np.exp(cfg.score_tilt * comp_z)
+            for t in inv_vol:
+                if t in tilt.index:
+                    inv_vol[t] *= float(tilt.loc[t])
+
         total_inv_vol = sum(inv_vol.values())
         raw_weights = {t: v / total_inv_vol for t, v in inv_vol.items()}
 

@@ -22,6 +22,7 @@ class StrategySpec:
     max_single_stock: float = 0.10
     max_single_sector: float = 0.25
     max_total_weight: float = 0.95
+    score_tilt: float = 0.0  # 0=inverse-vol only; >0 = tilt towards higher scores
 
     def factor_config(self) -> FactorConfig:
         mom20, mom60, max_dd, reversal5, volume_corr, volume_trend = self.factor_weights
@@ -40,6 +41,7 @@ class StrategySpec:
             max_single_sector=self.max_single_sector,
             min_cash=round(1.0 - self.max_total_weight, 10),
             top_n_stocks=self.top_n,
+            score_tilt=self.score_tilt,
         )
 
 
@@ -60,6 +62,31 @@ STRATEGY_SPECS: dict[str, StrategySpec] = {
         name="momentum20_only",
         description="Single-factor momentum_20 diagnostic baseline",
         factor_weights=(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+    ),
+    # --- Phase B: 2×2 mechanism experiment ---
+    "phase_b_t0_control": StrategySpec(
+        name="phase_b_t0_control",
+        description="T0 control: mom20 0.71/vol_trend 0.29, pure inverse-vol",
+        factor_weights=(0.71, 0.0, 0.0, 0.0, 0.0, 0.29),
+        score_tilt=0.0,
+    ),
+    "phase_b_t1_shrink": StrategySpec(
+        name="phase_b_t1_shrink",
+        description="T1 shrinkage: mom20 0.85/vol_trend 0.15, pure inverse-vol",
+        factor_weights=(0.85, 0.0, 0.0, 0.0, 0.0, 0.15),
+        score_tilt=0.0,
+    ),
+    "phase_b_t2_score_alloc": StrategySpec(
+        name="phase_b_t2_score_alloc",
+        description="T2 score-allocation: 0.71/0.29, inv-vol × exp(0.20×clip(z,-2,2))",
+        factor_weights=(0.71, 0.0, 0.0, 0.0, 0.0, 0.29),
+        score_tilt=0.20,
+    ),
+    "phase_b_t3_joint": StrategySpec(
+        name="phase_b_t3_joint",
+        description="T3 joint: 0.85/0.15, inv-vol × exp(0.20×clip(z,-2,2))",
+        factor_weights=(0.85, 0.0, 0.0, 0.0, 0.0, 0.15),
+        score_tilt=0.20,
     ),
 }
 
