@@ -2,9 +2,9 @@
 
 > 本文件是当前可运行状态的唯一事实源。组件测试、统一离线回测、研发直跑和 JiuwenSwarm 多 Agent 正式路径是四类不同证据，不能互相替代。
 
-## 最新结论（2026-07-21 15:05，Asia/Shanghai）
+## 最新结论（2026-07-21 16:53，Asia/Shanghai）
 
-- 当前实现：v2.9 Phase A 之上新增五源生产数据链、命名成员装配修复与强制成员归属审计。
+- 当前实现：Git HEAD `103df19`（v2.11 文档基线）之上新增本地代理评分器和 Phase B 逐窗证据输出；工作树尚未提交。
 - 工程结论：**PASSED**。五源数据链、研发直跑、8个RPC和真正的Bull/Bear成员委派均在本轮真实行情上完成，同轮强制审计通过。
 - 策略结论：**未改善**。最新 20 个前向收益为 -6.74%，数据可用不等于策略有效，不能把本轮工程通过表述为初赛提分。
 - 生产策略仍为历史六因子。两因子和单动量候选均未通过事前验收标准，未切换生产参数。
@@ -24,6 +24,7 @@
 | 正式8 RPC工具链 | PASSED | session `multi-agent-validation-20260721-150232`；49/49、8/8 RPC、`loop_complete=true` |
 | 真正多 Agent 协作 | PASSED | leader/Bull/Bear事件数1479/271/1904；Bull和Bear分别亲自调用1次专属视角RPC并发回独立报告 |
 | 本轮路径产物审计 | PASSED | 15只、6板块、总仓位94.92%；8工具、成员归属、行情不经LLM、单股/板块/现金约束全部通过 |
+| 本地代理评分器 | PASSED（组件+固定快照） | 5项边界单测通过；生产参考40.00/80，T2为43.57/80；资源未知时保持pending |
 
 ## Phase A 统一基线结果
 
@@ -108,9 +109,39 @@
 
 关键发现：
 - **volume_trend 收缩到 0.15 不可行**（T1 几乎丢失全部优势）
-- **得分倾斜有效**：T2 不仅收益最高，回撤也最低（3.22%），同时改善收益和风险
+- **得分倾斜提高收益**：T2自身中位回撤3.22%低于生产的3.42%，但逐日期配对中位回撤差为+0.0986pp（略恶化）；两个口径必须同时披露
 - 所有候选仍失败”最近4窗≥3赢”标准（全部 2/4），但 7 窗时间块均为正（T0/T2: 3/3）
 - **T2 为当前最强 challenger**，状态 CHALLENGER_WITH_RECENT_DECAY；禁止在未开新封存窗口前写入生产配置
+
+## 本地代理评分（2026-07-21）
+
+官方明确投资组合80分（收益70%、回撤30%）与资源20分（Token/运行/算力为10/5/5），但没有公布参赛队伍标准化分布和资源基准。官方文本还存在“Token标题10分但正文达标15分、运行标题5分但正文达标10分”的内部冲突；本地代理依据维度总分按10/5/5封顶，并把该决定写入结果假设。
+
+`evaluation/local_scoring.py` 不再使用旧 `scoring.py` 的人为收益分段、重叠窗口、收盘价回测和估算资源满分。它读取统一评测的逐窗证据，以生产六因子21窗为冻结经验参考分布：收益占56分、回撤占24分；资源缺少真实测量或官方基准时标记pending并输出总分区间。
+
+| 策略 | 投资期望分/80 | 中位 | P10 | 最差 | 100分制状态 |
+|---|---:|---:|---:|---:|---|
+| 生产六因子参考 | 40.00 | 45.33 | 8.00 | 4.19 | 40.00~60.00 |
+| Phase B T2 | **43.57** | **48.38** | **10.67** | **6.10** | **43.57~63.57** |
+
+这些是本地开发代理分，不是官方成绩或样本外结果。固定证据：`evaluation/phase_b_20260721_165233.json`、`evaluation/local_score_phase_b_t2_latest.json`、`evaluation/local_score_production_latest.json`；方法说明见 `evaluation/LOCAL_SCORING.md`。
+
+复现：
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests\unit_tests\quant\test_local_scoring.py -q --no-cov
+.venv\Scripts\python.exe evaluation\local_scoring.py `
+  --results evaluation\phase_b_latest.json `
+  --strategy phase_b_t2_score_alloc `
+  --reference-strategy production_six_factor `
+  --output evaluation\local_score_phase_b_t2_latest.json
+```
+
+### 版本管理审计
+
+- Git提交历史已经使用v2.6~v2.11命名，但仓库实际Git tag只有`v2.5`；版本名目前是提交信息约定，不是完整tag发布体系。
+- `VALIDATION.md`此前顶部仍停留在15:05/v2.9+v2.10，而README和后半部分已包含v2.11/Phase B；本轮已同步顶部事实。
+- legacy `evaluation/scoring.py`和`evaluation/latest_score.json`继续保留追溯，但不得作为当前评分入口或最新成绩。
 
 ## 下一阶段计划
 

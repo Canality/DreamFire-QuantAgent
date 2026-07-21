@@ -2,16 +2,17 @@
 
 **比赛**: 华为 openJiuwen Track 2 | **团队**: Dream Fire
 
-> **当前状态（v2.11, 2026-07-21）**：无可信正式评分。旧 v2.6 的 81.7 分已确认受前视偏差和回测计算错误污染。Phase B T2 得分倾斜配仓为当前最强 challenger（开发集中位 +0.50% vs 生产 -0.07%）。工程路径已通过：五源数据链 49/49、8/8 RPC、真多 Agent Bull/Bear 委派验证。详见 **[VALIDATION.md](VALIDATION.md)**。
+> **当前状态（v2.11, 2026-07-21）**：无官方成绩；已建立显式标注假设的本地代理评分。旧 v2.6 的 81.7 分已确认受前视偏差和回测计算错误污染。Phase B T2 得分倾斜配仓为当前最强 challenger（开发集中位 +0.50% vs 生产 -0.07%）。工程路径已通过：五源数据链 49/49、8/8 RPC、真多 Agent Bull/Bear 委派验证。详见 **[VALIDATION.md](VALIDATION.md)**。
 
 ---
 
 ## 核心结论
 
 1. **旧分数无效**：v2.0-v2.7 所有分数（76.9-81.7）均存在前视偏差或回测计算错误。自 v2.8 起使用 Sina 不可变 OHLCV 快照、非重叠因果窗口、首日开盘固定股数买入后持有回测。
-2. **Walk-Forward IC（无泄漏，21 非重叠窗口）**：仅 momentum_20（mean +0.0787, Pos 72.7%）和 volume_trend（mean +0.0315, Pos 81.8%）通过预注册门槛。旧 6 因子中的 4 个已被否决。
+2. **Walk-Forward IC（无泄漏，原实验11个开发窗口）**：仅 momentum_20（mean +0.0787, Pos 72.7%）和 volume_trend（mean +0.0315, Pos 81.8%）通过当轮预注册门槛。旧 6 因子中的 4 个未通过；这11窗IC实验和随后Phase A/B的21窗组合回测不能混写。
 3. **Phase B T2 为最强 challenger**：因子 0.71/0.29 + 得分倾斜配仓（inv-vol × exp(0.20×clip(z,-2,2))），开发集中位 +0.50%、配对收益差 +0.91pp、15/21 效用胜率。但仍未完成样本外验证。
 4. **生产策略仍为 6 因子**：未切换到任何候选，等待真正样本外证据或赛事评测。
+5. **本地代理评分**：按官方80/20维度，使用冻结参考分布为收益/回撤做经验百分位评分；T2投资维度43.57/80，生产参考40.00/80。资源基准未公布，总分只能报告43.57~63.57区间，不能称为官方分。
 
 ## 策略架构
 
@@ -73,9 +74,20 @@
 | **T2 得分倾斜** | **0.71/0.29** | **inv-vol × exp(0.20×clip(z,-2,2))** | **+0.50%** | **+0.91pp** | **15/21** |
 | T3 联合 | 0.85/0.15 | 得分倾斜 | +0.33% | +0.32pp | 13/21 |
 
-关键发现：收缩 volume_trend 到 0.15 破坏全部优势（T1 vs T0）。得分倾斜同时改善收益和回撤——更高得分的股票在被测股票池中恰好波动更低。
+关键发现：收缩 volume_trend 到 0.15 破坏全部优势（T1 vs T0）。得分倾斜提高了收益；T2自身的中位回撤3.22%低于生产的3.42%，但同日期配对中位回撤差为+0.10pp（略恶化），因此不能笼统写成“收益和回撤同时改善”。
 
-## Walk-Forward IC（无泄漏，21 非重叠窗口）
+## 本地代理评分（不是官方成绩）
+
+官方已明确投资组合80分（收益56、最大回撤24）和资源20分（Token 10、运行5、算力5），但尚未公布参赛队伍标准化公式及资源基准。项目使用 `local_proxy_score_v1`：冻结生产六因子21窗为参考分布，将候选逐窗收益与回撤换算为经验百分位。
+
+| 策略 | 投资期望分/80 | 中位 | P10 | 最差 |
+|---|---:|---:|---:|---:|
+| 生产六因子参考 | 40.00 | 45.33 | 8.00 | 4.19 |
+| **Phase B T2** | **43.57** | **48.38** | **10.67** | **6.10** |
+
+资源实际用量或官方基准缺失时不擅自给满分，因此T2当前100分制只能报告 **43.57~63.57** 的本地区间。方法、假设和复现命令见 `jiuwenswarm/evaluation/LOCAL_SCORING.md`。
+
+## Walk-Forward IC（无泄漏，原实验11个开发窗口）
 
 | 因子 | Mean IC | Std IC | Pos% | 判定 |
 |---|---:|---:|---:|---:|
@@ -144,6 +156,9 @@ cd jiuwenswarm
 # Phase B 实验
 .venv\Scripts\python.exe evaluation\phase_b_experiment.py --snapshot evaluation\data_snapshots\sina_20260721_135352
 
+# 本地代理评分（资源基准未知时输出区间）
+.venv\Scripts\python.exe evaluation\local_scoring.py --results evaluation\phase_b_latest.json --strategy phase_b_t2_score_alloc --reference-strategy production_six_factor
+
 # 研发直跑
 .venv\Scripts\python.exe scripts\run_quant_pipeline.py
 
@@ -164,7 +179,9 @@ Track_2/
 │   │   ├── unified_baseline_evaluation.py  ← Phase A 统一评测器（不可变快照+因果窗口+开盘买入）
 │   │   ├── phase0_experiment.py            ← Phase 0 对照实验（已被统一评测器替代）
 │   │   ├── phase_b_experiment.py           ← Phase B 2×2 机制实验
-│   │   ├── scoring.py                      ← 旧自评估脚本（重叠窗口，结果已作废）
+│   │   ├── local_scoring.py                ← 当前本地代理评分（80/20、未知项pending）
+│   │   ├── LOCAL_SCORING.md                ← 评分假设、公式和复现说明
+│   │   ├── scoring.py                      ← legacy旧自评估脚本（重叠窗口，结果已作废）
 │   │   ├── run_multi_agent.py              ← 多 Agent 程序化验证
 │   │   └── data_snapshots/                 ← Sina 不可变快照 + SHA-256 manifest
 │   ├── jiuwenswarm/

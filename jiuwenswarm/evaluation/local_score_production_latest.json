@@ -1,0 +1,337 @@
+{
+  "schema_version": "local_proxy_score_v1",
+  "created_at": "2026-07-21T16:52:45.748977+08:00",
+  "status": "portfolio_proxy_resource_pending",
+  "official_unknowns": [
+    "peer return/drawdown distribution or direct conversion formula",
+    "official token baseline",
+    "official runtime baseline",
+    "official compute-economy assessment"
+  ],
+  "declared_assumptions": [
+    "portfolio proxy uses the frozen reference strategy's causal 20-day windows as the empirical ranking distribution",
+    "declared dimension caps 10/5/5 override contradictory prose saying baseline performance earns 15/10 points",
+    "expected portfolio score is the primary local estimate; median, p10 and worst are robustness diagnostics"
+  ],
+  "inputs": {
+    "results": "D:\\比赛\\HUAWEI\\Track_2\\jiuwenswarm\\evaluation\\phase_b_latest.json",
+    "strategy": "production_six_factor",
+    "results_run_id": "phase_b_20260721_165233",
+    "results_git": {
+      "commit": "103df19f449a75739a1934cd0a0a7bb93e37e379",
+      "dirty": true
+    },
+    "reference_results": "D:\\比赛\\HUAWEI\\Track_2\\jiuwenswarm\\evaluation\\phase_b_latest.json",
+    "reference_strategy": "production_six_factor",
+    "reference_run_id": "phase_b_20260721_165233",
+    "reference_snapshot_id": "sina_20260721_135352"
+  },
+  "dimension_1_portfolio": {
+    "method": "frozen_reference_empirical_percentile_v1",
+    "weights": {
+      "return": {
+        "max": 56.0,
+        "share_of_portfolio": 0.7
+      },
+      "max_drawdown": {
+        "max": 24.0,
+        "share_of_portfolio": 0.3
+      }
+    },
+    "n_windows": 21,
+    "expected_score": 40.0,
+    "median_score": 45.3333,
+    "p10_score": 8.0,
+    "worst_score": 4.1905,
+    "expected_return_score": 28.0,
+    "expected_drawdown_score": 12.0,
+    "max": 80.0,
+    "window_scores": [
+      {
+        "decision_date": "2024-10-25",
+        "test_start": "2024-10-28",
+        "test_end": "2024-11-22",
+        "total_return": -0.04714,
+        "max_drawdown": 0.102976,
+        "return_percentile": 0.119048,
+        "drawdown_percentile": 0.02381,
+        "return_score": 6.6667,
+        "drawdown_score": 0.5714,
+        "portfolio_score": 7.2381
+      },
+      {
+        "decision_date": "2024-11-22",
+        "test_start": "2024-11-25",
+        "test_end": "2024-12-20",
+        "total_return": 0.028829,
+        "max_drawdown": 0.017022,
+        "return_percentile": 0.690476,
+        "drawdown_percentile": 0.785714,
+        "return_score": 38.6667,
+        "drawdown_score": 18.8571,
+        "portfolio_score": 57.5238
+      },
+      {
+        "decision_date": "2024-12-20",
+        "test_start": "2024-12-23",
+        "test_end": "2025-01-20",
+        "total_return": -0.015273,
+        "max_drawdown": 0.057359,
+        "return_percentile": 0.309524,
+        "drawdown_percentile": 0.261905,
+        "return_score": 17.3333,
+        "drawdown_score": 6.2857,
+        "portfolio_score": 23.619
+      },
+      {
+        "decision_date": "2025-01-20",
+        "test_start": "2025-01-21",
+        "test_end": "2025-02-25",
+        "total_return": -0.013407,
+        "max_drawdown": 0.023946,
+        "return_percentile": 0.357143,
+        "drawdown_percentile": 0.690476,
+        "return_score": 20.0,
+        "drawdown_score": 16.5714,
+        "portfolio_score": 36.5714
+      },
+      {
+        "decision_date": "2025-02-25",
+        "test_start": "2025-02-26",
+        "test_end": "2025-03-25",
+        "total_return": 0.0299,
+        "max_drawdown": 0.029991,
+        "return_percentile": 0.738095,
+        "drawdown_percentile": 0.595238,
+        "return_score": 41.3333,
+        "drawdown_score": 14.2857,
+        "portfolio_score": 55.619
+      },
+      {
+        "decision_date": "2025-03-25",
+        "test_start": "2025-03-26",
+        "test_end": "2025-04-23",
+        "total_return": -0.040916,
+        "max_drawdown": 0.095658,
+        "return_percentile": 0.166667,
+        "drawdown_percentile": 0.071429,
+        "return_score": 9.3333,
+        "drawdown_score": 1.7143,
+        "portfolio_score": 11.0476
+      },
+      {
+        "decision_date": "2025-04-23",
+        "test_start": "2025-04-24",
+        "test_end": "2025-05-26",
+        "total_return": -0.004408,
+        "max_drawdown": 0.014776,
+        "return_percentile": 0.452381,
+        "drawdown_percentile": 0.833333,
+        "return_score": 25.3333,
+        "drawdown_score": 20.0,
+        "portfolio_score": 45.3333
+      },
+      {
+        "decision_date": "2025-05-26",
+        "test_start": "2025-05-27",
+        "test_end": "2025-06-24",
+        "total_return": -0.000745,
+        "max_drawdown": 0.014051,
+        "return_percentile": 0.5,
+        "drawdown_percentile": 0.880952,
+        "return_score": 28.0,
+        "drawdown_score": 21.1429,
+        "portfolio_score": 49.1429
+      },
+      {
+        "decision_date": "2025-06-24",
+        "test_start": "2025-06-25",
+        "test_end": "2025-07-22",
+        "total_return": 0.04125,
+        "max_drawdown": 0.011978,
+        "return_percentile": 0.785714,
+        "drawdown_percentile": 0.928571,
+        "return_score": 44.0,
+        "drawdown_score": 22.2857,
+        "portfolio_score": 66.2857
+      },
+      {
+        "decision_date": "2025-07-22",
+        "test_start": "2025-07-23",
+        "test_end": "2025-08-19",
+        "total_return": 0.007059,
+        "max_drawdown": 0.03332,
+        "return_percentile": 0.547619,
+        "drawdown_percentile": 0.547619,
+        "return_score": 30.6667,
+        "drawdown_score": 13.1429,
+        "portfolio_score": 43.8095
+      },
+      {
+        "decision_date": "2025-08-19",
+        "test_start": "2025-08-20",
+        "test_end": "2025-09-16",
+        "total_return": 0.121137,
+        "max_drawdown": 0.034175,
+        "return_percentile": 0.97619,
+        "drawdown_percentile": 0.5,
+        "return_score": 54.6667,
+        "drawdown_score": 12.0,
+        "portfolio_score": 66.6667
+      },
+      {
+        "decision_date": "2025-09-16",
+        "test_start": "2025-09-17",
+        "test_end": "2025-10-22",
+        "total_return": 0.041597,
+        "max_drawdown": 0.044678,
+        "return_percentile": 0.880952,
+        "drawdown_percentile": 0.357143,
+        "return_score": 49.3333,
+        "drawdown_score": 8.5714,
+        "portfolio_score": 57.9048
+      },
+      {
+        "decision_date": "2025-10-22",
+        "test_start": "2025-10-23",
+        "test_end": "2025-11-19",
+        "total_return": 0.041582,
+        "max_drawdown": 0.035317,
+        "return_percentile": 0.833333,
+        "drawdown_percentile": 0.452381,
+        "return_score": 46.6667,
+        "drawdown_score": 10.8571,
+        "portfolio_score": 57.5238
+      },
+      {
+        "decision_date": "2025-11-19",
+        "test_start": "2025-11-20",
+        "test_end": "2025-12-17",
+        "total_return": -0.028622,
+        "max_drawdown": 0.036344,
+        "return_percentile": 0.261905,
+        "drawdown_percentile": 0.404762,
+        "return_score": 14.6667,
+        "drawdown_score": 9.7143,
+        "portfolio_score": 24.381
+      },
+      {
+        "decision_date": "2025-12-17",
+        "test_start": "2025-12-18",
+        "test_end": "2026-01-16",
+        "total_return": 0.021643,
+        "max_drawdown": 0.019927,
+        "return_percentile": 0.595238,
+        "drawdown_percentile": 0.738095,
+        "return_score": 33.3333,
+        "drawdown_score": 17.7143,
+        "portfolio_score": 51.0476
+      },
+      {
+        "decision_date": "2026-01-16",
+        "test_start": "2026-01-19",
+        "test_end": "2026-02-13",
+        "total_return": -0.006115,
+        "max_drawdown": 0.061027,
+        "return_percentile": 0.404762,
+        "drawdown_percentile": 0.214286,
+        "return_score": 22.6667,
+        "drawdown_score": 5.1429,
+        "portfolio_score": 27.8095
+      },
+      {
+        "decision_date": "2026-02-13",
+        "test_start": "2026-02-24",
+        "test_end": "2026-03-23",
+        "total_return": -0.073881,
+        "max_drawdown": 0.073881,
+        "return_percentile": 0.02381,
+        "drawdown_percentile": 0.119048,
+        "return_score": 1.3333,
+        "drawdown_score": 2.8571,
+        "portfolio_score": 4.1905
+      },
+      {
+        "decision_date": "2026-03-23",
+        "test_start": "2026-03-24",
+        "test_end": "2026-04-21",
+        "total_return": 0.048035,
+        "max_drawdown": 0.009566,
+        "return_percentile": 0.928571,
+        "drawdown_percentile": 0.97619,
+        "return_score": 52.0,
+        "drawdown_score": 23.4286,
+        "portfolio_score": 75.4286
+      },
+      {
+        "decision_date": "2026-04-21",
+        "test_start": "2026-04-22",
+        "test_end": "2026-05-22",
+        "total_return": -0.03254,
+        "max_drawdown": 0.048842,
+        "return_percentile": 0.214286,
+        "drawdown_percentile": 0.309524,
+        "return_score": 12.0,
+        "drawdown_score": 7.4286,
+        "portfolio_score": 19.4286
+      },
+      {
+        "decision_date": "2026-05-22",
+        "test_start": "2026-05-25",
+        "test_end": "2026-06-22",
+        "total_return": 0.027784,
+        "max_drawdown": 0.024923,
+        "return_percentile": 0.642857,
+        "drawdown_percentile": 0.642857,
+        "return_score": 36.0,
+        "drawdown_score": 15.4286,
+        "portfolio_score": 51.4286
+      },
+      {
+        "decision_date": "2026-06-22",
+        "test_start": "2026-06-23",
+        "test_end": "2026-07-20",
+        "total_return": -0.050449,
+        "max_drawdown": 0.06419,
+        "return_percentile": 0.071429,
+        "drawdown_percentile": 0.166667,
+        "return_score": 4.0,
+        "drawdown_score": 4.0,
+        "portfolio_score": 8.0
+      }
+    ]
+  },
+  "dimension_2_resources": {
+    "score": null,
+    "confirmed_subtotal": 0.0,
+    "pending_max": 20.0,
+    "max": 20.0,
+    "components": {
+      "tokens": {
+        "score": null,
+        "max": 10.0,
+        "status": "pending_baseline_or_measurement",
+        "detail": "token usage requires both actual usage and the organiser baseline"
+      },
+      "runtime": {
+        "score": null,
+        "max": 5.0,
+        "status": "pending_baseline_or_measurement",
+        "detail": "runtime requires both actual usage and the organiser baseline"
+      },
+      "compute_economy": {
+        "score": null,
+        "max": 5.0,
+        "status": "pending_assessment",
+        "detail": "organiser compute-economy tier has not been assessed"
+      }
+    }
+  },
+  "local_total_score": null,
+  "local_total_score_range": [
+    40.0,
+    60.0
+  ],
+  "max": 100.0,
+  "not_official_score": true
+}

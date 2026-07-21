@@ -6,7 +6,10 @@ Pre-registered before run. No threshold adjustments after seeing results.
 
 from __future__ import annotations
 
-import argparse, json, time
+import argparse
+import importlib.util as _iu
+import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +18,6 @@ import numpy as np
 from jiuwenswarm.quant.strategy_configs import STRATEGY_SPECS
 
 _EVAL_DIR = Path(__file__).resolve().parent
-import importlib.util as _iu
 _UE_SPEC = _iu.spec_from_file_location(
     "unified_baseline_evaluation",
     _EVAL_DIR / "unified_baseline_evaluation.py",
@@ -166,6 +168,9 @@ def main() -> int:
         "snapshot_id": snapshot["manifest"]["snapshot_id"],
         "summaries": summaries,
         "comparisons": comparisons,
+        # Preserve per-window evidence so downstream local scoring and audits
+        # never have to reconstruct results from rounded summaries.
+        "details": details,
     }
     out_path = _EVAL_DIR / f"{run_id}.json"
     with open(out_path, "w", encoding="utf-8") as f:
