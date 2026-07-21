@@ -13,12 +13,11 @@ matrices through the LLM context window.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -271,10 +270,11 @@ class QuantFinanceExtension(BaseExtension):
 
         def _compute() -> dict:
             from jiuwenswarm.quant.market_regime import MarketRegime
-            from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig
+            from jiuwenswarm.quant.factors import FactorCalculator
+            from jiuwenswarm.quant.strategy_configs import production_factor_config
 
             regime = MarketRegime.detect(prices)
-            factor_cfg = FactorConfig()
+            factor_cfg = production_factor_config()
             factor_calc = FactorCalculator(factor_cfg)
             factor_calc.regime = regime
             factors = factor_calc.compute_factors(prices, volumes if not volumes.empty else None)
@@ -385,8 +385,9 @@ class QuantFinanceExtension(BaseExtension):
             return {"success": False, "detail": f"selected tickers missing from cache: {missing}"}
 
         def _allocate() -> dict:
-            from jiuwenswarm.quant.factors import PositionSizer, PositionConfig
+            from jiuwenswarm.quant.factors import PositionSizer
             from jiuwenswarm.quant.stock_pool import SECTOR_MAP
+            from jiuwenswarm.quant.strategy_configs import production_position_config
 
             # Build minimal scores df with just the selected tickers
             # Use SECTOR_MAP (not _TICKER_NAME_MAP) so sector caps apply
@@ -397,7 +398,7 @@ class QuantFinanceExtension(BaseExtension):
                 index=tickers,
             )
 
-            sizer = PositionSizer(PositionConfig())
+            sizer = PositionSizer(production_position_config())
             weights = sizer.allocate(scores, prices[tickers])
 
             portfolio = []
@@ -750,7 +751,6 @@ def _summarize_top_movers(prices_df: pd.DataFrame, top_n: int = 10) -> list[dict
     recent = prices_df.iloc[-5:]
     returns = (recent.iloc[-1] / recent.iloc[0] - 1).sort_values()
     result = []
-    import numpy as np
     for ticker in list(returns.index[:top_n // 2]) + list(returns.index[-top_n // 2:]):
         result.append({
             "ticker": str(ticker),
@@ -1041,9 +1041,9 @@ def _build_report_markdown(portfolio, backtest, regime, top_stocks):
         "",
         "## 一、市场诊断",
         "",
-        f"### 1.1 判市结果",
+        "### 1.1 判市结果",
         f"- **最终判市**: {regime_label}",
-        f"- **判市方法**: 技术面信号 + CSI 300 指数信号 → 融合投票",
+        "- **判市方法**: 技术面信号 + CSI 300 指数信号 → 融合投票",
         "",
         "### 1.2 当前市场含义",
     ]

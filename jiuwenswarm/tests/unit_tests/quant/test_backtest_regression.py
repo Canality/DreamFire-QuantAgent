@@ -7,7 +7,6 @@ Codex minimal reproduction:
 """
 
 import pandas as pd
-import numpy as np
 from jiuwenswarm.quant.backtest_engine import BacktestEngine
 
 
@@ -68,3 +67,27 @@ def test_drawdown_includes_initial_point():
     assert result.max_drawdown > 0.04, (
         f"Expected drawdown ~5%%, got {result.max_drawdown*100:.2f}%%"
     )
+
+
+def test_official_open_to_close_uses_first_open_and_fixed_shares():
+    """Entry open 100 and closes 110/121 produce a true +21% buy-and-hold return."""
+    dates = pd.date_range("2026-01-05", periods=2, freq="B")
+    entry_open = pd.Series({"TEST": 100.0})
+    closes = pd.DataFrame({"TEST": [110.0, 121.0]}, index=dates)
+    result = BacktestEngine(transaction_cost=0.0).run_open_to_close(
+        entry_open, closes, {"TEST": 1.0}
+    )
+    assert abs(result.total_return - 0.21) < 1e-9
+    assert abs(result.daily_returns.iloc[0] - 0.10) < 1e-9
+    assert result.metrics["valuation_method"] == "first_open_fixed_shares_daily_close"
+
+
+def test_official_open_to_close_preserves_cash_and_charges_once():
+    """A 50% flat position with a 1% entry fee loses 0.5% of portfolio NAV."""
+    dates = pd.date_range("2026-01-05", periods=1, freq="B")
+    entry_open = pd.Series({"TEST": 100.0})
+    closes = pd.DataFrame({"TEST": [100.0]}, index=dates)
+    result = BacktestEngine(transaction_cost=0.01).run_open_to_close(
+        entry_open, closes, {"TEST": 0.5}
+    )
+    assert abs(result.total_return + 0.005) < 1e-9

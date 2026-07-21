@@ -1,0 +1,92 @@
+{
+  "snapshot_id": "sina_20260721_135352",
+  "created_at": "2026-07-21T13:53:56.130653+08:00",
+  "source": "Sina CN_MarketDataService.getKLineData",
+  "adjustment": "raw/unadjusted",
+  "requested_rows": 500,
+  "tickers": [
+    "601318.SH",
+    "600036.SH",
+    "601688.SH",
+    "601398.SH",
+    "601288.SH",
+    "601988.SH",
+    "600000.SH",
+    "601998.SH",
+    "600519.SH",
+    "000858.SZ",
+    "600887.SH",
+    "603288.SH",
+    "600660.SH",
+    "000333.SZ",
+    "000651.SZ",
+    "601888.SH",
+    "600809.SH",
+    "300750.SZ",
+    "002594.SZ",
+    "601012.SH",
+    "300274.SZ",
+    "600900.SH",
+    "600438.SH",
+    "600089.SH",
+    "600212.SH",
+    "688981.SH",
+    "600584.SH",
+    "600183.SH",
+    "300308.SZ",
+    "300394.SZ",
+    "603501.SH",
+    "600703.SH",
+    "600570.SH",
+    "600845.SH",
+    "688041.SH",
+    "603986.SH",
+    "002475.SZ",
+    "601899.SH",
+    "600309.SH",
+    "601600.SH",
+    "600028.SH",
+    "601088.SH",
+    "600547.SH",
+    "600426.SH",
+    "601168.SH",
+    "600031.SH",
+    "601766.SH",
+    "601668.SH",
+    "601186.SH"
+  ],
+  "n_stocks": 49,
+  "n_sectors": 6,
+  "files": {
+    "stocks_open.csv.gz": {
+      "sha256": "b3f33a2e4af92db2f4906f0337424ab9a41dcda804db5d9f10766aee45b87a74",
+      "rows": 510,
+      "columns": 49
+    },
+    "stocks_high.csv.gz": {
+      "sha256": "8fafb147c4f66c38cd118bf65a62f159fb416b1f5f490c2449dce66ef805e0db",
+      "rows": 510,
+      "columns": 49
+    },
+    "stocks_low.csv.gz": {
+      "sha256": "1053ccf006f0e03622771af26cde62939da3157c030d1055ca6a5b8d6169c123",
+      "rows": 510,
+      "columns": 49
+    },
+    "stocks_close.csv.gz": {
+      "sha256": "1aaeec24f2811a707268736b2b2b88b9c0ccbf07a6ca6885b742a864208fff18",
+      "rows": 510,
+      "columns": 49
+    },
+    "stocks_volume.csv.gz": {
+      "sha256": "322e64c1e4dd85168e16ea8ab9708c856c69c8572f34a854da9e35efade497a3",
+      "rows": 510,
+      "columns": 49
+    },
+    "csi300_ohlcv.csv.gz": {
+      "sha256": "187ca57952514ab54b4ad48c809ac00b2f4fa90679f4b65d60cf6d927fbc02cd",
+      "rows": 500,
+      "columns": 5
+    }
+  }
+}

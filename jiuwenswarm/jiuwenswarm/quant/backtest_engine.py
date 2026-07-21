@@ -122,3 +122,97 @@ class BacktestEngine:
             individual_returns=daily_returns_all,
             metrics=metrics,
         )
+
+    def run_open_to_close(
+        self,
+        entry_open: pd.Series,
+        close_data: pd.DataFrame,
+        weights: Dict[str, float],
+    ) -> BacktestResult:
+        """Buy once at the first-day open and value fixed shares at each close.
+
+        This matches the competition protocol.  It intentionally differs from
+        :meth:`run`, whose weighted daily-return calculation behaves like a
+        daily-rebalanced portfolio.
+        """
+        if close_data.empty:
+            raise ValueError("No close data available for the holding period.")
+
+        available = [ticker for ticker in weights if ticker in close_data.columns]
+        if set(available) != set(weights):
+            missing = sorted(set(weights) - set(available))
+            raise ValueError(f"Portfolio tickers missing from close data: {missing}")
+
+        opens = pd.to_numeric(entry_open.reindex(available), errors="coerce")
+        invalid_open = opens.index[opens.isna() | (opens <= 0)].tolist()
+        if invalid_open:
+            raise ValueError(f"Missing or invalid first-day open: {invalid_open}")
+
+        closes = close_data[available].apply(pd.to_numeric, errors="coerce")
+        # During a suspension the latest observable close remains the position's
+        # valuation.  Seed from entry open so the first close is always defined.
+        seeded = pd.concat([
+            pd.DataFrame([opens], index=[close_data.index[0] - pd.Timedelta(microseconds=1)]),
+            closes,
+        ]).ffill()
+        closes = seeded.iloc[1:]
+        if closes.isna().any().any() or (closes <= 0).any().any():
+            bad = closes.columns[closes.isna().any() | (closes <= 0).any()].tolist()
+            raise ValueError(f"Missing or invalid holding-period close: {bad}")
+
+        active_weights = pd.Series({ticker: float(weights[ticker]) for ticker in available})
+        total_weight = float(active_weights.sum())
+        if total_weight <= 0 or total_weight > 1.0 + 1e-9:
+            raise ValueError(f"Invalid total portfolio weight: {total_weight}")
+
+        invested = self.initial_capital * active_weights
+        shares = invested / opens
+        transaction_fee = self.transaction_cost * float(invested.sum())
+        cash = self.initial_capital - float(invested.sum()) - transaction_fee
+        nav = closes.mul(shares, axis=1).sum(axis=1) + cash
+
+        initial_nav = pd.Series(
+            [self.initial_capital],
+            index=[close_data.index[0] - pd.Timedelta(microseconds=1)],
+        )
+        nav_full = pd.concat([initial_nav, nav])
+        daily_returns = nav_full.pct_change().iloc[1:]
+        total_ret = float(nav.iloc[-1] / self.initial_capital - 1.0)
+        n_days = len(nav)
+        ann_ret = (1 + total_ret) ** (252 / max(n_days, 1)) - 1
+        ann_vol = float(daily_returns.std() * np.sqrt(252))
+        sharpe = ann_ret / max(ann_vol, 1e-10)
+        drawdowns = (nav_full - nav_full.cummax()) / nav_full.cummax()
+        max_dd = float(abs(drawdowns.min()))
+        win_rate = float((daily_returns > 0).sum() / max(len(daily_returns), 1))
+
+        individual_path = pd.concat([
+            pd.DataFrame([opens], index=[initial_nav.index[0]]),
+            closes,
+        ])
+        individual_returns = individual_path.pct_change().iloc[1:]
+        metrics = {
+            "total_return": round(total_ret, 6),
+            "annualized_return": round(ann_ret, 6),
+            "max_drawdown": round(max_dd, 6),
+            "sharpe_ratio": round(sharpe, 4),
+            "annualized_volatility": round(ann_vol, 6),
+            "win_rate": round(win_rate, 4),
+            "n_trading_days": n_days,
+            "n_stocks_held": len(available),
+            "valuation_method": "first_open_fixed_shares_daily_close",
+        }
+        return BacktestResult(
+            total_return=total_ret,
+            annualized_return=ann_ret,
+            max_drawdown=max_dd,
+            sharpe_ratio=sharpe,
+            volatility=ann_vol,
+            win_rate=win_rate,
+            start_value=self.initial_capital,
+            end_value=float(nav.iloc[-1]),
+            nav_series=nav,
+            daily_returns=daily_returns,
+            individual_returns=individual_returns,
+            metrics=metrics,
+        )

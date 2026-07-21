@@ -12,9 +12,13 @@ from pathlib import Path
 import pandas as pd
 
 from jiuwenswarm.quant.backtest_engine import BacktestEngine
-from jiuwenswarm.quant.factors import FactorCalculator, FactorConfig, PositionConfig, PositionSizer
+from jiuwenswarm.quant.factors import FactorCalculator, PositionSizer
 from jiuwenswarm.quant.market_regime import MarketRegime
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP, TICKER_NAME_MAP
+from jiuwenswarm.quant.strategy_configs import (
+    production_factor_config,
+    production_position_config,
+)
 
 
 def _load_data_provider():
@@ -105,7 +109,7 @@ def main() -> None:
 
     print("\n[2/6] Computing factors on training data...")
     regime = MarketRegime.detect(prices_train)
-    calculator = FactorCalculator(FactorConfig())
+    calculator = FactorCalculator(production_factor_config())
     calculator.regime = regime
     factors = calculator.compute_factors(prices_train, volumes_train if not volumes_train.empty else None)
     scores = calculator.compute_scores(factors)
@@ -119,7 +123,9 @@ def main() -> None:
     print(f"  {len(tickers)} stocks from {sectors_covered} sectors")
 
     print("\n[4/6] Allocating positions...")
-    weights = PositionSizer(PositionConfig()).allocate(scores.loc[tickers], prices_train[tickers])
+    weights = PositionSizer(production_position_config()).allocate(
+        scores.loc[tickers], prices_train[tickers]
+    )
     if set(weights) != set(tickers):
         raise RuntimeError(f"Selection/allocation mismatch: selected={tickers}, allocated={list(weights)}")
     sector_totals = _validate_weights(weights)
