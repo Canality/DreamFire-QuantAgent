@@ -115,17 +115,7 @@ def select_stocks(scores, top_n=15):
     selected = []
     selected_set = set()
 
-    # 1 per sector
-    for sector in STOCK_POOL:
-        sector_stocks = set(STOCK_POOL[sector])
-        for t in scores.index:
-            if t in sector_stocks and t not in selected_set:
-                if scores.loc[t, "composite"] > -0.5:
-                    selected.append(t)
-                    selected_set.add(t)
-                break
-
-    # Fill remaining
+    # Fill by score; top-15 naturally spans 5-6 sectors
     for t in scores.index:
         if len(selected) >= top_n:
             break

@@ -55,8 +55,12 @@ class BacktestEngine:
             raise ValueError("None of the portfolio stocks are in price data.")
 
         active_weights = {t: weights[t] for t in available}
+        # Do NOT renormalize — PositionSizer outputs weights that already
+        # respect cash reserve and sector/single-stock caps. Renormalizing
+        # would erase the cash buffer and amplify capped positions.
         w_sum = sum(active_weights.values())
-        active_weights = {t: w / w_sum for t, w in active_weights.items()}
+        if w_sum <= 0:
+            raise ValueError("No valid weights after filtering available stocks.")
 
         daily_returns_all = price_data[available].pct_change().dropna()
         if daily_returns_all.empty:
@@ -73,14 +77,22 @@ class BacktestEngine:
         nav = (1 + portfolio_returns).cumprod()
         nav = nav * self.initial_capital
 
-        total_ret = nav.iloc[-1] / nav.iloc[0] - 1
+        # total_return uses initial_capital as denominator so first-day
+        # return and transaction cost are properly included
+        total_ret = nav.iloc[-1] / self.initial_capital - 1
         n_days = len(portfolio_returns)
         ann_ret = (1 + total_ret) ** (252 / max(n_days, 1)) - 1
         ann_vol = portfolio_returns.std() * np.sqrt(252)
         sharpe = ann_ret / max(ann_vol, 1e-10)
 
-        cummax = nav.cummax()
-        drawdowns = (nav - cummax) / cummax
+        # Prepend initial NAV so drawdown sequence includes the starting point
+        nav_full = pd.concat([
+            pd.Series([self.initial_capital],
+                       index=[nav.index[0] - pd.Timedelta(days=1)]),
+            nav
+        ])
+        cummax = nav_full.cummax()
+        drawdowns = (nav_full - cummax) / cummax
         max_dd = abs(drawdowns.min())
 
         win_rate = (portfolio_returns > 0).sum() / max(len(portfolio_returns), 1)

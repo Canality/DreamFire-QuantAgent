@@ -1,0 +1,4 @@
+interface:
+  display_name: "量化端到端验收"
+  short_description: "验证双路径、数据覆盖、仓位约束与 Agent 工具链"
+  default_prompt: "Use $verify-quant-e2e to verify both quant execution paths before claiming the project is complete."

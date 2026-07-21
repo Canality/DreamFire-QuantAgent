@@ -340,60 +340,93 @@ class PositionSizer:
                            sectors: Dict[str, str],
                            scores: Dict[str, float]) -> Dict[str, float]:
         cfg = self.config
-        weights = dict(raw_weights)
+        del scores  # constraints depend on risk-parity priorities, not score order
 
-        # --- Single-stock cap with redistribution ---
-        for ticker in list(weights.keys()):
-            if weights[ticker] > cfg.max_single_stock:
-                excess = weights[ticker] - cfg.max_single_stock
-                weights[ticker] = cfg.max_single_stock
-                others = [t for t in weights if t != ticker]
-                if others:
-                    redist = excess / len(others)
-                    for t in others:
-                        weights[t] += redist
+        priorities = {
+            ticker: max(float(weight), 0.0)
+            for ticker, weight in raw_weights.items()
+            if np.isfinite(weight)
+        }
+        if not priorities or sum(priorities.values()) <= 0:
+            return {}
 
-        # --- Sector cap with redistribution to uncapped sectors ---
-        # Iterative: after each sector cap, redistribute excess to other sectors.
-        # This avoids the re-normalization bug where scaling all weights back up
-        # undoes the sector cap.
-        max_iterations = 10
-        for _ in range(max_iterations):
-            sector_totals = {}
-            for ticker, w in weights.items():
-                sec = sectors.get(ticker, "其他")
-                sector_totals[sec] = sector_totals.get(sec, 0.0) + w
+        # Capacity-aware water filling.  Each round distributes the remaining
+        # target in the original risk-parity proportions, stopping exactly
+        # when either a stock or a sector reaches its cap.  Saturated names are
+        # removed in the next round, so feasible capacity is not discarded.
+        target_sum = min(sum(priorities.values()), 1.0 - cfg.min_cash)
+        weights = {ticker: 0.0 for ticker in priorities}
+        tolerance = 1e-12
 
-            # Find sectors over cap
-            over_cap = {sec: total for sec, total in sector_totals.items()
-                        if total > cfg.max_single_sector}
-            if not over_cap:
-                break  # All sectors within limits
+        for _ in range(len(weights) + len(set(sectors.values())) + 2):
+            remaining = target_sum - sum(weights.values())
+            if remaining <= tolerance:
+                break
 
-            # Cap the worst offender
-            sec_to_cap = max(over_cap, key=over_cap.get)
-            total_in_sector = over_cap[sec_to_cap]
-            excess = total_in_sector - cfg.max_single_sector
-            scale = cfg.max_single_sector / total_in_sector
+            sector_totals: Dict[str, float] = {}
+            for ticker, weight in weights.items():
+                sector = sectors.get(ticker, "其他")
+                sector_totals[sector] = sector_totals.get(sector, 0.0) + weight
 
-            # Scale down stocks in capped sector
+            eligible = []
             for ticker in weights:
-                if sectors.get(ticker) == sec_to_cap:
-                    weights[ticker] *= scale
+                sector = sectors.get(ticker, "其他")
+                stock_room = cfg.max_single_stock - weights[ticker]
+                sector_room = cfg.max_single_sector - sector_totals.get(sector, 0.0)
+                if stock_room > tolerance and sector_room > tolerance:
+                    eligible.append(ticker)
+            if not eligible:
+                break  # the remaining amount is genuinely infeasible and stays cash
 
-            # Redistribute excess to stocks NOT in the capped sector
-            uncapped = [t for t in weights if sectors.get(ticker) != sec_to_cap]
-            if uncapped:
-                redist = excess / len(uncapped)
-                for t in uncapped:
-                    weights[t] += redist
+            priority_sum = sum(priorities[t] for t in eligible)
+            if priority_sum <= tolerance:
+                proposal = {t: remaining / len(eligible) for t in eligible}
+            else:
+                proposal = {
+                    t: remaining * priorities[t] / priority_sum
+                    for t in eligible
+                }
 
-        # Cash reserve: scale down if needed (but preserve sector ratios)
-        target_sum = 1.0 - cfg.min_cash
-        current_sum = sum(weights.values())
-        if current_sum > target_sum:
-            scale = target_sum / current_sum
-            weights = {t: w * scale for t, w in weights.items()}
+            alpha = 1.0
+            for ticker, proposed in proposal.items():
+                if proposed > tolerance:
+                    room = cfg.max_single_stock - weights[ticker]
+                    alpha = min(alpha, room / proposed)
 
-        weights = {t: round(w, 4) for t, w in weights.items()}
+            proposed_by_sector: Dict[str, float] = {}
+            for ticker, proposed in proposal.items():
+                sector = sectors.get(ticker, "其他")
+                proposed_by_sector[sector] = (
+                    proposed_by_sector.get(sector, 0.0) + proposed
+                )
+            for sector, proposed in proposed_by_sector.items():
+                if proposed > tolerance:
+                    room = cfg.max_single_sector - sector_totals.get(sector, 0.0)
+                    alpha = min(alpha, room / proposed)
+
+            allocated = 0.0
+            for ticker, proposed in proposal.items():
+                increment = max(0.0, alpha * proposed)
+                weights[ticker] += increment
+                allocated += increment
+            if allocated <= tolerance:
+                break
+
+        # Truncate (don't round) to 4dp so rounding never pushes a
+        # constraint over the limit.  Remainder becomes extra cash.
+        weights = {t: int(w * 10000) / 10000 for t, w in weights.items()}
+
+        # Fail closed if a future refactor violates any final invariant.
+        sector_totals: Dict[str, float] = {}
+        for ticker, weight in weights.items():
+            if weight > cfg.max_single_stock + 1e-9:
+                raise AssertionError(f"single-stock cap violated: {ticker}={weight}")
+            sector = sectors.get(ticker, "其他")
+            sector_totals[sector] = sector_totals.get(sector, 0.0) + weight
+        if sum(weights.values()) > target_sum + 1e-9:
+            raise AssertionError("cash reserve violated")
+        for sector, weight in sector_totals.items():
+            if weight > cfg.max_single_sector + 1e-9:
+                raise AssertionError(f"sector cap violated: {sector}={weight}")
+
         return dict(sorted(weights.items(), key=lambda x: x[1], reverse=True))

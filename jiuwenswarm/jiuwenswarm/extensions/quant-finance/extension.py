@@ -315,11 +315,13 @@ class QuantFinanceExtension(BaseExtension):
         def _allocate() -> dict:
             prices = _json_to_df(prices_json)
             from jiuwenswarm.quant.factors import PositionSizer, PositionConfig
+            from jiuwenswarm.quant.stock_pool import SECTOR_MAP
 
             # Build minimal scores df with just the selected tickers
+            # Use SECTOR_MAP (not _TICKER_NAME_MAP) so sector caps apply
             scores = pd.DataFrame(
                 {"composite": [1.0] * len(tickers), "sector": [
-                    _TICKER_NAME_MAP.get(t, "?") for t in tickers
+                    SECTOR_MAP.get(t, "其他") for t in tickers
                 ]},
                 index=tickers,
             )

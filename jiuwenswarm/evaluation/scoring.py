@@ -325,7 +325,7 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         t_start = time.time()
 
         window = prices_df.iloc[start_idx:start_idx + 20]
-        history = prices_df.iloc[:start_idx + 20]
+        history = prices_df.iloc[:start_idx]   # only data BEFORE test window
 
         if len(window) < 15 or len(history) < min_history:
             continue
@@ -348,20 +348,12 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
         scores = calc.filter_high_volatility(scores)
 
         # Stock selection with sector diversification
-        # Phase 1: 1 per sector (guarantees coverage)
-        # Phase 2: fill remaining, max 3 per sector (prevents concentration)
+        # Max 3 per sector to prevent concentration risk.
+        # No forced 1-per-sector — naked top-15 already spans 5-6 sectors naturally.
         MAX_PER_SECTOR = 3
         selected, selected_set = [], set()
         sector_counts = {s: 0 for s in SP}
 
-        for sector in SP:
-            for t in scores.index:
-                if (t in SP[sector] and t not in selected_set
-                        and scores.loc[t, "composite"] > -0.5):
-                    selected.append(t)
-                    selected_set.add(t)
-                    sector_counts[sector] += 1
-                    break
         for t in scores.index:
             if len(selected) >= 15:
                 break
@@ -375,8 +367,9 @@ def run_evaluation(n_windows: int = 10) -> dict[str, Any]:
                     sector_counts[s] += 1
 
         # Position sizing + backtest
+        # Pass only the selected stocks so allocation respects sector diversification
         sizer = PositionSizer(PositionConfig())
-        weights = sizer.allocate(scores, history)
+        weights = sizer.allocate(scores.loc[selected], history)
         bt = BacktestEngine().run(window, weights)
 
         elapsed = time.time() - t_start
