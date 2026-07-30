@@ -34,11 +34,19 @@ def _market_data() -> tuple[dict, dict]:
     return prices, volumes
 
 
+def _set_fake_provenance(module) -> None:
+    module._last_fetch_provider_ledger = {ticker: "test_provider" for ticker in ALL_STOCKS}
+    module._last_fetch_provider_stats = {
+        "test_provider": {"requested": 49, "newly_covered": 49, "errors": 0}
+    }
+
+
 def test_fetch_returns_summary_and_downstream_ignores_llm_prices(monkeypatch):
     module = _load_extension_module()
     module._data_cache.clear()
     prices, volumes = _market_data()
     monkeypatch.setattr(module, "_fetch_real_data", lambda *_: (prices, volumes, []))
+    _set_fake_provenance(module)
     extension = module.QuantFinanceExtension()
 
     fetched = asyncio.run(extension.fetch_data({"start_date": "2025-01-01", "end_date": "2025-06-01"}))
@@ -54,14 +62,123 @@ def test_fetch_returns_summary_and_downstream_ignores_llm_prices(monkeypatch):
     assert factors["decision_date"] == "2025-04-23"
 
 
+def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, tmp_path):
+    module = _load_extension_module()
+    module._data_cache.clear()
+    prices, volumes = _market_data()
+    monkeypatch.setattr(module, "_fetch_real_data", lambda *_: (prices, volumes, []))
+    _set_fake_provenance(module)
+    extension = module.QuantFinanceExtension()
+
+    fetched = asyncio.run(
+        extension.fetch_data({"start_date": "2025-01-01", "end_date": "2025-06-01"})
+    )
+    assert fetched["success"] is True
+    factors = asyncio.run(extension.compute_factors({}))
+
+    async def run_views():
+        return await asyncio.gather(extension.bull_view({}), extension.bear_view({}))
+
+    bull, bear = asyncio.run(run_views())
+    cached = module._get_cached_data()
+    assert isinstance(cached["_scores_df"], pd.DataFrame)
+    assert len(cached["_scores_df"]) == 49
+    assert cached["_bull_result"] == bull
+    assert cached["_bear_result"] == bear
+
+    import jiuwenswarm.quant.reporting as reporting
+    from jiuwenswarm.quant.reporting import ReportService, parse_bull_bear_pair
+
+    project_snapshot_root = Path(__file__).resolve().parents[4] / "output" / "data_snapshots"
+    snapshots_before = (
+        {path.name for path in project_snapshot_root.iterdir()}
+        if project_snapshot_root.exists()
+        else set()
+    )
+    real_write_data_snapshot = reporting.write_data_snapshot
+
+    def isolated_write_data_snapshot(prices, volumes, provider_ledger, provider_stats, _):
+        return real_write_data_snapshot(
+            prices,
+            volumes,
+            provider_ledger,
+            provider_stats,
+            tmp_path / "data_snapshots",
+        )
+
+    monkeypatch.setattr(reporting, "write_data_snapshot", isolated_write_data_snapshot)
+
+    views, errors = parse_bull_bear_pair(bull, bear)
+    assert errors == []
+    assert {view.role for view in views} == {"bull", "bear"}
+
+    selected = asyncio.run(
+        extension.select_stocks({"all_composite": factors["all_composite"]})
+    )
+    allocation = asyncio.run(
+        extension.allocate_positions({"tickers": selected["tickers"]})
+    )
+    backtest = asyncio.run(
+        extension.run_backtest({"weights": allocation["weights"]})
+    )
+
+    captured = {}
+
+    class DummyQuality:
+        blockers = ()
+        warnings = ()
+
+    def fake_build_package(
+        self, *, portfolio, bundles, output_dir, strategy_label, evidence_manifest
+    ):
+        captured["bundles"] = bundles
+        captured["evidence_manifest"] = evidence_manifest
+        return True, DummyQuality(), str(tmp_path)
+
+    monkeypatch.setattr(ReportService, "build_package", fake_build_package)
+    report = asyncio.run(
+        extension.generate_report(
+            {
+                "portfolio": [{"ticker": ALL_STOCKS[0], "weight": 1.0}],
+                "backtest": {"total_return": 999.0},
+                "regime": "bull",
+                "top_stocks": [],
+            }
+        )
+    )
+    assert report["success"] is True
+    assert report["summary"]["n_holdings"] == allocation["n_holdings"]
+    assert report["summary"]["total_return"] == backtest["total_return"]
+    assert report["summary"]["regime"] == factors["regime"]
+    assert report["candidate_package"]["quality_passed"] is True
+    assert report["candidate_package"]["n_reports"] == 49
+    assert len(captured["bundles"]) == 49
+    assert all(bundle.technical_facts for bundle in captured["bundles"].values())
+    assert any(bundle.agent_views for bundle in captured["bundles"].values())
+    evidence_id = next(iter(captured["evidence_manifest"]))
+    assert all(
+        view.evidence_ids == (evidence_id,)
+        for bundle in captured["bundles"].values()
+        for view in bundle.agent_views
+    )
+    snapshots_after = (
+        {path.name for path in project_snapshot_root.iterdir()}
+        if project_snapshot_root.exists()
+        else set()
+    )
+    assert snapshots_after == snapshots_before
+
+
 def test_cached_pipeline_uses_exact_selection_and_forward_test(monkeypatch):
     module = _load_extension_module()
     module._data_cache.clear()
     prices, volumes = _market_data()
     monkeypatch.setattr(module, "_fetch_real_data", lambda *_: (prices, volumes, []))
+    _set_fake_provenance(module)
     extension = module.QuantFinanceExtension()
 
     asyncio.run(extension.fetch_data({"start_date": "2025-01-01", "end_date": "2025-06-01"}))
+    asyncio.run(extension.compute_factors({}))
     composites = {ticker: 1.0 - index / 100 for index, ticker in enumerate(ALL_STOCKS)}
     selected = asyncio.run(extension.select_stocks({
         "all_composite": composites,
@@ -80,8 +197,15 @@ def test_cached_pipeline_uses_exact_selection_and_forward_test(monkeypatch):
     assert allocation["n_holdings"] == 15
     assert allocation["cash_reserve"] >= 0.05
 
+    tampered_allocation = asyncio.run(extension.allocate_positions({
+        "tickers": selected["tickers"][:-1],
+    }))
+    assert tampered_allocation["success"] is True
+    assert tampered_allocation["input_overridden"] is True
+    assert tampered_allocation["weights"] == allocation["weights"]
+
     backtest = asyncio.run(extension.run_backtest({
-        "weights": allocation["weights"],
+        "weights": {selected["tickers"][0]: 1.0},
         "prices": {"must": "be ignored"},
         "initial_capital": None,
     }))
@@ -162,6 +286,13 @@ def test_real_data_chain_requests_only_still_missing_tickers(monkeypatch):
         "akshare": {"requested": 29, "newly_covered": 10, "errors": 0},
         "baostock": {"requested": 19, "newly_covered": 10, "errors": 0},
         "yfinance": {"requested": 9, "newly_covered": 9, "errors": 0},
+    }
+    assert module._last_fetch_provider_ledger == {
+        **{ticker: "sina" for ticker in ALL_STOCKS[:10]},
+        **{ticker: "tencent" for ticker in ALL_STOCKS[10:20]},
+        **{ticker: "akshare" for ticker in ALL_STOCKS[20:30]},
+        **{ticker: "baostock" for ticker in ALL_STOCKS[30:40]},
+        **{ticker: "yfinance" for ticker in ALL_STOCKS[40:]},
     }
 
 

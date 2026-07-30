@@ -1,7 +1,8 @@
 {
-  "run_id": "symphony_poc_20260721_171042",
-  "created_at": "2026-07-21T17:10:42.469319+08:00",
-  "validator_version": "p1_poc_v1",
+  "run_id": "policy_validator_20260730_155345",
+  "created_at": "2026-07-30T15:53:45.701696+08:00",
+  "validator_version": "prototype_v1",
+  "note": "This is a policy validator prototype, NOT a Symphony integration. Symphony P1 proper is future work.",
   "policy_rules": [
     "R1: phase-coverage (8 quant phases must be present)",
     "R2: fetch-before-factor (dependency order)",

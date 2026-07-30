@@ -38,6 +38,7 @@ description: 对量化项目执行发布前端到端验收，验证研发旁路�
 - 成功判据基于业务阶段和产物字段，不得使用“有文本且有工具调用”。
 - 8 个量化阶段必须全部成功；“完成任意 5 个阶段”不能算通过。
 - 行情矩阵保留在 Extension 缓存中，后续工具只接收 cache key 或省略 prices。不得把全量价格数组重新送进 LLM 上下文。
+- 还要用恶意/过期参数回放验证 scores、tickers、weights、portfolio、backtest 不能覆盖服务端缓存的前序结果；Agent 只能触发 select→allocate→backtest→report，不能重写其数据流。
 
 ## 文档一致性
 

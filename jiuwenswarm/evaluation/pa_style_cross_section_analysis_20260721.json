@@ -1,0 +1,3134 @@
+{
+  "created_at": "2026-07-21T18:28:16.527740+08:00",
+  "source_run": "D:\\比赛\\HUAWEI\\Track_2\\jiuwenswarm\\evaluation\\pa_style_cross_section_full_20260721.json",
+  "source_status": "incomplete_fail_closed",
+  "validity": {
+    "attempted": 21,
+    "valid": 17,
+    "invalid": 4,
+    "valid_rate": 0.809524,
+    "invalid_indices": [
+      3,
+      6,
+      13,
+      18
+    ],
+    "invalid_errors": {
+      "3": [
+        "expected 6 sectors, got 5",
+        "expected 6 sectors, got 5"
+      ],
+      "6": [
+        "expected 6 sectors, got 5",
+        "expected 6 sectors, got 5"
+      ],
+      "13": [
+        "expected 6 sectors, got 5",
+        "expected 6 sectors, got 5"
+      ],
+      "18": [
+        "reason_codes missing for 600426.SH",
+        "expected 6 sectors, got 5"
+      ]
+    },
+    "backtest_valid": 16,
+    "backtest_invalid": 1,
+    "backtest_failures": [
+      {
+        "idx": 11,
+        "error": "Missing or invalid first-day open: ['688981.SH']"
+      }
+    ]
+  },
+  "valid_window_subset_only": {
+    "warning": "Contract-failed and backtest-failed windows are excluded; this is not a 21-window strategy score.",
+    "summary": {
+      "n_windows": 16,
+      "median_return": 0.003627,
+      "mean_return": 0.012663,
+      "worst_return": -0.071471,
+      "positive_windows": 9,
+      "median_drawdown": 0.040414,
+      "worst_drawdown": 0.105929,
+      "median_annualized_return": 0.046739,
+      "median_annualized_volatility": 0.167249,
+      "median_sharpe": 0.258,
+      "median_calmar": 1.0008,
+      "median_invested": 0.9494,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {}
+    },
+    "t2_same_windows_summary": {
+      "n_windows": 16,
+      "median_return": 0.016826,
+      "mean_return": 0.015719,
+      "worst_return": -0.064125,
+      "positive_windows": 11,
+      "median_drawdown": 0.032054,
+      "worst_drawdown": 0.10884,
+      "median_annualized_return": 0.242911,
+      "median_annualized_volatility": 0.155876,
+      "median_sharpe": 1.713,
+      "median_calmar": 9.642,
+      "median_invested": 0.9494,
+      "max_stock_weight": 0.1,
+      "max_sector_weight": 0.2499,
+      "mean_factor_contributions": {
+        "momentum_20_z": 0.747577,
+        "momentum_60_z": 0.0,
+        "max_drawdown_z": 0.0,
+        "reversal_5_z": 0.0,
+        "volume_corr_z": 0.0,
+        "volume_trend_z": 0.137714
+      }
+    },
+    "comparison_to_t2_same_windows": {
+      "median_return_delta_pp": -0.57685,
+      "mean_return_delta_pp": -0.305594,
+      "median_dd_delta_pp": 0.11875,
+      "utility_wins": 8,
+      "utility_win_rate": 0.5,
+      "recent4_wins": 2,
+      "worst_return_delta_pp": -0.7346,
+      "median_return_delta_pp_bootstrap_95pct_ci": [
+        -3.5301,
+        3.4892
+      ]
+    },
+    "selection_jaccard_mean": 0.330264,
+    "selection_jaccard_median": 0.304348,
+    "top_selected_tickers": [
+      [
+        "601899.SH",
+        11
+      ],
+      [
+        "600036.SH",
+        9
+      ],
+      [
+        "601318.SH",
+        8
+      ],
+      [
+        "300750.SZ",
+        8
+      ],
+      [
+        "601688.SH",
+        8
+      ],
+      [
+        "300308.SZ",
+        7
+      ],
+      [
+        "601600.SH",
+        7
+      ],
+      [
+        "601168.SH",
+        7
+      ],
+      [
+        "600900.SH",
+        7
+      ],
+      [
+        "600031.SH",
+        7
+      ],
+      [
+        "300274.SZ",
+        6
+      ],
+      [
+        "600570.SH",
+        6
+      ],
+      [
+        "600183.SH",
+        6
+      ],
+      [
+        "601998.SH",
+        6
+      ],
+      [
+        "000333.SZ",
+        6
+      ]
+    ],
+    "reason_code_counts": {
+      "ret20": 207,
+      "ema20_slope5": 157,
+      "range_pos20": 128,
+      "ret5": 116,
+      "volume_ratio_5_20": 113,
+      "ret60": 80,
+      "ema20_gap": 80,
+      "candles5": 3
+    },
+    "details": [
+      {
+        "selected_tickers": [
+          "688981.SH",
+          "601318.SH",
+          "300750.SZ",
+          "601688.SH",
+          "300274.SZ",
+          "000858.SZ",
+          "603288.SH",
+          "600036.SH",
+          "300308.SZ",
+          "000651.SZ",
+          "603501.SH",
+          "002594.SZ",
+          "601600.SH",
+          "600584.SH",
+          "601186.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "688981.SH": 88.0,
+          "601318.SH": 85.0,
+          "300750.SZ": 83.0,
+          "601688.SH": 82.0,
+          "300274.SZ": 81.0,
+          "000858.SZ": 80.0,
+          "603288.SH": 79.0,
+          "600036.SH": 78.0,
+          "300308.SZ": 77.0,
+          "000651.SZ": 76.0,
+          "603501.SH": 75.0,
+          "002594.SZ": 74.0,
+          "601600.SH": 73.0,
+          "600584.SH": 72.0,
+          "601186.SH": 71.0
+        },
+        "reason_codes": {
+          "688981.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300750.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601688.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300274.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000858.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "603288.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600036.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300308.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000651.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "603501.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "002594.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601600.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600584.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601186.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        "weights": {
+          "601318.SH": 0.0881,
+          "600036.SH": 0.0864,
+          "000651.SZ": 0.0786,
+          "601688.SH": 0.0753,
+          "603288.SH": 0.0697,
+          "002594.SZ": 0.0679,
+          "603501.SH": 0.0652,
+          "000858.SZ": 0.0623,
+          "601600.SH": 0.0603,
+          "600584.SH": 0.0573,
+          "688981.SH": 0.0533,
+          "300750.SZ": 0.0522,
+          "601186.SH": 0.0507,
+          "300274.SZ": 0.0429,
+          "300308.SZ": 0.039
+        },
+        "sector_weights": {
+          "金融": 0.2498,
+          "消费": 0.2106,
+          "新能源/电力": 0.163,
+          "科技/AI/半导体": 0.2148,
+          "周期/资源": 0.0603,
+          "高端制造/基建": 0.0507
+        },
+        "total_weight": 0.9492,
+        "cash": 0.0508,
+        "max_stock_weight": 0.0881,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": 0.03875,
+          "annualized_return": 0.614497,
+          "max_drawdown": 0.049455,
+          "sharpe_ratio": 2.0678,
+          "annualized_volatility": 0.297172,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.038465,
+          "annualized_return": 0.608929,
+          "max_drawdown": 0.049469,
+          "sharpe_ratio": 2.0495,
+          "annualized_volatility": 0.297113,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 0,
+        "decision_date": "2024-10-25",
+        "test_start": "2024-10-28",
+        "test_end": "2024-11-22",
+        "regime": "bull",
+        "n_history_days": 80,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "688981.SH",
+          "600570.SH",
+          "600438.SH",
+          "600887.SH",
+          "600584.SH",
+          "601688.SH",
+          "603288.SH",
+          "000858.SZ",
+          "300750.SZ",
+          "601318.SH",
+          "600519.SH",
+          "601168.SH",
+          "601012.SH",
+          "600036.SH",
+          "601766.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "688981.SH": 92.0,
+          "600570.SH": 91.0,
+          "600438.SH": 90.0,
+          "600887.SH": 88.0,
+          "600584.SH": 86.0,
+          "601688.SH": 85.0,
+          "603288.SH": 83.0,
+          "000858.SZ": 82.0,
+          "300750.SZ": 80.0,
+          "601318.SH": 80.0,
+          "600519.SH": 78.0,
+          "601168.SH": 77.0,
+          "601012.SH": 76.0,
+          "600036.SH": 75.0,
+          "601766.SH": 74.0
+        },
+        "reason_codes": {
+          "688981.SH": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "600570.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600438.SH": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "600887.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600584.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601688.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "603288.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000858.SZ": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300750.SZ": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600519.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601168.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601012.SH": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "600036.SH": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "601766.SH": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        "weights": {
+          "601766.SH": 0.1,
+          "600036.SH": 0.0808,
+          "601318.SH": 0.0763,
+          "600887.SH": 0.0762,
+          "601688.SH": 0.0716,
+          "601168.SH": 0.0662,
+          "600519.SH": 0.0641,
+          "600584.SH": 0.0639,
+          "603288.SH": 0.0584,
+          "600570.SH": 0.058,
+          "600438.SH": 0.0551,
+          "300750.SZ": 0.0543,
+          "000858.SZ": 0.0511,
+          "688981.SH": 0.0398,
+          "601012.SH": 0.0334
+        },
+        "sector_weights": {
+          "高端制造/基建": 0.1,
+          "金融": 0.2287,
+          "消费": 0.2498,
+          "周期/资源": 0.0662,
+          "科技/AI/半导体": 0.1617,
+          "新能源/电力": 0.1428
+        },
+        "total_weight": 0.9492,
+        "cash": 0.0508,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": -0.044327,
+          "annualized_return": -0.435197,
+          "max_drawdown": 0.091199,
+          "sharpe_ratio": -2.1672,
+          "annualized_volatility": 0.200809,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.044612,
+          "annualized_return": -0.437314,
+          "max_drawdown": 0.091224,
+          "sharpe_ratio": -2.1806,
+          "annualized_volatility": 0.200547,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 1,
+        "decision_date": "2024-11-22",
+        "test_start": "2024-11-25",
+        "test_end": "2024-12-20",
+        "regime": "range",
+        "n_history_days": 100,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "601398.SH",
+          "601088.SH",
+          "601288.SH",
+          "600183.SH",
+          "601988.SH",
+          "601998.SH",
+          "600900.SH",
+          "300750.SZ",
+          "601766.SH",
+          "600570.SH",
+          "600887.SH",
+          "600028.SH",
+          "603288.SH",
+          "688041.SH",
+          "000333.SZ"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "601398.SH": 85.0,
+          "601088.SH": 82.0,
+          "601288.SH": 82.0,
+          "600183.SH": 80.0,
+          "601988.SH": 80.0,
+          "601998.SH": 78.0,
+          "600900.SH": 76.0,
+          "300750.SZ": 74.0,
+          "601766.SH": 74.0,
+          "600570.SH": 72.0,
+          "600887.SH": 72.0,
+          "600028.SH": 70.0,
+          "603288.SH": 70.0,
+          "688041.SH": 70.0,
+          "000333.SZ": 68.0
+        },
+        "reason_codes": {
+          "601398.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601088.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ],
+          "601288.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600183.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ],
+          "601988.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601998.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600900.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ],
+          "300750.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_gap"
+          ],
+          "601766.SH": [
+            "ret5",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600570.SH": [
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600887.SH": [
+            "ret5",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600028.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "603288.SH": [
+            "ret5",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "688041.SH": [
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "000333.SZ": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        "weights": {
+          "600900.SH": 0.1,
+          "600028.SH": 0.0982,
+          "600887.SH": 0.0828,
+          "601398.SH": 0.079,
+          "601088.SH": 0.0767,
+          "000333.SZ": 0.0722,
+          "601288.SH": 0.0695,
+          "601988.SH": 0.0622,
+          "601766.SH": 0.0592,
+          "603288.SH": 0.0527,
+          "600183.SH": 0.0525,
+          "300750.SZ": 0.0442,
+          "601998.SH": 0.0391,
+          "600570.SH": 0.032,
+          "688041.SH": 0.0291
+        },
+        "sector_weights": {
+          "新能源/电力": 0.1442,
+          "周期/资源": 0.1749,
+          "消费": 0.2077,
+          "金融": 0.2498,
+          "高端制造/基建": 0.0592,
+          "科技/AI/半导体": 0.1136
+        },
+        "total_weight": 0.9494,
+        "cash": 0.0506,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": 0.00458,
+          "annualized_return": 0.05926,
+          "max_drawdown": 0.039472,
+          "sharpe_ratio": 0.398,
+          "annualized_volatility": 0.1489,
+          "win_rate": 0.55,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.004295,
+          "annualized_return": 0.055482,
+          "max_drawdown": 0.039483,
+          "sharpe_ratio": 0.3728,
+          "annualized_volatility": 0.148814,
+          "win_rate": 0.55,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 2,
+        "decision_date": "2024-12-20",
+        "test_start": "2024-12-23",
+        "test_end": "2025-01-20",
+        "regime": "range",
+        "n_history_days": 120,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "002594.SZ",
+          "603501.SH",
+          "600036.SH",
+          "600570.SH",
+          "600547.SH",
+          "601688.SH",
+          "601899.SH",
+          "603986.SH",
+          "600031.SH",
+          "600212.SH",
+          "600845.SH",
+          "601398.SH",
+          "600309.SH",
+          "601012.SH",
+          "000333.SZ"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "002594.SZ": 90.0,
+          "603501.SH": 90.0,
+          "600036.SH": 85.0,
+          "600570.SH": 85.0,
+          "600547.SH": 80.0,
+          "601688.SH": 80.0,
+          "601899.SH": 80.0,
+          "603986.SH": 80.0,
+          "600031.SH": 75.0,
+          "600212.SH": 75.0,
+          "600845.SH": 75.0,
+          "601398.SH": 75.0,
+          "600309.SH": 70.0,
+          "601012.SH": 70.0,
+          "000333.SZ": 65.0
+        },
+        "reason_codes": {
+          "002594.SZ": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "603501.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ],
+          "600036.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600570.SH": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "600547.SH": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "601688.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601899.SH": [
+            "ret20",
+            "ema20_gap",
+            "volume_ratio_5_20"
+          ],
+          "603986.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "600031.SH": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600212.SH": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "600845.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601398.SH": [
+            "ret60",
+            "range_pos20",
+            "ema20_gap"
+          ],
+          "600309.SH": [
+            "range_pos20",
+            "volume_ratio_5_20",
+            "ema20_gap"
+          ],
+          "601012.SH": [
+            "ret5",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000333.SZ": [
+            "ret5",
+            "range_pos20"
+          ]
+        },
+        "weights": {
+          "600036.SH": 0.1,
+          "601688.SH": 0.0867,
+          "601899.SH": 0.0841,
+          "603501.SH": 0.0797,
+          "600309.SH": 0.0648,
+          "600547.SH": 0.0639,
+          "601398.SH": 0.0632,
+          "600570.SH": 0.0615,
+          "002594.SZ": 0.0598,
+          "000333.SZ": 0.0584,
+          "600845.SH": 0.0568,
+          "600031.SH": 0.056,
+          "601012.SH": 0.0464,
+          "600212.SH": 0.0376,
+          "603986.SH": 0.0302
+        },
+        "sector_weights": {
+          "金融": 0.2499,
+          "周期/资源": 0.2128,
+          "科技/AI/半导体": 0.2282,
+          "新能源/电力": 0.1438,
+          "消费": 0.0584,
+          "高端制造/基建": 0.056
+        },
+        "total_weight": 0.9491,
+        "cash": 0.0509,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2499,
+        "official": {
+          "total_return": 0.03989,
+          "annualized_return": 0.636974,
+          "max_drawdown": 0.028354,
+          "sharpe_ratio": 3.7829,
+          "annualized_volatility": 0.168384,
+          "win_rate": 0.55,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.039605,
+          "annualized_return": 0.631336,
+          "max_drawdown": 0.028362,
+          "sharpe_ratio": 3.7591,
+          "annualized_volatility": 0.16795,
+          "win_rate": 0.55,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 4,
+        "decision_date": "2025-02-25",
+        "test_start": "2025-02-26",
+        "test_end": "2025-03-25",
+        "regime": "range",
+        "n_history_days": 160,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "600036.SH",
+          "600031.SH",
+          "600519.SH",
+          "601998.SH",
+          "000858.SZ",
+          "600809.SH",
+          "600212.SH",
+          "688041.SH",
+          "601012.SH",
+          "601600.SH",
+          "600438.SH",
+          "600426.SH",
+          "603501.SH",
+          "601168.SH",
+          "601899.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "600036.SH": 85.0,
+          "600031.SH": 83.0,
+          "600519.SH": 82.0,
+          "601998.SH": 80.0,
+          "000858.SZ": 78.0,
+          "600809.SH": 76.0,
+          "600212.SH": 74.0,
+          "688041.SH": 73.0,
+          "601012.SH": 72.0,
+          "601600.SH": 71.0,
+          "600438.SH": 70.0,
+          "600426.SH": 69.0,
+          "603501.SH": 68.0,
+          "601168.SH": 67.0,
+          "601899.SH": 66.0
+        },
+        "reason_codes": {
+          "600036.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600031.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600519.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601998.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "000858.SZ": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600809.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600212.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "688041.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601012.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601600.SH": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600438.SH": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600426.SH": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "603501.SH": [
+            "ret20",
+            "ema20_slope5",
+            "ret60"
+          ],
+          "601168.SH": [
+            "ret5",
+            "volume_ratio_5_20",
+            "range_pos20"
+          ],
+          "601899.SH": [
+            "ret5",
+            "volume_ratio_5_20",
+            "ema20_slope5"
+          ]
+        },
+        "weights": {
+          "600036.SH": 0.1,
+          "600519.SH": 0.1,
+          "601998.SH": 0.0996,
+          "600031.SH": 0.0982,
+          "000858.SZ": 0.0878,
+          "600426.SH": 0.0601,
+          "601168.SH": 0.0598,
+          "601899.SH": 0.0576,
+          "601600.SH": 0.0574,
+          "601012.SH": 0.0522,
+          "600809.SH": 0.0486,
+          "600438.SH": 0.0458,
+          "600212.SH": 0.0313,
+          "603501.SH": 0.0283,
+          "688041.SH": 0.0227
+        },
+        "sector_weights": {
+          "金融": 0.1996,
+          "消费": 0.2364,
+          "高端制造/基建": 0.0982,
+          "周期/资源": 0.2349,
+          "新能源/电力": 0.1293,
+          "科技/AI/半导体": 0.051
+        },
+        "total_weight": 0.9494,
+        "cash": 0.0506,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2364,
+        "official": {
+          "total_return": -0.071471,
+          "annualized_return": -0.607153,
+          "max_drawdown": 0.105929,
+          "sharpe_ratio": -2.3607,
+          "annualized_volatility": 0.257195,
+          "win_rate": 0.35,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.071756,
+          "annualized_return": -0.608669,
+          "max_drawdown": 0.105959,
+          "sharpe_ratio": -2.3655,
+          "annualized_volatility": 0.25731,
+          "win_rate": 0.35,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 5,
+        "decision_date": "2025-03-25",
+        "test_start": "2025-03-26",
+        "test_end": "2025-04-23",
+        "regime": "bull",
+        "n_history_days": 180,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "300750.SZ",
+          "600036.SH",
+          "300274.SZ",
+          "600000.SH",
+          "000333.SZ",
+          "300308.SZ",
+          "601318.SH",
+          "002594.SZ",
+          "600183.SH",
+          "601998.SH",
+          "002475.SZ",
+          "600031.SH",
+          "000651.SZ",
+          "601899.SH",
+          "601668.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "300750.SZ": 85.0,
+          "600036.SH": 85.0,
+          "300274.SZ": 82.0,
+          "600000.SH": 82.0,
+          "000333.SZ": 80.0,
+          "300308.SZ": 80.0,
+          "601318.SH": 80.0,
+          "002594.SZ": 78.0,
+          "600183.SH": 78.0,
+          "601998.SH": 78.0,
+          "002475.SZ": 76.0,
+          "600031.SH": 76.0,
+          "000651.SZ": 75.0,
+          "601899.SH": 72.0,
+          "601668.SH": 70.0
+        },
+        "reason_codes": {
+          "300750.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600036.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300274.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600000.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000333.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300308.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "002594.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600183.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601998.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "002475.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600031.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000651.SZ": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601899.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601668.SH": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        "weights": {
+          "300750.SZ": 0.1,
+          "000333.SZ": 0.1,
+          "601668.SH": 0.1,
+          "601318.SH": 0.0936,
+          "000651.SZ": 0.0757,
+          "600031.SH": 0.0651,
+          "600036.SH": 0.0611,
+          "002594.SZ": 0.0518,
+          "600000.SH": 0.0517,
+          "600183.SH": 0.0488,
+          "300274.SZ": 0.0471,
+          "601998.SH": 0.0434,
+          "601899.SH": 0.043,
+          "300308.SZ": 0.0353,
+          "002475.SZ": 0.0328
+        },
+        "sector_weights": {
+          "新能源/电力": 0.1989,
+          "消费": 0.1757,
+          "高端制造/基建": 0.1651,
+          "金融": 0.2498,
+          "科技/AI/半导体": 0.1169,
+          "周期/资源": 0.043
+        },
+        "total_weight": 0.9494,
+        "cash": 0.0506,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": -0.012909,
+          "annualized_return": -0.151009,
+          "max_drawdown": 0.030404,
+          "sharpe_ratio": -1.5514,
+          "annualized_volatility": 0.097334,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.013193,
+          "annualized_return": -0.15409,
+          "max_drawdown": 0.030413,
+          "sharpe_ratio": -1.5816,
+          "annualized_volatility": 0.097426,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 7,
+        "decision_date": "2025-05-26",
+        "test_start": "2025-05-27",
+        "test_end": "2025-06-24",
+        "regime": "range",
+        "n_history_days": 220,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "300308.SZ",
+          "600426.SH",
+          "601998.SH",
+          "600036.SH",
+          "601600.SH",
+          "300274.SZ",
+          "600183.SH",
+          "601288.SH",
+          "601899.SH",
+          "600900.SH",
+          "601088.SH",
+          "601318.SH",
+          "601668.SH",
+          "601888.SH",
+          "600212.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "300308.SZ": 85.0,
+          "600426.SH": 80.0,
+          "601998.SH": 80.0,
+          "600036.SH": 75.0,
+          "601600.SH": 75.0,
+          "300274.SZ": 70.0,
+          "600183.SH": 70.0,
+          "601288.SH": 70.0,
+          "601899.SH": 70.0,
+          "600900.SH": 65.0,
+          "601088.SH": 65.0,
+          "601318.SH": 65.0,
+          "601668.SH": 55.0,
+          "601888.SH": 55.0,
+          "600212.SH": 50.0
+        },
+        "reason_codes": {
+          "300308.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600426.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601998.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600036.SH": [
+            "ret20",
+            "ema20_slope5",
+            "ret5"
+          ],
+          "601600.SH": [
+            "ret20",
+            "ret5",
+            "range_pos20",
+            "ema20_slope5"
+          ],
+          "300274.SZ": [
+            "ret5",
+            "candles5",
+            "volume_ratio_5_20"
+          ],
+          "600183.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601288.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601899.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600900.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601088.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "601668.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601888.SH": [
+            "ret5",
+            "candles5"
+          ],
+          "600212.SH": [
+            "volume_ratio_5_20",
+            "candles5"
+          ]
+        },
+        "weights": {
+          "600900.SH": 0.1,
+          "601668.SH": 0.1,
+          "601288.SH": 0.0893,
+          "601888.SH": 0.086,
+          "600036.SH": 0.0818,
+          "600426.SH": 0.0785,
+          "601088.SH": 0.0676,
+          "601600.SH": 0.0637,
+          "300274.SZ": 0.0604,
+          "300308.SZ": 0.0475,
+          "601899.SH": 0.04,
+          "601998.SH": 0.0394,
+          "601318.SH": 0.0394,
+          "600183.SH": 0.0375,
+          "600212.SH": 0.0184
+        },
+        "sector_weights": {
+          "新能源/电力": 0.1788,
+          "高端制造/基建": 0.1,
+          "金融": 0.2499,
+          "消费": 0.086,
+          "周期/资源": 0.2498,
+          "科技/AI/半导体": 0.085
+        },
+        "total_weight": 0.9495,
+        "cash": 0.0505,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2499,
+        "official": {
+          "total_return": 0.055016,
+          "annualized_return": 0.963651,
+          "max_drawdown": 0.00779,
+          "sharpe_ratio": 12.2962,
+          "annualized_volatility": 0.07837,
+          "win_rate": 0.75,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.054731,
+          "annualized_return": 0.956981,
+          "max_drawdown": 0.007792,
+          "sharpe_ratio": 12.2322,
+          "annualized_volatility": 0.078234,
+          "win_rate": 0.75,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 8,
+        "decision_date": "2025-06-24",
+        "test_start": "2025-06-25",
+        "test_end": "2025-07-22",
+        "regime": "range",
+        "n_history_days": 240,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "601288.SH",
+          "300750.SZ",
+          "300274.SZ",
+          "600036.SH",
+          "600183.SH",
+          "601398.SH",
+          "300308.SZ",
+          "601688.SH",
+          "000651.SZ",
+          "600089.SH",
+          "600570.SH",
+          "601668.SH",
+          "601998.SH",
+          "600438.SH",
+          "601899.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "601288.SH": 85.0,
+          "300750.SZ": 82.0,
+          "300274.SZ": 80.0,
+          "600036.SH": 80.0,
+          "600183.SH": 78.0,
+          "601398.SH": 78.0,
+          "300308.SZ": 76.0,
+          "601688.SH": 76.0,
+          "000651.SZ": 75.0,
+          "600089.SH": 74.0,
+          "600570.SH": 74.0,
+          "601668.SH": 72.0,
+          "601998.SH": 72.0,
+          "600438.SH": 70.0,
+          "601899.SH": 70.0
+        },
+        "reason_codes": {
+          "601288.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300750.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300274.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600036.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600183.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601398.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300308.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601688.SH": [
+            "ret20",
+            "ema20_slope5"
+          ],
+          "000651.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600089.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600570.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601668.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601998.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "600438.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601899.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        "weights": {
+          "000651.SZ": 0.1,
+          "601668.SH": 0.1,
+          "600089.SH": 0.091,
+          "300750.SZ": 0.0892,
+          "601899.SH": 0.0771,
+          "600183.SH": 0.074,
+          "601288.SH": 0.0684,
+          "600036.SH": 0.055,
+          "601398.SH": 0.0546,
+          "300308.SZ": 0.0528,
+          "300274.SZ": 0.0466,
+          "600570.SH": 0.0459,
+          "601688.SH": 0.0427,
+          "601998.SH": 0.0291,
+          "600438.SH": 0.023
+        },
+        "sector_weights": {
+          "消费": 0.1,
+          "高端制造/基建": 0.1,
+          "新能源/电力": 0.2498,
+          "周期/资源": 0.0771,
+          "科技/AI/半导体": 0.1727,
+          "金融": 0.2498
+        },
+        "total_weight": 0.9494,
+        "cash": 0.0506,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": 0.05077,
+          "annualized_return": 0.866374,
+          "max_drawdown": 0.020328,
+          "sharpe_ratio": 6.3551,
+          "annualized_volatility": 0.136327,
+          "win_rate": 0.65,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.050486,
+          "annualized_return": 0.86001,
+          "max_drawdown": 0.020333,
+          "sharpe_ratio": 6.3013,
+          "annualized_volatility": 0.136482,
+          "win_rate": 0.65,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 9,
+        "decision_date": "2025-07-22",
+        "test_start": "2025-07-23",
+        "test_end": "2025-08-19",
+        "regime": "range",
+        "n_history_days": 260,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "601288.SH",
+          "300308.SZ",
+          "300274.SZ",
+          "300394.SZ",
+          "601398.SH",
+          "600183.SH",
+          "601899.SH",
+          "601318.SH",
+          "600309.SH",
+          "601688.SH",
+          "600438.SH",
+          "600089.SH",
+          "600519.SH",
+          "000858.SZ",
+          "601766.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "601288.SH": 85.0,
+          "300308.SZ": 82.0,
+          "300274.SZ": 80.0,
+          "300394.SZ": 79.0,
+          "601398.SH": 78.0,
+          "600183.SH": 76.0,
+          "601899.SH": 74.0,
+          "601318.SH": 72.0,
+          "600309.SH": 71.0,
+          "601688.SH": 70.0,
+          "600438.SH": 68.0,
+          "600089.SH": 65.0,
+          "600519.SH": 60.0,
+          "000858.SZ": 55.0,
+          "601766.SH": 50.0
+        },
+        "reason_codes": {
+          "601288.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "300308.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300274.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300394.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601398.SH": [
+            "ret5",
+            "ret60",
+            "volume_ratio_5_20"
+          ],
+          "600183.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601899.SH": [
+            "ret60",
+            "range_pos20"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "600309.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601688.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "600438.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "600089.SH": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "600519.SH": [
+            "ret5",
+            "ret20"
+          ],
+          "000858.SZ": [
+            "ret5",
+            "ret20"
+          ],
+          "601766.SH": [
+            "ret20",
+            "ret60"
+          ]
+        },
+        "weights": {
+          "601899.SH": 0.1,
+          "600519.SH": 0.1,
+          "000858.SZ": 0.0919,
+          "601288.SH": 0.0762,
+          "601398.SH": 0.076,
+          "300274.SZ": 0.0747,
+          "601766.SH": 0.0723,
+          "600309.SH": 0.055,
+          "601318.SH": 0.0496,
+          "601688.SH": 0.0479,
+          "600438.SH": 0.0463,
+          "600089.SH": 0.0432,
+          "300308.SZ": 0.0405,
+          "600183.SH": 0.0402,
+          "300394.SZ": 0.0355
+        },
+        "sector_weights": {
+          "周期/资源": 0.155,
+          "消费": 0.1919,
+          "金融": 0.2497,
+          "新能源/电力": 0.1642,
+          "高端制造/基建": 0.0723,
+          "科技/AI/半导体": 0.1162
+        },
+        "total_weight": 0.9493,
+        "cash": 0.0507,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2497,
+        "official": {
+          "total_return": 0.15704,
+          "annualized_return": 5.283354,
+          "max_drawdown": 0.016084,
+          "sharpe_ratio": 27.5434,
+          "annualized_volatility": 0.191819,
+          "win_rate": 0.75,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.156756,
+          "annualized_return": 5.263895,
+          "max_drawdown": 0.016088,
+          "sharpe_ratio": 27.4329,
+          "annualized_volatility": 0.191882,
+          "win_rate": 0.75,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 10,
+        "decision_date": "2025-08-19",
+        "test_start": "2025-08-20",
+        "test_end": "2025-09-16",
+        "regime": "range",
+        "n_history_days": 280,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "300750.SZ",
+          "688981.SH",
+          "300274.SZ",
+          "601688.SH",
+          "601899.SH",
+          "600031.SH",
+          "600089.SH",
+          "600584.SH",
+          "600660.SH",
+          "601012.SH",
+          "601168.SH",
+          "603986.SH",
+          "601600.SH",
+          "601888.SH",
+          "603501.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "300750.SZ": 90.0,
+          "688981.SH": 90.0,
+          "300274.SZ": 85.0,
+          "601688.SH": 85.0,
+          "601899.SH": 85.0,
+          "600031.SH": 80.0,
+          "600089.SH": 80.0,
+          "600584.SH": 80.0,
+          "600660.SH": 80.0,
+          "601012.SH": 80.0,
+          "601168.SH": 80.0,
+          "603986.SH": 80.0,
+          "601600.SH": 75.0,
+          "601888.SH": 75.0,
+          "603501.SH": 75.0
+        },
+        "reason_codes": {
+          "300750.SZ": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "688981.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300274.SZ": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601688.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601899.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600031.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600089.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600584.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600660.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601012.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "601168.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "603986.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601600.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601888.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "range_pos20"
+          ],
+          "603501.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        "weights": {
+          "600660.SH": 0.1,
+          "600031.SH": 0.083,
+          "688981.SH": 0.081,
+          "601899.SH": 0.0729,
+          "601888.SH": 0.0722,
+          "300750.SZ": 0.0707,
+          "601688.SH": 0.0696,
+          "601012.SH": 0.0663,
+          "601168.SH": 0.06,
+          "603501.SH": 0.0551,
+          "600584.SH": 0.0503,
+          "601600.SH": 0.0485,
+          "600089.SH": 0.0468,
+          "300274.SZ": 0.0397,
+          "603986.SH": 0.0331
+        },
+        "sector_weights": {
+          "消费": 0.1722,
+          "高端制造/基建": 0.083,
+          "科技/AI/半导体": 0.2195,
+          "周期/资源": 0.1814,
+          "新能源/电力": 0.2235,
+          "金融": 0.0696
+        },
+        "total_weight": 0.9492,
+        "cash": 0.0508,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2235,
+        "official": {
+          "total_return": 0.002674,
+          "annualized_return": 0.034217,
+          "max_drawdown": 0.068409,
+          "sharpe_ratio": 0.118,
+          "annualized_volatility": 0.289874,
+          "win_rate": 0.6,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.002389,
+          "annualized_return": 0.030522,
+          "max_drawdown": 0.068428,
+          "sharpe_ratio": 0.1053,
+          "annualized_volatility": 0.289756,
+          "win_rate": 0.6,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 12,
+        "decision_date": "2025-10-22",
+        "test_start": "2025-10-23",
+        "test_end": "2025-11-19",
+        "regime": "range",
+        "n_history_days": 320,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "000333.SZ",
+          "600309.SH",
+          "600426.SH",
+          "601899.SH",
+          "601600.SH",
+          "601168.SH",
+          "600028.SH",
+          "600887.SH",
+          "000651.SZ",
+          "601888.SH",
+          "600547.SH",
+          "600900.SH",
+          "600036.SH",
+          "601186.SH",
+          "300394.SZ"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "000333.SZ": 85.0,
+          "600309.SH": 82.0,
+          "600426.SH": 80.0,
+          "601899.SH": 78.0,
+          "601600.SH": 76.0,
+          "601168.SH": 75.0,
+          "600028.SH": 74.0,
+          "600887.SH": 73.0,
+          "000651.SZ": 72.0,
+          "601888.SH": 70.0,
+          "600547.SH": 68.0,
+          "600900.SH": 66.0,
+          "600036.SH": 65.0,
+          "601186.SH": 60.0,
+          "300394.SZ": 55.0
+        },
+        "reason_codes": {
+          "000333.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600309.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600426.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601899.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "601600.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap"
+          ],
+          "601168.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600028.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600887.SH": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "000651.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "601888.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap"
+          ],
+          "600547.SH": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600900.SH": [
+            "ret5",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600036.SH": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ],
+          "601186.SH": [
+            "ret5",
+            "range_pos20"
+          ],
+          "300394.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        "weights": {
+          "600900.SH": 0.1,
+          "600036.SH": 0.1,
+          "601186.SH": 0.1,
+          "300394.SZ": 0.1,
+          "000651.SZ": 0.0929,
+          "000333.SZ": 0.0846,
+          "600887.SH": 0.0551,
+          "600028.SH": 0.0527,
+          "600309.SH": 0.039,
+          "601899.SH": 0.0356,
+          "600426.SH": 0.0341,
+          "601168.SH": 0.0338,
+          "600547.SH": 0.029,
+          "601600.SH": 0.0255,
+          "601888.SH": 0.0172
+        },
+        "sector_weights": {
+          "新能源/电力": 0.1,
+          "金融": 0.1,
+          "高端制造/基建": 0.1,
+          "科技/AI/半导体": 0.1,
+          "消费": 0.2498,
+          "周期/资源": 0.2497
+        },
+        "total_weight": 0.8995,
+        "cash": 0.1005,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": 0.029808,
+          "annualized_return": 0.447862,
+          "max_drawdown": 0.034426,
+          "sharpe_ratio": 3.2662,
+          "annualized_volatility": 0.137119,
+          "win_rate": 0.55,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.029538,
+          "annualized_return": 0.443089,
+          "max_drawdown": 0.034435,
+          "sharpe_ratio": 3.2345,
+          "annualized_volatility": 0.136987,
+          "win_rate": 0.55,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 14,
+        "decision_date": "2025-12-17",
+        "test_start": "2025-12-18",
+        "test_end": "2026-01-16",
+        "regime": "range",
+        "n_history_days": 360,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "601899.SH",
+          "601600.SH",
+          "601318.SH",
+          "601168.SH",
+          "601888.SH",
+          "601688.SH",
+          "600000.SH",
+          "600703.SH",
+          "600028.SH",
+          "002594.SZ",
+          "601998.SH",
+          "600570.SH",
+          "600660.SH",
+          "600031.SH",
+          "601012.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "601899.SH": 88.0,
+          "601600.SH": 86.0,
+          "601318.SH": 85.0,
+          "601168.SH": 83.0,
+          "601888.SH": 82.0,
+          "601688.SH": 80.0,
+          "600000.SH": 78.0,
+          "600703.SH": 75.0,
+          "600028.SH": 74.0,
+          "002594.SZ": 72.0,
+          "601998.SH": 70.0,
+          "600570.SH": 68.0,
+          "600660.SH": 65.0,
+          "600031.SH": 62.0,
+          "601012.SH": 60.0
+        },
+        "reason_codes": {
+          "601899.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601600.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "volume_ratio_5_20"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601168.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601888.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "volume_ratio_5_20"
+          ],
+          "601688.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600000.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ],
+          "600703.SH": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "600028.SH": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "002594.SZ": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ],
+          "601998.SH": [
+            "ret5",
+            "volume_ratio_5_20"
+          ],
+          "600570.SH": [
+            "ret5",
+            "volume_ratio_5_20"
+          ],
+          "600660.SH": [
+            "ret5",
+            "range_pos20"
+          ],
+          "600031.SH": [
+            "ret5",
+            "volume_ratio_5_20"
+          ],
+          "601012.SH": [
+            "volume_ratio_5_20"
+          ]
+        },
+        "weights": {
+          "600660.SH": 0.1,
+          "600028.SH": 0.0891,
+          "601998.SH": 0.0758,
+          "600000.SH": 0.0752,
+          "002594.SZ": 0.0712,
+          "600570.SH": 0.0683,
+          "600031.SH": 0.0662,
+          "601899.SH": 0.0647,
+          "600703.SH": 0.0585,
+          "601318.SH": 0.0532,
+          "601168.SH": 0.0519,
+          "601012.SH": 0.0519,
+          "601688.SH": 0.0455,
+          "601600.SH": 0.0441,
+          "601888.SH": 0.0337
+        },
+        "sector_weights": {
+          "消费": 0.1337,
+          "周期/资源": 0.2498,
+          "金融": 0.2497,
+          "新能源/电力": 0.1231,
+          "科技/AI/半导体": 0.1268,
+          "高端制造/基建": 0.0662
+        },
+        "total_weight": 0.9493,
+        "cash": 0.0507,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": 0.009216,
+          "annualized_return": 0.122536,
+          "max_drawdown": 0.028156,
+          "sharpe_ratio": 0.7377,
+          "annualized_volatility": 0.166114,
+          "win_rate": 0.5,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": 0.008931,
+          "annualized_return": 0.118551,
+          "max_drawdown": 0.028164,
+          "sharpe_ratio": 0.7134,
+          "annualized_volatility": 0.166187,
+          "win_rate": 0.5,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 15,
+        "decision_date": "2026-01-16",
+        "test_start": "2026-01-19",
+        "test_end": "2026-02-13",
+        "regime": "bull",
+        "n_history_days": 380,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "300394.SZ",
+          "600547.SH",
+          "600584.SH",
+          "601168.SH",
+          "601899.SH",
+          "300308.SZ",
+          "603986.SH",
+          "600309.SH",
+          "600519.SH",
+          "600703.SH",
+          "601318.SH",
+          "600900.SH",
+          "000858.SZ",
+          "000333.SZ",
+          "601668.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "300394.SZ": 88.0,
+          "600547.SH": 86.0,
+          "600584.SH": 85.0,
+          "601168.SH": 84.0,
+          "601899.SH": 83.0,
+          "300308.SZ": 82.0,
+          "603986.SH": 80.0,
+          "600309.SH": 79.0,
+          "600519.SH": 78.0,
+          "600703.SH": 74.0,
+          "601318.SH": 72.0,
+          "600900.SH": 68.0,
+          "000858.SZ": 65.0,
+          "000333.SZ": 60.0,
+          "601668.SH": 55.0
+        },
+        "reason_codes": {
+          "300394.SZ": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600547.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600584.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601168.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601899.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "300308.SZ": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "603986.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600309.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600519.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600703.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601318.SH": [
+            "ret5",
+            "ret60",
+            "volume_ratio_5_20"
+          ],
+          "600900.SH": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "000858.SZ": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "000333.SZ": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ],
+          "601668.SH": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        "weights": {
+          "600900.SH": 0.1,
+          "601668.SH": 0.1,
+          "000333.SZ": 0.0885,
+          "600519.SH": 0.0783,
+          "601318.SH": 0.075,
+          "600309.SH": 0.0683,
+          "601899.SH": 0.0614,
+          "300308.SZ": 0.0537,
+          "600584.SH": 0.0506,
+          "300394.SZ": 0.0489,
+          "000858.SZ": 0.0487,
+          "601168.SH": 0.0459,
+          "603986.SH": 0.0448,
+          "600547.SH": 0.0435,
+          "600703.SH": 0.0418
+        },
+        "sector_weights": {
+          "新能源/电力": 0.1,
+          "高端制造/基建": 0.1,
+          "消费": 0.2155,
+          "金融": 0.075,
+          "周期/资源": 0.2191,
+          "科技/AI/半导体": 0.2398
+        },
+        "total_weight": 0.9494,
+        "cash": 0.0506,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2398,
+        "official": {
+          "total_return": -0.015298,
+          "annualized_return": -0.17654,
+          "max_drawdown": 0.042575,
+          "sharpe_ratio": -0.8516,
+          "annualized_volatility": 0.207305,
+          "win_rate": 0.6,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.015582,
+          "annualized_return": -0.179536,
+          "max_drawdown": 0.042586,
+          "sharpe_ratio": -0.8644,
+          "annualized_volatility": 0.207699,
+          "win_rate": 0.6,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 16,
+        "decision_date": "2026-02-13",
+        "test_start": "2026-02-24",
+        "test_end": "2026-03-23",
+        "regime": "bull",
+        "n_history_days": 400,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "601088.SH",
+          "600089.SH",
+          "603288.SH",
+          "002594.SZ",
+          "601288.SH",
+          "600845.SH",
+          "600900.SH",
+          "601988.SH",
+          "300750.SZ",
+          "600309.SH",
+          "600703.SH",
+          "600887.SH",
+          "601600.SH",
+          "601668.SH",
+          "601186.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "601088.SH": 95.0,
+          "600089.SH": 90.0,
+          "603288.SH": 90.0,
+          "002594.SZ": 85.0,
+          "601288.SH": 85.0,
+          "600845.SH": 80.0,
+          "600900.SH": 80.0,
+          "601988.SH": 80.0,
+          "300750.SZ": 75.0,
+          "600309.SH": 75.0,
+          "600703.SH": 75.0,
+          "600887.SH": 70.0,
+          "601600.SH": 70.0,
+          "601668.SH": 65.0,
+          "601186.SH": 60.0
+        },
+        "reason_codes": {
+          "601088.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600089.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "603288.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "002594.SZ": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601288.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600845.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600900.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601988.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300750.SZ": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ],
+          "600309.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600703.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600887.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ],
+          "601600.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601668.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601186.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        "weights": {
+          "600900.SH": 0.1,
+          "601988.SH": 0.1,
+          "600887.SH": 0.1,
+          "601288.SH": 0.0874,
+          "603288.SH": 0.0806,
+          "601668.SH": 0.0755,
+          "601186.SH": 0.074,
+          "601088.SH": 0.0582,
+          "002594.SZ": 0.0511,
+          "300750.SZ": 0.0468,
+          "600089.SH": 0.0435,
+          "600845.SH": 0.0427,
+          "600309.SH": 0.0371,
+          "601600.SH": 0.0295,
+          "600703.SH": 0.023
+        },
+        "sector_weights": {
+          "新能源/电力": 0.2414,
+          "金融": 0.1874,
+          "消费": 0.1806,
+          "高端制造/基建": 0.1495,
+          "周期/资源": 0.1248,
+          "科技/AI/半导体": 0.0657
+        },
+        "total_weight": 0.9494,
+        "cash": 0.0506,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2414,
+        "official": {
+          "total_return": -0.007997,
+          "annualized_return": -0.09622,
+          "max_drawdown": 0.041944,
+          "sharpe_ratio": -0.7264,
+          "annualized_volatility": 0.132465,
+          "win_rate": 0.4,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.008282,
+          "annualized_return": -0.099484,
+          "max_drawdown": 0.041956,
+          "sharpe_ratio": -0.7508,
+          "annualized_volatility": 0.132506,
+          "win_rate": 0.4,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 17,
+        "decision_date": "2026-03-23",
+        "test_start": "2026-03-24",
+        "test_end": "2026-04-21",
+        "regime": "range",
+        "n_history_days": 420,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "600584.SH",
+          "688041.SH",
+          "601168.SH",
+          "600887.SH",
+          "000651.SZ",
+          "603986.SH",
+          "002475.SZ",
+          "601318.SH",
+          "300750.SZ",
+          "601899.SH",
+          "600031.SH",
+          "600900.SH",
+          "600570.SH",
+          "600660.SH",
+          "601668.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "600584.SH": 85.0,
+          "688041.SH": 84.0,
+          "601168.SH": 83.0,
+          "600887.SH": 82.0,
+          "000651.SZ": 80.0,
+          "603986.SH": 80.0,
+          "002475.SZ": 79.0,
+          "601318.SH": 78.0,
+          "300750.SZ": 76.0,
+          "601899.SH": 74.0,
+          "600031.SH": 73.0,
+          "600900.SH": 72.0,
+          "600570.SH": 71.0,
+          "600660.SH": 70.0,
+          "601668.SH": 65.0
+        },
+        "reason_codes": {
+          "600584.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "688041.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "601168.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600887.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "000651.SZ": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "603986.SH": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ],
+          "002475.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601318.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "300750.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ],
+          "601899.SH": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ],
+          "600031.SH": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ],
+          "600900.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600570.SH": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600660.SH": [
+            "ret20",
+            "range_pos20"
+          ],
+          "601668.SH": [
+            "ret5",
+            "range_pos20"
+          ]
+        },
+        "weights": {
+          "600900.SH": 0.1,
+          "601668.SH": 0.1,
+          "601318.SH": 0.0964,
+          "600887.SH": 0.0877,
+          "600660.SH": 0.0838,
+          "000651.SZ": 0.0784,
+          "600031.SH": 0.0606,
+          "600584.SH": 0.0592,
+          "601168.SH": 0.0563,
+          "600570.SH": 0.0562,
+          "601899.SH": 0.0482,
+          "300750.SZ": 0.0329,
+          "603986.SH": 0.0316,
+          "002475.SZ": 0.0305,
+          "688041.SH": 0.0277
+        },
+        "sector_weights": {
+          "新能源/电力": 0.1329,
+          "高端制造/基建": 0.1606,
+          "金融": 0.0964,
+          "消费": 0.2499,
+          "科技/AI/半导体": 0.2052,
+          "周期/资源": 0.1045
+        },
+        "total_weight": 0.9495,
+        "cash": 0.0505,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2499,
+        "official": {
+          "total_return": -0.031397,
+          "annualized_return": -0.330983,
+          "max_drawdown": 0.043496,
+          "sharpe_ratio": -1.8351,
+          "annualized_volatility": 0.180358,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.031682,
+          "annualized_return": -0.333457,
+          "max_drawdown": 0.043509,
+          "sharpe_ratio": -1.8508,
+          "annualized_volatility": 0.18017,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 19,
+        "decision_date": "2026-05-22",
+        "test_start": "2026-05-25",
+        "test_end": "2026-06-22",
+        "regime": "bull",
+        "n_history_days": 460,
+        "n_forward_closes": 20
+      },
+      {
+        "selected_tickers": [
+          "600183.SH",
+          "601088.SH",
+          "601988.SH",
+          "000333.SZ",
+          "300308.SZ",
+          "600036.SH",
+          "603986.SH",
+          "600900.SH",
+          "601398.SH",
+          "600000.SH",
+          "600703.SH",
+          "600031.SH",
+          "601688.SH",
+          "600028.SH",
+          "601186.SH"
+        ],
+        "n_selected": 15,
+        "n_selected_sectors": 6,
+        "agent_scores": {
+          "600183.SH": 85.0,
+          "601088.SH": 85.0,
+          "601988.SH": 85.0,
+          "000333.SZ": 80.0,
+          "300308.SZ": 80.0,
+          "600036.SH": 80.0,
+          "603986.SH": 80.0,
+          "600900.SH": 75.0,
+          "601398.SH": 75.0,
+          "600000.SH": 70.0,
+          "600703.SH": 70.0,
+          "600031.SH": 65.0,
+          "601688.SH": 65.0,
+          "600028.SH": 60.0,
+          "601186.SH": 55.0
+        },
+        "reason_codes": {
+          "600183.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601088.SH": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "601988.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "000333.SZ": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "300308.SZ": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ],
+          "600036.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "603986.SH": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "600900.SH": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ],
+          "601398.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600000.SH": [
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600703.SH": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ],
+          "600031.SH": [
+            "ret5",
+            "range_pos20"
+          ],
+          "601688.SH": [
+            "ret5",
+            "ema20_gap",
+            "ema20_slope5"
+          ],
+          "600028.SH": [
+            "ret5",
+            "volume_ratio_5_20"
+          ],
+          "601186.SH": [
+            "range_pos20"
+          ]
+        },
+        "weights": {
+          "601088.SH": 0.1,
+          "000333.SZ": 0.1,
+          "600900.SH": 0.1,
+          "600028.SH": 0.1,
+          "601186.SH": 0.0896,
+          "600036.SH": 0.0745,
+          "600031.SH": 0.0668,
+          "601988.SH": 0.0639,
+          "601398.SH": 0.0429,
+          "600000.SH": 0.0423,
+          "600183.SH": 0.0394,
+          "300308.SZ": 0.0394,
+          "603986.SH": 0.0325,
+          "600703.SH": 0.032,
+          "601688.SH": 0.0262
+        },
+        "sector_weights": {
+          "周期/资源": 0.2,
+          "消费": 0.1,
+          "新能源/电力": 0.1,
+          "高端制造/基建": 0.1564,
+          "金融": 0.2498,
+          "科技/AI/半导体": 0.1433
+        },
+        "total_weight": 0.9495,
+        "cash": 0.0505,
+        "max_stock_weight": 0.1,
+        "max_sector_weight": 0.2498,
+        "official": {
+          "total_return": -0.001737,
+          "annualized_return": -0.021664,
+          "max_drawdown": 0.041356,
+          "sharpe_ratio": -0.1548,
+          "annualized_volatility": 0.139977,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "cost_aware": {
+          "total_return": -0.002022,
+          "annualized_return": -0.025175,
+          "max_drawdown": 0.041368,
+          "sharpe_ratio": -0.1803,
+          "annualized_volatility": 0.139621,
+          "win_rate": 0.45,
+          "n_trading_days": 20,
+          "n_stocks_held": 15,
+          "valuation_method": "first_open_fixed_shares_daily_close"
+        },
+        "factor_contributions": {},
+        "idx": 20,
+        "decision_date": "2026-06-22",
+        "test_start": "2026-06-23",
+        "test_end": "2026-07-20",
+        "regime": "bull",
+        "n_history_days": 480,
+        "n_forward_closes": 20
+      }
+    ]
+  },
+  "resources": {
+    "prompt_tokens": 292972,
+    "cached_prompt_tokens": 123776,
+    "cache_miss_tokens": 169196,
+    "completion_tokens": 17316,
+    "total_tokens": 310288,
+    "elapsed_seconds": 115.921,
+    "estimated_cost_usd": 0.028882
+  },
+  "conclusion_guard": "The full strategy failed closed at 17/21. Subset returns may only motivate or reject a new preregistered contract repair."
+}

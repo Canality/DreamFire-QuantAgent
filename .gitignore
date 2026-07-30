@@ -22,9 +22,11 @@ Thumbs.db
 
 # Project specific
 output/*
-!output/submission/
 jiuwenswarm/.venv/
 jiuwenswarm/evaluation/latest_score.json
+参考项目/
+scripts/tmp_*
+.tmp-*
 
 # Sensitive
 *.env
@@ -36,3 +38,14 @@ config.yaml
 *.zip
 *.pkl
 *.h5
+*.mp4
+*.m4a
+
+# Generated reports and test artifacts
+.coverage
+coverage.xml
+htmlcov/
+logs/
+jiuwenswarm/evaluation/*_smoke*.json
+jiuwenswarm/evaluation/*_dryrun.json
+jiuwenswarm/evaluation/policy_validator_20*.json

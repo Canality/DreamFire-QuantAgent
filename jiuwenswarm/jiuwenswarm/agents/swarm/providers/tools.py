@@ -506,14 +506,23 @@ def build_symphony_toolkit(params: dict[str, Any], ctx: SwarmBuildContext) -> li
 
 
 def _build_quant_tools(ctx: SwarmBuildContext) -> list[Any]:
-    """Build Quant tools for all team members (leader + teammates).
+    """Build role-scoped Quant tools.
 
-    Bull and Bear analysts each need at minimum their respective view tools
-    (quant_bull_view / quant_bear_view) to perform meaningful analysis.
+    The coordinator needs the complete pipeline. Bull and Bear analysts get
+    only their own cached-data view RPC so an LLM cannot cross role boundaries
+    or accidentally rerun pipeline stages.
     """
     try:
         from jiuwenswarm.agents.harness.common.tools.quant_toolkits import QuantToolkit
-        return list(QuantToolkit().get_tools(get_config()))
+        tools = list(QuantToolkit().get_tools(get_config()))
+        member = str(getattr(ctx, "member_name", "") or "").strip().lower().replace("-", "_")
+        role_tool = {
+            "bull_analyst": "quant_bull_view",
+            "bear_analyst": "quant_bear_view",
+        }.get(member)
+        if role_tool:
+            return [tool for tool in tools if tool.card.name == role_tool]
+        return tools
     except Exception as exc:
         logger.warning("[swarm.quant_toolkit] construction failed: %s", exc)
         return []

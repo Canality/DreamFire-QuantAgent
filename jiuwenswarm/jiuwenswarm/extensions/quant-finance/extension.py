@@ -18,6 +18,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
@@ -38,6 +39,7 @@ _MIN_TRAIN_DAYS = 61
 _PROVIDER_FAILURE_TTL_SECONDS = 300
 _provider_failure: dict | None = None
 _last_fetch_provider_stats: dict[str, dict[str, Any]] = {}
+_last_fetch_provider_ledger: dict[str, str] = {}
 
 
 def _cache_key(tickers: list, start: str, end: str) -> str:
@@ -56,6 +58,22 @@ def _set_cached_data(data: dict) -> None:
         keys = [k for k in _data_cache if k != "_last"]
         for k in keys[:-2]:
             del _data_cache[k]
+
+
+def _update_cached_data(**updates: Any) -> bool:
+    """Atomically add derived artifacts to the current market-data cache.
+
+    Bull and Bear handlers may finish concurrently. Replacing the whole cache
+    from a stale snapshot can therefore discard the other handler's result.
+    Mutating the live cache under the shared lock preserves both results and
+    avoids copying the large price/volume frames.
+    """
+    with _cache_lock:
+        cached = _data_cache.get("_last")
+        if not isinstance(cached, dict):
+            return False
+        cached.update(updates)
+        return True
 
 
 def _public_cache_summary(cached: dict) -> dict:
@@ -237,6 +255,8 @@ class QuantFinanceExtension(BaseExtension):
                 "_tickers": tickers,
                 "_prices_df": prices_df,
                 "_volumes_df": volumes_df,
+                "_provider_ledger": dict(_last_fetch_provider_ledger),
+                "_provider_stats": dict(_last_fetch_provider_stats),
                 # Compact summary for LLM
                 "n_stocks": len(prices),
                 "expected_stocks": len(tickers),
@@ -284,7 +304,6 @@ class QuantFinanceExtension(BaseExtension):
             factor_calc.regime = regime
             factors = factor_calc.compute_factors(prices, volumes if not volumes.empty else None)
             scores = factor_calc.compute_scores(factors)
-
             top_stocks = []
             for ticker in scores.head(15).index:
                 top_stocks.append({
@@ -294,7 +313,7 @@ class QuantFinanceExtension(BaseExtension):
                     "sector": str(scores.loc[ticker, "sector"]),
                 })
 
-            return {
+            result = {
                 "success": True,
                 "regime": regime,
                 "n_stocks_analyzed": len(scores),
@@ -303,6 +322,9 @@ class QuantFinanceExtension(BaseExtension):
                 "all_composite": {t: round(float(scores.loc[t, "composite"]), 4)
                                   for t in scores.index},
             }
+            if not _update_cached_data(_scores_df=scores, _factor_result=result):
+                return _cache_required_error()
+            return result
 
         return await asyncio.to_thread(_compute)
 
@@ -315,16 +337,23 @@ class QuantFinanceExtension(BaseExtension):
     ) -> dict[str, Any]:
         """Select stocks with sector diversification from factor scores."""
         del request
-        params = params or {}
-
-        all_composite = params.get("all_composite", {})
-        top_n = int(params.get("top_n") if params.get("top_n") is not None else 15)
-        min_score = float(params.get("min_score") if params.get("min_score") is not None else -0.5)
+        del params
 
         from jiuwenswarm.quant.stock_pool import STOCK_POOL, SECTOR_MAP
 
-        if not all_composite:
-            return {"success": False, "detail": "all_composite scores required"}
+        cached = _get_cached_data()
+        scores = cached.get("_scores_df") if cached else None
+        if not isinstance(scores, pd.DataFrame) or "composite" not in scores:
+            return {
+                "success": False,
+                "detail": "cached factor scores required; run quant_compute_factors first",
+            }
+
+        # Selection policy is server-owned. LLM-provided scores/thresholds are
+        # deliberately ignored so the model cannot rewrite a completed stage.
+        all_composite = scores["composite"].astype(float).to_dict()
+        top_n = 15
+        min_score = -0.5
 
         sorted_stocks = sorted(all_composite.items(), key=lambda x: x[1], reverse=True)
 
@@ -358,13 +387,16 @@ class QuantFinanceExtension(BaseExtension):
                 "selected_stocks": selected,
             }
 
-        return {
+        result = {
             "success": True,
             "n_selected": len(selected),
             "n_sectors_covered": sectors_covered,
             "selected_stocks": selected,
             "tickers": [s["ticker"] for s in selected],
         }
+        if not _update_cached_data(_selection_result=result):
+            return _cache_required_error()
+        return result
 
     # ---- quant.allocate_positions ----
 
@@ -377,17 +409,23 @@ class QuantFinanceExtension(BaseExtension):
         del request
         params = params or {}
 
-        tickers = params.get("tickers", [])
-
         frames = _cached_frames()
         if frames is None:
             return _cache_required_error()
         prices, _, _ = frames
+        cached = _get_cached_data()
+        selection = cached.get("_selection_result") if cached else None
+        tickers = list(selection.get("tickers", [])) if isinstance(selection, dict) else []
         if not tickers:
-            return {"success": False, "detail": "tickers are required"}
+            return {
+                "success": False,
+                "detail": "cached selection required; run quant_select_stocks first",
+            }
         missing = [ticker for ticker in tickers if ticker not in prices.columns]
         if missing:
             return {"success": False, "detail": f"selected tickers missing from cache: {missing}"}
+        requested_tickers = params.get("tickers")
+        input_overridden = bool(requested_tickers and list(requested_tickers) != tickers)
 
         def _allocate() -> dict:
             from jiuwenswarm.quant.factors import PositionSizer
@@ -419,14 +457,18 @@ class QuantFinanceExtension(BaseExtension):
                 })
                 total_weight += weight
 
-            return {
+            result = {
                 "success": True,
                 "total_weight": round(total_weight, 4),
                 "cash_reserve": round(1 - total_weight, 4),
                 "n_holdings": len(portfolio),
                 "portfolio": portfolio,
                 "weights": {p["ticker"]: p["weight"] for p in portfolio},
+                "input_overridden": input_overridden,
             }
+            if not _update_cached_data(_allocation_result=result):
+                return _cache_required_error()
+            return result
 
         return await asyncio.to_thread(_allocate)
 
@@ -439,21 +481,21 @@ class QuantFinanceExtension(BaseExtension):
     ) -> dict[str, Any]:
         """Run vectorized backtest with given portfolio weights."""
         del request
-        params = params or {}
-
-        weights = params.get("weights", {})
-        initial_capital = float(
-            params.get("initial_capital")
-            if params.get("initial_capital") is not None
-            else 1_000_000.0
-        )
+        del params
+        initial_capital = 1_000_000.0
 
         frames = _cached_frames()
         if frames is None:
             return _cache_required_error()
         _, _, prices = frames
+        cached = _get_cached_data()
+        allocation = cached.get("_allocation_result") if cached else None
+        weights = dict(allocation.get("weights", {})) if isinstance(allocation, dict) else {}
         if not weights:
-            return {"success": False, "detail": "weights are required"}
+            return {
+                "success": False,
+                "detail": "cached allocation required; run quant_allocate_positions first",
+            }
         missing = [ticker for ticker in weights if ticker not in prices.columns]
         if missing:
             return {"success": False, "detail": f"weighted tickers missing from cache: {missing}"}
@@ -464,7 +506,7 @@ class QuantFinanceExtension(BaseExtension):
             engine = BacktestEngine(initial_capital=initial_capital)
             result = engine.run(prices, weights)
 
-            return {
+            result_payload = {
                 "success": True,
                 **result.metrics,
                 "start_value": result.start_value,
@@ -473,6 +515,9 @@ class QuantFinanceExtension(BaseExtension):
                 "test_end": str(prices.index[-1].date()),
                 "n_forward_returns": len(prices) - 1,
             }
+            if not _update_cached_data(_backtest_result=result_payload):
+                return _cache_required_error()
+            return result_payload
 
         return await asyncio.to_thread(_backtest)
 
@@ -483,21 +528,39 @@ class QuantFinanceExtension(BaseExtension):
         params: dict[str, Any] | None = None,
         request: Any = None,
     ) -> dict[str, Any]:
-        """Generate structured Markdown quantitative investment report."""
-        del request
-        params = params or {}
+        """Generate structured report + candidate submission package.
 
-        portfolio = params.get("portfolio", [])
-        backtest = params.get("backtest", {})
-        regime = params.get("regime", "range")
-        top_stocks = params.get("top_stocks", [])
+        Builds 49 bundles from in-memory cache (prices, scores, stock_pool),
+        NOT from LLM-provided subset params. Candidate package failure
+        propagates to top-level success=False.
+        """
+        del request
+        del params
+        cached = _get_cached_data()
+        allocation = cached.get("_allocation_result") if cached else None
+        factor_result = cached.get("_factor_result") if cached else None
+        portfolio = list(allocation.get("portfolio", [])) if isinstance(allocation, dict) else []
+        backtest = cached.get("_backtest_result", {}) if cached else {}
+        regime = factor_result.get("regime", "range") if isinstance(factor_result, dict) else "range"
+        top_stocks = (
+            list(factor_result.get("top_stocks", []))
+            if isinstance(factor_result, dict)
+            else []
+        )
 
         if not portfolio or not backtest:
-            return {"success": False, "detail": "portfolio and backtest are required"}
+            return {
+                "success": False,
+                "detail": (
+                    "cached allocation and backtest required; run "
+                    "quant_allocate_positions and quant_run_backtest first"
+                ),
+            }
 
-        return {
+        report_md = _build_report_markdown(portfolio, backtest, regime, top_stocks)
+        result = {
             "success": True,
-            "report": _build_report_markdown(portfolio, backtest, regime, top_stocks),
+            "report": report_md,
             "summary": {
                 "n_holdings": len(portfolio),
                 "total_return": backtest.get("total_return"),
@@ -507,6 +570,179 @@ class QuantFinanceExtension(BaseExtension):
                 "regime": regime,
             },
         }
+
+        # Build candidate package from cache (real cache API)
+        try:
+            from jiuwenswarm.quant.reporting import (
+                ReportService, MetricFact, EvidenceRef,
+                install_snapshot_in_candidate, parse_bull_bear_pair,
+                write_data_snapshot,
+            )
+            from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP, TICKER_NAME_MAP
+            from datetime import timezone as tz
+
+            service = ReportService()
+            decision_time = datetime.now(tz.utc)
+
+            # Use real cache API: _get_cached_data() and _cached_frames()
+            frames = _cached_frames()
+
+            if frames is None or cached is None:
+                result["candidate_package"] = {"error": "Cache unavailable; run fetch_data first"}
+                result["success"] = False
+                result["detail"] = "candidate_package_error: cache empty"
+                return result
+
+            train_prices, _train_vols, _test_prices = frames
+            full_prices = cached.get("_prices_df")
+            full_volumes = cached.get("_volumes_df")
+            provider_ledger = cached.get("_provider_ledger")
+            provider_stats = cached.get("_provider_stats")
+            if (
+                not isinstance(full_prices, pd.DataFrame)
+                or not isinstance(full_volumes, pd.DataFrame)
+                or not isinstance(provider_ledger, dict)
+                or not isinstance(provider_stats, dict)
+            ):
+                raise RuntimeError("complete cached market-data provenance is unavailable")
+
+            output_root = Path(__file__).resolve().parents[4] / "output"
+            snapshot = write_data_snapshot(
+                full_prices,
+                full_volumes,
+                provider_ledger,
+                provider_stats,
+                output_root / "data_snapshots",
+            )
+
+            ev_ref = EvidenceRef(
+                evidence_id=snapshot.snapshot_id,
+                source_type="market_data", source_name="Multi-source market snapshot",
+                source_url=f"data_snapshot/{snapshot.manifest_path.name}",
+                period_end=None, published_at=None,
+                available_at=decision_time - timedelta(seconds=60),
+                retrieved_at=datetime.now(tz.utc),
+                content_sha256=snapshot.manifest_sha256,
+            )
+
+            # Build weights dict from LLM-provided portfolio params
+            weights_dict = {}
+            for entry in portfolio:
+                t = entry.get("ticker", "") or entry.get("code", "")
+                if t:
+                    weights_dict[t] = float(entry.get("weight", 0))
+
+            scores_df = cached.get("_scores_df")
+            if not isinstance(scores_df, pd.DataFrame) or len(scores_df) != len(ALL_STOCKS):
+                result["candidate_package"] = {
+                    "error": "Factor scores unavailable; run compute_factors first"
+                }
+                result["success"] = False
+                result["detail"] = "candidate_package_error: factor scores missing"
+                return result
+
+            # Build 49 bundles from ALL_STOCKS and cached factor scores
+            bundles = {}
+            for ticker in ALL_STOCKS:
+                w = weights_dict.get(ticker, 0.0)
+                if ticker not in scores_df.index:
+                    result["candidate_package"] = {
+                        "error": f"Factor score missing for {ticker}"
+                    }
+                    result["success"] = False
+                    result["detail"] = "candidate_package_error: incomplete factor scores"
+                    return result
+                tech_facts = (
+                    MetricFact(
+                        name="composite_score",
+                        value=round(float(scores_df.loc[ticker, "composite"]), 4),
+                        unit=None,
+                        status="available",
+                        evidence_ids=(snapshot.snapshot_id,),
+                    ),
+                )
+                bundles[ticker] = service.build_company_bundle(
+                    ticker=ticker,
+                    name=TICKER_NAME_MAP.get(ticker, ticker),
+                    sector=SECTOR_MAP.get(ticker, "未知"),
+                    as_of_time=decision_time, portfolio_weight=w, selected=w > 0,
+                    weight_zero_reason="" if w > 0 else "Agent 未选中",
+                    technical_facts=tech_facts,
+                    data_provider_status="partial",
+                )
+
+            # Bull/Bear views: try from cached data (stored by bull_view/bear_view handlers)
+            bull_raw = cached.get("_bull_result") if cached else None
+            bear_raw = cached.get("_bear_result") if cached else None
+            if bull_raw or bear_raw:
+                from dataclasses import replace
+
+                views, parse_errs = parse_bull_bear_pair(bull_raw, bear_raw)
+                if views:
+                    for parsed_view in views:
+                        view = replace(
+                            parsed_view,
+                            evidence_ids=(snapshot.snapshot_id,),
+                        )
+                        for tk in view.candidate_tickers:
+                            if tk in bundles:
+                                existing = list(bundles[tk].agent_views)
+                                existing.append(view)
+                                bundles[tk] = service.build_company_bundle(
+                                    ticker=tk, name=TICKER_NAME_MAP.get(tk, tk),
+                                    sector=SECTOR_MAP.get(tk, "未知"),
+                                    as_of_time=decision_time,
+                                    portfolio_weight=weights_dict.get(tk, 0),
+                                    selected=weights_dict.get(tk, 0) > 0,
+                                    weight_zero_reason=(
+                                        "" if weights_dict.get(tk, 0) > 0 else "Agent 未选中"
+                                    ),
+                                    technical_facts=bundles[tk].technical_facts,
+                                    agent_views=tuple(existing),
+                                    data_provider_status="partial",
+                                )
+
+            holdings = {t: w for t, w in weights_dict.items() if w > 0}
+            ps = service.build_portfolio_snapshot(
+                as_of_time=decision_time, holdings=holdings,
+                cash=round(1.0 - sum(holdings.values()), 6),
+                strategy_id="multi_agent_extension",
+            )
+
+            output_dir = str(output_root)
+            pkg_ok, quality, pkg_path = service.build_package(
+                portfolio=ps, bundles=bundles, output_dir=output_dir,
+                strategy_label="multi_agent",
+                evidence_manifest={snapshot.snapshot_id: ev_ref},
+            )
+            if not pkg_ok:
+                result["candidate_package"] = {
+                    "path": pkg_path, "quality_passed": False,
+                    "n_reports": len(bundles),
+                    "blockers": list(quality.blockers),
+                    "warnings": list(quality.warnings),
+                }
+                result["success"] = False
+                result["detail"] = "candidate_package_quality_failed"
+                return result
+            installed_url, installed_hash = install_snapshot_in_candidate(snapshot, pkg_path)
+            if installed_url != ev_ref.source_url or installed_hash != ev_ref.content_sha256:
+                raise RuntimeError("installed snapshot does not match EvidenceRef")
+
+            result["candidate_package"] = {
+                "path": pkg_path, "quality_passed": pkg_ok,
+                "n_reports": len(bundles),
+                "snapshot_id": snapshot.snapshot_id,
+                "blockers": list(quality.blockers),
+                "warnings": list(quality.warnings),
+            }
+
+        except Exception as exc:
+            result["candidate_package"] = {"error": str(exc)}
+            result["success"] = False
+            result["detail"] = f"candidate_package_error: {exc}"
+
+        return result
 
 
     # ---- quant.bull_view ----
@@ -606,7 +842,7 @@ class QuantFinanceExtension(BaseExtension):
 
             bullish.sort(key=lambda x: x["bull_score"], reverse=True)
 
-            return {
+            bull_result = {
                 "success": True,
                 "regime": regime,
                 "factor_weights": "bull-trend (momentum_20=0.50, momentum_60=0.25, volume_corr=0.15)",
@@ -618,7 +854,16 @@ class QuantFinanceExtension(BaseExtension):
                 "n_bullish": len(bullish),
                 "bullish_stocks": bullish[:12],
                 "recommended_position": "70-95%" if regime == "bull" else "50-80%",
+                "verdict": "overweight" if bullish else "neutral",
+                "confidence": "high" if len(bullish) >= 8 else "medium",
+                "candidate_tickers": [item["ticker"] for item in bullish[:12]],
+                "warnings": [],
+                "evidence_ids": ["e_extension_gen"],
+                "summary": f"{regime} regime; {len(bullish)} bullish candidates",
             }
+            if not _update_cached_data(_bull_result=bull_result):
+                return _cache_required_error()
+            return bull_result
 
         return await asyncio.to_thread(_analyze)
 
@@ -721,7 +966,7 @@ class QuantFinanceExtension(BaseExtension):
 
             bearish.sort(key=lambda x: x["bear_score"], reverse=True)
 
-            return {
+            bear_result = {
                 "success": True,
                 "regime": regime,
                 "factor_weights": "bear-risk (max_drawdown=0.45, reversal_5=0.25, volume_corr=0.15)",
@@ -734,7 +979,20 @@ class QuantFinanceExtension(BaseExtension):
                 "n_bearish": len(bearish),
                 "bearish_stocks": bearish[:12],
                 "recommended_cash_reserve": "10-40%" if regime == "bear" else "5-15%",
+                "verdict": "underweight" if bearish else "neutral",
+                "confidence": "high" if len(bearish) >= 8 else "medium",
+                "candidate_tickers": [item["ticker"] for item in bearish[:12]],
+                "warnings": [
+                    warning
+                    for item in bearish[:3]
+                    for warning in item.get("warnings", [])[:1]
+                ],
+                "evidence_ids": ["e_extension_gen"],
+                "summary": f"{regime} regime; {len(bearish)} risk candidates",
             }
+            if not _update_cached_data(_bear_result=bear_result):
+                return _cache_required_error()
+            return bear_result
 
         return await asyncio.to_thread(_analyze)
 
@@ -825,6 +1083,7 @@ def _fetch_real_data(tickers, start_date, end_date):
     all_volumes = {}
     all_errors = []
     provider_stats: dict[str, dict[str, Any]] = {}
+    provider_ledger: dict[str, str] = {}
 
     providers = (
         ("sina", _fetch_sina),
@@ -857,9 +1116,12 @@ def _fetch_real_data(tickers, start_date, end_date):
             ticker for ticker in tickers
             if _ticker_data_usable(all_prices, all_volumes, ticker)
         }
+        newly_covered = covered_after - covered_before
+        for ticker in newly_covered:
+            provider_ledger[ticker] = provider_name
         provider_stats[provider_name] = {
             "requested": len(missing),
-            "newly_covered": len(covered_after - covered_before),
+            "newly_covered": len(newly_covered),
             "errors": len(errors),
         }
         logger.info(
@@ -869,8 +1131,9 @@ def _fetch_real_data(tickers, start_date, end_date):
             len(tickers),
         )
 
-    global _last_fetch_provider_stats
+    global _last_fetch_provider_stats, _last_fetch_provider_ledger
     _last_fetch_provider_stats = provider_stats
+    _last_fetch_provider_ledger = provider_ledger
     return all_prices, all_volumes, all_errors
 
 
@@ -1210,23 +1473,12 @@ def _build_report_markdown(portfolio, backtest, regime, top_stocks):
         "",
         "### 2.1 因子模型",
         "",
-        "采用 **6 因子多维度模型**（经 IC 分析验证）：",
-        "",
-        "| 因子 | 维度 | 训练期 IC | 作用 |",
-        "|------|------|----------|------|",
-        "| momentum_20 | 价格趋势 | +0.084 | 主力因子，中期趋势强度 |",
-        "| momentum_60 | 价格趋势 | +0.055 | 长期趋势确认 |",
-        "| max_drawdown | 风险控制 | -0.114 | 回撤小的股票表现更好 |",
-        "| reversal_5 | 反转信号 | -0.094 | 短期反转预警 |",
-        "| volume_corr | 量价关系 | +0.049 | 量价配合确认（稳定器） |",
-        "| volume_trend | 量能趋势 | +0.073 | 资金关注度变化 |",
+        "采用生产六因子模型：momentum_20, momentum_60, reversal_5, max_drawdown, volume_corr, volume_trend",
         "",
         "### 2.2 因子选择逻辑",
         "",
         f"- **市场状态**: {regime_label}",
-        "- **因子权重**: 根据市场状态动态调整（趋势市重动量，震荡市重风控）",
-        "- **量价双维度**: 价格因子（4 个）+ 量能因子（2 个），后者与价格因子正交（r<0.25），提供独立 alpha",
-        "- **假设声明**: 因子 IC 基于 2026 年 2-7 月行情测量。如评测期市场状态显著不同，因子预测力可能下降",
+        "- **因子权重**: 等权，由 PositionSizer 施加单股≤10%、板块≤25% 约束",
         "",
         "---",
         "",
@@ -1234,18 +1486,13 @@ def _build_report_markdown(portfolio, backtest, regime, top_stocks):
         "",
         "### 3.1 多视角分析架构",
         "",
-        "选股由双 Agent 协作完成：",
-        "- **Bull Analyst（趋势视角）**: momentum_20 + momentum_60 + volume_corr，寻找趋势健康、量价配合的股票",
-        "- **Bear Analyst（风控视角）**: max_drawdown + reversal_5 + volume_corr(反向)，筛选风险低、回撤小的股票",
-        "- **Coordinator（综合决策）**: 融合双视角，共识标的优先，分歧标的由 PM 基于判市做判断",
-        "",
-        "> 两套视角独立验证（Spearman r≈-0.10, overlap≈28%），确保多视角互补而非重复。",
+        "选股由双 Agent 协作完成（Bull 看多视角 + Bear 风控视角），Coordinator 综合决策。",
         "",
         "### 3.2 选股约束",
         "",
         "- 波动率硬约束：vol_z > 2.0 → 排除",
-        "- 板块分散化：每板块至少 1 只，最多 3 只",
-        "- 仓位分配：风险平价（1/波动率），单只≤10%，单板块≤25%，最低 5% 现金",
+        "- 选股: 裸分 Top 15",
+        "- 仓位分配: 逆波动率加权，单只≤10%，单板块≤25%，最低 5% 现金",
         "",
         "---",
         "",
@@ -1314,24 +1561,21 @@ def _build_report_markdown(portfolio, backtest, regime, top_stocks):
         "本策略基于量化因子模型，以下局限性应在解读结果时予以考虑：",
         "",
         "### 1. 因子选择的时间依赖性",
-        "- 因子 IC（信息系数）基于 **2026 年 2-7 月** 的历史行情测量",
-        "- 该期间 8 个评测窗口中 5 个为牛市、3 个为震荡市，**无熊市样本**",
+        "- 因子有效性基于历史行情回测，不保证未来表现",
+        "- 历史样本中 bull/range/bear 分布不均衡，特定市态下因子预测力可能衰减",
         "- 如果当前评测期市场状态与训练期显著不同，因子预测力可能下降",
         "",
         "### 2. 因子在不同市场状态下的稳定性",
-        "- `momentum_20` (IC=+0.72)：在趋势市中预测力最强，震荡/下跌市中 IC 可能衰减",
-        "- `momentum_60` (IC=+0.41)：同理，依赖趋势延续性",
-        "- `reversal_5` (IC=+0.39)：震荡市中可能相对更有效",
-        "- `max_drawdown` (IC=-0.38)：各市态下均有防御价值，相对最稳定",
+        "- 动量因子依赖趋势延续性，在震荡或反转阶段可能衰减",
+        "- 反转和回撤因子的作用会随市场状态变化，当前报告不声称固定 IC",
         "",
         "### 3. 缺乏独立验证集",
-        "- 因子选择（IC 分析）和权重优化均在同一批 8 个窗口上完成",
-        "- 未预留独立的验证窗口——存在一定程度的过拟合风险",
-        "- 理想流程应为：训练集选因子 → 验证集调权重 → 测试集打分（三段隔离）",
+        "- 当前报告只引用运行时可复核事实，不把历史实验窗口描述为本次证据",
+        "- 策略研究仍需保持训练、验证和最终测试的时间隔离",
         "",
         "### 4. 持仓周期的固有限制",
         "- 本策略持仓周期为 20 个交易日（约 1 个自然月）",
-        "- 在此周期上，基本面因子（PE/PB/ROE）的 IC≈0——基本面变化速度不足以在 20 日内影响股价",
+        "- 当前生产模型未纳入基本面因子；其短周期有效性需要独立验证",
         "- 如评测周期显著不同于 20 日，因子有效性需重新评估",
         "",
         "### 5. 市场状态判别的局限性",

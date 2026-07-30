@@ -1,0 +1,2867 @@
+{
+  "run_id": "pa_style_cross_section_20260721_182452",
+  "created_at": "2026-07-21T18:24:52.243993+08:00",
+  "git": {
+    "commit": "48559248bbd80da1674c5befc4f1033e390c026f",
+    "dirty": true
+  },
+  "snapshot_id": "sina_20260721_135352",
+  "preregistration": "D:\\比赛\\HUAWEI\\Track_2\\策略实验\\实验_20260721_PA_style横截面选股预注册.md",
+  "preregistration_sha256": "2c48e50da701c8f39764924ac0aefee5d99ed7c4b8698c89880bba2789e4dc5a",
+  "pa_assets": {
+    "提示词大纲_人设与思维方式.txt": "3d1e9fbc5e987c563c446faacdb824d2e0f1d550f8e703aa37ba1d1fa98c886e",
+    "逐棒分析检查单.txt": "b6240348455b62b3c3656551d0f05ba2f99910e958190f8d24ecbbd07ccaf3d6"
+  },
+  "decisions": [
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "688981.SH",
+          "score": 88.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 83.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 81.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000858.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603288.SH",
+          "score": 79.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 77.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000651.SZ",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603501.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "002594.SZ",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 73.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600584.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601186.SH",
+          "score": 71.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10608,
+        "cached_prompt_tokens": 10496,
+        "completion_tokens": 670
+      },
+      "elapsed_seconds": 4.906,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "e52e9751e43e2c361b73d6bb6e513f2e4c708b33045561793aa29ff1d80ab774",
+      "idx": 0,
+      "decision_date": "2024-10-25"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "688981.SH",
+          "score": 92.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600570.SH",
+          "score": 91.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600438.SH",
+          "score": 90.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600887.SH",
+          "score": 88.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600584.SH",
+          "score": 86.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603288.SH",
+          "score": 83.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000858.SZ",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600519.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 77.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601012.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601766.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10641,
+        "cached_prompt_tokens": 0,
+        "completion_tokens": 616
+      },
+      "elapsed_seconds": 4.719,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "72d51e50ba06531e64a4d255e1102a7047fdfd792ab384b9afdd5a18e96eaa4a",
+      "idx": 1,
+      "decision_date": "2024-11-22"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "601398.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601088.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601288.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600183.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601988.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601998.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap"
+          ]
+        },
+        {
+          "ticker": "601766.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret5",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600570.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600887.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret5",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600028.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "603288.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "688041.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "000333.SZ",
+          "score": 68.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10697,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 608
+      },
+      "elapsed_seconds": 4.547,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "4c35ee7d3e912d0e5f6de399d62bbd202cc8667fcfc4359d95834515248553b4",
+      "idx": 2,
+      "decision_date": "2024-12-20"
+    },
+    {
+      "success": false,
+      "selections": [],
+      "attempts": 2,
+      "errors": [
+        "expected 6 sectors, got 5",
+        "expected 6 sectors, got 5"
+      ],
+      "usage": {
+        "prompt_tokens": 22167,
+        "cached_prompt_tokens": 13696,
+        "completion_tokens": 1190
+      },
+      "elapsed_seconds": 7.781,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "291dc5e543807a77622dfad8f1210c8a47ed48fa193b1fcb32a8470bf086016a",
+      "idx": 3,
+      "decision_date": "2025-01-20"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "002594.SZ",
+          "score": 90.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603501.SH",
+          "score": 90.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600570.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600547.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603986.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600212.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600845.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601398.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret60",
+            "range_pos20",
+            "ema20_gap"
+          ]
+        },
+        {
+          "ticker": "600309.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "range_pos20",
+            "volume_ratio_5_20",
+            "ema20_gap"
+          ]
+        },
+        {
+          "ticker": "601012.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000333.SZ",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20"
+          ]
+        }
+      ],
+      "attempts": 2,
+      "errors": [
+        "expected 6 sectors, got 5"
+      ],
+      "usage": {
+        "prompt_tokens": 22056,
+        "cached_prompt_tokens": 13696,
+        "completion_tokens": 1231
+      },
+      "elapsed_seconds": 8.203,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "43c38fb44491c624dd8a3c2a06aee020473671f259dccfd320e7af6cb7e7d3df",
+      "idx": 4,
+      "decision_date": "2025-02-25"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "600036.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 83.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600519.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601998.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "000858.SZ",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600809.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600212.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "688041.SH",
+          "score": 73.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601012.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 71.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600438.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600426.SH",
+          "score": 69.0,
+          "reason_codes": [
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603501.SH",
+          "score": 68.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "ret60"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 67.0,
+          "reason_codes": [
+            "ret5",
+            "volume_ratio_5_20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 66.0,
+          "reason_codes": [
+            "ret5",
+            "volume_ratio_5_20",
+            "ema20_slope5"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10697,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 626
+      },
+      "elapsed_seconds": 4.219,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "42a85820cbd75649845f72f4fa191b8c19b39c59aecff830bfcfacc2b8cd7ca3",
+      "idx": 5,
+      "decision_date": "2025-03-25"
+    },
+    {
+      "success": false,
+      "selections": [],
+      "attempts": 2,
+      "errors": [
+        "expected 6 sectors, got 5",
+        "expected 6 sectors, got 5"
+      ],
+      "usage": {
+        "prompt_tokens": 22191,
+        "cached_prompt_tokens": 13824,
+        "completion_tokens": 1250
+      },
+      "elapsed_seconds": 8.703,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "c37b336442dd415a8e5b61fc21c4a35331e4260198ecd685b29e65718ea2e710",
+      "idx": 6,
+      "decision_date": "2025-04-23"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "300750.SZ",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600000.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000333.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "002594.SZ",
+          "score": 78.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600183.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601998.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "002475.SZ",
+          "score": 76.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000651.SZ",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601668.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10645,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 742
+      },
+      "elapsed_seconds": 4.734,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "c4e0fe132d48514fb23aff5bac3b604f130df2d7620ea2415cb5a0047be52a61",
+      "idx": 7,
+      "decision_date": "2025-05-26"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "300308.SZ",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600426.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601998.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "ret5"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ret5",
+            "range_pos20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "candles5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600183.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601288.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601088.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601668.SH",
+          "score": 55.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601888.SH",
+          "score": 55.0,
+          "reason_codes": [
+            "ret5",
+            "candles5"
+          ]
+        },
+        {
+          "ticker": "600212.SH",
+          "score": 50.0,
+          "reason_codes": [
+            "volume_ratio_5_20",
+            "candles5"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10724,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 639
+      },
+      "elapsed_seconds": 4.078,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "09c8dd780ef31a9b5b8f5b200519c32e893a889fcea2171ff9c123d060297c9b",
+      "idx": 8,
+      "decision_date": "2025-06-24"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "601288.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600183.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601398.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "000651.SZ",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600089.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600570.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601668.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601998.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600438.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10645,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 645
+      },
+      "elapsed_seconds": 4.437,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "89b02c98ca9943c8cfec2c9eeccb0380bb796bcf04afe34c0cea7be9994ddc9d",
+      "idx": 9,
+      "decision_date": "2025-07-22"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "601288.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300394.SZ",
+          "score": 79.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601398.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret5",
+            "ret60",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600183.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret60",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600309.SH",
+          "score": 71.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600438.SH",
+          "score": 68.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600089.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600519.SH",
+          "score": 60.0,
+          "reason_codes": [
+            "ret5",
+            "ret20"
+          ]
+        },
+        {
+          "ticker": "000858.SZ",
+          "score": 55.0,
+          "reason_codes": [
+            "ret5",
+            "ret20"
+          ]
+        },
+        {
+          "ticker": "601766.SH",
+          "score": 50.0,
+          "reason_codes": [
+            "ret20",
+            "ret60"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10695,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 636
+      },
+      "elapsed_seconds": 4.328,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "ff18b171f1a3c766e279033914553b5b771ed0600d89ecde1d9bb8680ce77bcb",
+      "idx": 10,
+      "decision_date": "2025-08-19"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "300394.SZ",
+          "score": 91.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 90.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "688981.SH",
+          "score": 88.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600660.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "603986.SH",
+          "score": 84.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 83.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601288.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 81.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600183.SH",
+          "score": 79.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "000333.SZ",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600547.SH",
+          "score": 77.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600426.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "range_pos20",
+            "ema20_gap"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10661,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 605
+      },
+      "elapsed_seconds": 3.828,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "20d6b2ccff4b779f4653a43096c14fa38a1f8197148760a060c43e6604dbdea2",
+      "idx": 11,
+      "decision_date": "2025-09-16"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "300750.SZ",
+          "score": 90.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "688981.SH",
+          "score": 90.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300274.SZ",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600089.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600584.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600660.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601012.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603986.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601888.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "603501.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10694,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 803
+      },
+      "elapsed_seconds": 5.063,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "630dda61ca9b68aa377a575501e9db4793104035dbeaa9f0a3f63d0b8e2103fa",
+      "idx": 12,
+      "decision_date": "2025-10-22"
+    },
+    {
+      "success": false,
+      "selections": [],
+      "attempts": 2,
+      "errors": [
+        "expected 6 sectors, got 5",
+        "expected 6 sectors, got 5"
+      ],
+      "usage": {
+        "prompt_tokens": 22052,
+        "cached_prompt_tokens": 13696,
+        "completion_tokens": 1212
+      },
+      "elapsed_seconds": 7.969,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "d6176b420298507bffd35e0116a3414ebf92077815e3f8ce0752f7676846000e",
+      "idx": 13,
+      "decision_date": "2025-11-19"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "000333.SZ",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600309.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600426.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 76.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600028.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600887.SH",
+          "score": 73.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "000651.SZ",
+          "score": 72.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601888.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap"
+          ]
+        },
+        {
+          "ticker": "600547.SH",
+          "score": 68.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 66.0,
+          "reason_codes": [
+            "ret5",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601186.SH",
+          "score": 60.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300394.SZ",
+          "score": 55.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        }
+      ],
+      "attempts": 2,
+      "errors": [
+        "expected 6 sectors, got 5"
+      ],
+      "usage": {
+        "prompt_tokens": 22140,
+        "cached_prompt_tokens": 13056,
+        "completion_tokens": 1341
+      },
+      "elapsed_seconds": 9.015,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "b4f12dd30029416a5c4c6e36c8005c5ce6053da8f899e28abb9132a14db61edf",
+      "idx": 14,
+      "decision_date": "2025-12-17"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "601899.SH",
+          "score": 88.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 86.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 83.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601888.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600000.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600703.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600028.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "002594.SZ",
+          "score": 72.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601998.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600570.SH",
+          "score": 68.0,
+          "reason_codes": [
+            "ret5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600660.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 62.0,
+          "reason_codes": [
+            "ret5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601012.SH",
+          "score": 60.0,
+          "reason_codes": [
+            "volume_ratio_5_20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10699,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 596
+      },
+      "elapsed_seconds": 4.0,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "65fe51c68f46f0ac03a335bbd932a222ba6c3d75d0ea67bdb81ba7dfb22dad74",
+      "idx": 15,
+      "decision_date": "2026-01-16"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "300394.SZ",
+          "score": 88.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600547.SH",
+          "score": 86.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600584.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 84.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 83.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "603986.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600309.SH",
+          "score": 79.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600519.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600703.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret5",
+            "ret60",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 68.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000858.SZ",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000333.SZ",
+          "score": 60.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601668.SH",
+          "score": 55.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10728,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 760
+      },
+      "elapsed_seconds": 4.828,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "8ab142fa86421812b2c49c26fcad6e50ffa2c9c9c4947450f8b4dedda318e60e",
+      "idx": 16,
+      "decision_date": "2026-02-13"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "601088.SH",
+          "score": 95.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600089.SH",
+          "score": 90.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603288.SH",
+          "score": 90.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "002594.SZ",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601288.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600845.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601988.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600309.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600703.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600887.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601600.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601668.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601186.SH",
+          "score": 60.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10750,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 743
+      },
+      "elapsed_seconds": 4.703,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "8ad1b6c1f7063265893ffe499d42d00653abd09c5201cbc461f538ced5033378",
+      "idx": 17,
+      "decision_date": "2026-03-23"
+    },
+    {
+      "success": false,
+      "selections": [],
+      "attempts": 2,
+      "errors": [
+        "reason_codes missing for 600426.SH",
+        "expected 6 sectors, got 5"
+      ],
+      "usage": {
+        "prompt_tokens": 22046,
+        "cached_prompt_tokens": 13696,
+        "completion_tokens": 1068
+      },
+      "elapsed_seconds": 7.188,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "f4ea47c9ee18193f50017911dde5928757ffd07652b87be61379eb5430906f46",
+      "idx": 18,
+      "decision_date": "2026-04-21"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "600584.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "688041.SH",
+          "score": 84.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601168.SH",
+          "score": 83.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600887.SH",
+          "score": 82.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "000651.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "603986.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "002475.SZ",
+          "score": 79.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601318.SH",
+          "score": 78.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "300750.SZ",
+          "score": 76.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "601899.SH",
+          "score": 74.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 73.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 72.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600570.SH",
+          "score": 71.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600660.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601668.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10695,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 635
+      },
+      "elapsed_seconds": 4.297,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "dca07da8245a50b7f3e79a913196f56d4677101d9b3cba0ccd8ffc29491a6de5",
+      "idx": 19,
+      "decision_date": "2026-05-22"
+    },
+    {
+      "success": true,
+      "selections": [
+        {
+          "ticker": "600183.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601088.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601988.SH",
+          "score": 85.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "000333.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "300308.SZ",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "600036.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "603986.SH",
+          "score": 80.0,
+          "reason_codes": [
+            "ret20",
+            "ret60",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600900.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "ema20_slope5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601398.SH",
+          "score": 75.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600000.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600703.SH",
+          "score": 70.0,
+          "reason_codes": [
+            "ret5",
+            "ret20",
+            "ema20_gap",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "600031.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "range_pos20"
+          ]
+        },
+        {
+          "ticker": "601688.SH",
+          "score": 65.0,
+          "reason_codes": [
+            "ret5",
+            "ema20_gap",
+            "ema20_slope5"
+          ]
+        },
+        {
+          "ticker": "600028.SH",
+          "score": 60.0,
+          "reason_codes": [
+            "ret5",
+            "volume_ratio_5_20"
+          ]
+        },
+        {
+          "ticker": "601186.SH",
+          "score": 55.0,
+          "reason_codes": [
+            "range_pos20"
+          ]
+        }
+      ],
+      "attempts": 1,
+      "errors": [],
+      "usage": {
+        "prompt_tokens": 10741,
+        "cached_prompt_tokens": 2432,
+        "completion_tokens": 700
+      },
+      "elapsed_seconds": 4.375,
+      "server_model": "deepseek-v4-flash",
+      "system_sha256": "f6362280fae61d2238b3afbdec6414a367ec3c670ea09cd6ce8856ee59b794a7",
+      "payload_sha256": "e0ac50e632ba1d4e5528f9e0b16bd0a7633d6e0f5a4fb982cffa6765cd7ccb80",
+      "idx": 20,
+      "decision_date": "2026-06-22"
+    }
+  ],
+  "status": "incomplete_fail_closed"
+}

@@ -1,10 +1,8 @@
 """Property tests for Agent-A structured output schemas and routing."""
 
-import pytest
 from jiuwenswarm.quant.agent_structured_output import (
     RegimeDiagnosis,
     AnalysisPlaybookRouter,
-    AnalysisPlaybook,
     FactorEvidence,
     StockRecommendation,
     validate_router_determinism,

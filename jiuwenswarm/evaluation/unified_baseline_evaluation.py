@@ -47,6 +47,8 @@ FACTOR_COLUMNS = (
     "volume_corr_z",
     "volume_trend_z",
 )
+EXPECTED_STOCKS = len(ALL_STOCKS)
+EXPECTED_SECTORS = len({SECTOR_MAP[ticker] for ticker in ALL_STOCKS})
 
 PREREGISTRATION = {
     "hypothesis": (
@@ -55,7 +57,10 @@ PREREGISTRATION = {
         "the current six-factor production model."
     ),
     "data_policy": {
-        "coverage": "49/49 exact tickers and 6/6 exact sectors or fail closed",
+        "coverage": (
+            f"{EXPECTED_STOCKS}/{EXPECTED_STOCKS} exact tickers and "
+            f"{EXPECTED_SECTORS}/{EXPECTED_SECTORS} exact sectors or fail closed"
+        ),
         "source": "one uniform Sina daily K-line source; raw/unadjusted OHLCV",
         "snapshot": "immutable CSV files plus SHA-256 manifest",
         "missing_close": "forward-fill only for valuation during suspension",
@@ -225,8 +230,15 @@ def load_snapshot(snapshot_dir: Path) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("tickers") != list(ALL_STOCKS):
         raise ValueError("Snapshot ticker order does not exactly match the competition pool")
-    if manifest.get("n_stocks") != 49 or manifest.get("n_sectors") != 6:
-        raise ValueError("Snapshot does not contain exact 49/49 and 6/6 coverage")
+    if (
+        manifest.get("n_stocks") != EXPECTED_STOCKS
+        or manifest.get("n_sectors") != EXPECTED_SECTORS
+    ):
+        raise ValueError(
+            "Snapshot does not contain exact "
+            f"{EXPECTED_STOCKS}/{EXPECTED_STOCKS} and "
+            f"{EXPECTED_SECTORS}/{EXPECTED_SECTORS} coverage"
+        )
 
     loaded: dict[str, Any] = {"manifest": manifest, "snapshot_dir": snapshot_dir}
     for filename, info in manifest["files"].items():
@@ -260,8 +272,15 @@ def _prepare_frames(snapshot: dict[str, Any]) -> tuple[pd.DataFrame, pd.DataFram
     opens = snapshot["open"].reindex(calendar)
     volumes = snapshot["volume"].reindex(calendar).fillna(0.0)
     index_close = pd.to_numeric(snapshot["index"]["close"], errors="coerce").reindex(calendar).ffill()
-    if closes.shape[1] != 49 or len({SECTOR_MAP[ticker] for ticker in closes.columns}) != 6:
-        raise ValueError("Prepared data lost 49/49 or 6/6 coverage")
+    if (
+        closes.shape[1] != EXPECTED_STOCKS
+        or len({SECTOR_MAP[ticker] for ticker in closes.columns}) != EXPECTED_SECTORS
+    ):
+        raise ValueError(
+            "Prepared data lost exact "
+            f"{EXPECTED_STOCKS}/{EXPECTED_STOCKS} or "
+            f"{EXPECTED_SECTORS}/{EXPECTED_SECTORS} coverage"
+        )
     if closes.iloc[MIN_HISTORY - 1:].isna().any().any():
         bad = closes.columns[closes.iloc[MIN_HISTORY - 1:].isna().any()].tolist()
         raise ValueError(f"Close coverage incomplete after minimum history: {bad}")
@@ -461,7 +480,9 @@ def main() -> int:
     opens, closes, volumes, index_close = _prepare_frames(snapshot)
     starts = build_schedule(len(index_close))
     print(
-        f"Snapshot {snapshot_dir.name}: 49/49 stocks, 6/6 sectors, "
+        f"Snapshot {snapshot_dir.name}: "
+        f"{EXPECTED_STOCKS}/{EXPECTED_STOCKS} stocks, "
+        f"{EXPECTED_SECTORS}/{EXPECTED_SECTORS} sectors, "
         f"{len(index_close)} index trading days, {len(starts)} non-overlapping windows"
     )
 

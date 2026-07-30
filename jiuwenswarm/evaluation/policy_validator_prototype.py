@@ -280,7 +280,7 @@ def main() -> int:
     out_path = Path(__file__).resolve().parent / f"{run_id}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(artifact, f, indent=2, ensure_ascii=False)
-    latest = Path(__file__).resolve().parent / "symphony_poc_latest.json"
+    latest = Path(__file__).resolve().parent / "policy_validator_latest.json"
     with open(latest, "w", encoding="utf-8") as f:
         json.dump(artifact, f, indent=2, ensure_ascii=False)
 
