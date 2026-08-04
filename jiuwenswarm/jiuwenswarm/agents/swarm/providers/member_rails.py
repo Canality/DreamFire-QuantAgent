@@ -14,7 +14,11 @@ by the build context instead of imperatively threaded dataclasses.
 
 from __future__ import annotations
 
+import inspect
 import logging
+import re
+from functools import wraps
+from importlib.metadata import version as distribution_version
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +29,27 @@ from openjiuwen.agent_teams.harness.manifest import (
     harness_element,
     param_field,
 )
+from openjiuwen.agent_teams.rails.builtin_elements import (
+    HEARTBEAT as CORE_HEARTBEAT,
+    OBSERVABILITY as CORE_OBSERVABILITY,
+    SECURITY as CORE_SECURITY,
+)
+from openjiuwen.agent_teams.rails.elements import TEAM_POLICY, TEAM_TOOL
 from openjiuwen.agent_teams.rails.team_context import (
     get_messager,
+    get_on_teammate_created,
     get_permissions_override,
     get_team_backend,
 )
+from openjiuwen.agent_teams.schema.deep_agent_spec import (
+    DeepAgentSpec,
+    register_rail_provider,
+)
+from openjiuwen.core.single_agent.prompts.builder import PromptSection
+from openjiuwen.core.single_agent.rail.base import AgentCallbackContext
+from openjiuwen.core.sys_operation import LocalWorkConfig, OperationMode
+from openjiuwen.core.sys_operation.sys_operation import SysOperation, SysOperationCard
+from openjiuwen.harness.rails.base import DeepAgentRail
 
 from jiuwenswarm.agents.harness.common.plugins.rail_manager import get_rail_manager
 from jiuwenswarm.agents.harness.common.rails.runtime_prompt_rail import (
@@ -66,6 +86,415 @@ PLUGIN_RAILS = "swarm.plugin_rails"
 SKILL_RETRIEVAL_PROMPT = "swarm.skill_retrieval_prompt"
 SYMPHONY_ORCHESTRATION_PROMPT = "swarm.symphony_orchestration_prompt"
 TEAM_PERMISSION_POLICY = "swarm.team_permission_policy"
+
+_FIXED_QUANT_PROFILE_KEY = "_fixed_quant_pipeline"
+_SUPPORTED_OPENJIUWEN_VERSION = "0.1.15.post3"
+_FIXED_QUANT_ALLOWED_TEAM_TOOLS = frozenset({"send_message"})
+_FIXED_QUANT_REQUIRED_MEMBERS = frozenset(
+    {"quant-leader", "alpha_analyst", "risk_evidence_analyst"}
+)
+_FIXED_QUANT_ALLOWED_RAIL_SPEC_TYPES = frozenset(
+    {
+        RUNTIME_PROMPT,
+        "swarm.response_prompt",
+        "swarm.stream_event",
+        CORE_SECURITY,
+        CORE_HEARTBEAT,
+        CONTEXT_PROCESSOR,
+        TEAM_TOOL,
+        TEAM_POLICY,
+        CORE_OBSERVABILITY,
+    }
+)
+_SUPPORTED_TEAM_TOOL_SURFACE = frozenset(
+    {
+        "approve_plan",
+        "approve_tool",
+        "async_task_cancel",
+        "async_task_output",
+        "async_tasks_list",
+        "build_team",
+        "claim_task",
+        "clean_team",
+        "create_task",
+        "member_complete_task",
+        "send_message",
+        "shutdown_member",
+        "spawn_bridge_agent",
+        "spawn_external_cli",
+        "spawn_human_agent",
+        "spawn_teammate",
+        "submit_plan",
+        "swarmflow",
+        "update_task",
+        "view_task",
+        "workspace_meta",
+    }
+)
+_FORBIDDEN_FIXED_QUANT_RAIL_TYPES = frozenset(
+    {
+        "SkillUseRail",
+        "SubagentRail",
+        "SysOperationRail",
+        "TaskPlanningRail",
+        "TeamWorkspaceRail",
+    }
+)
+_ORIGINAL_DEEP_AGENT_RESOLVE_PARTS: Any | None = None
+
+
+def is_fixed_quant_team_identity(team_name: object, session_id: object) -> bool:
+    """Match only the base quant team or its exact canonical session name."""
+
+    normalized_team_name = str(team_name or "").strip()
+    if normalized_team_name == "quant_team":
+        return True
+
+    session_suffix = re.sub(
+        r"[^A-Za-z0-9_.-]+",
+        "_",
+        str(session_id or "").strip(),
+    ).strip("._-")
+    return bool(
+        session_suffix
+        and normalized_team_name == f"quant_team_{session_suffix}"
+    )
+
+
+def _is_fixed_quant_context(context: Any) -> bool:
+    """Return whether a build context carries the fixed quant profile."""
+
+    config = getattr(context, "config", None)
+    return isinstance(config, dict) and config.get(_FIXED_QUANT_PROFILE_KEY) is True
+
+
+def _assert_fixed_quant_upstream_compatibility() -> None:
+    """Fail closed if the pinned openJiuwen capability surface drifts."""
+
+    actual_version = distribution_version("openjiuwen")
+    if actual_version != _SUPPORTED_OPENJIUWEN_VERSION:
+        raise RuntimeError(
+            "fixed quant capability adapter requires openjiuwen "
+            f"{_SUPPORTED_OPENJIUWEN_VERSION}, got {actual_version}"
+        )
+
+    original = _ORIGINAL_DEEP_AGENT_RESOLVE_PARTS or DeepAgentSpec.resolve_parts
+    parameters = tuple(inspect.signature(original).parameters)
+    if parameters != ("self", "context"):
+        raise RuntimeError(
+            "openjiuwen DeepAgentSpec.resolve_parts signature changed; "
+            f"expected ('self', 'context'), got {parameters}"
+        )
+
+    from openjiuwen.agent_teams.tools.tool_permissions import (
+        HUMAN_AGENT_TOOLS,
+        LEADER_TOOLS,
+        MEMBER_TOOLS,
+    )
+
+    actual_surface = frozenset().union(
+        HUMAN_AGENT_TOOLS,
+        LEADER_TOOLS,
+        MEMBER_TOOLS,
+    )
+    if actual_surface != _SUPPORTED_TEAM_TOOL_SURFACE:
+        added = sorted(actual_surface - _SUPPORTED_TEAM_TOOL_SURFACE)
+        removed = sorted(_SUPPORTED_TEAM_TOOL_SURFACE - actual_surface)
+        raise RuntimeError(
+            "openjiuwen team tool surface changed; fixed quant ceiling requires "
+            f"review (added={added}, removed={removed})"
+        )
+
+
+class _InternalFixedQuantSysOperation(SysOperation):
+    """Unregistered workspace-only operation with no agent-facing rail/tools."""
+
+    def code(self) -> Any:
+        raise RuntimeError("code execution is disabled for the fixed quant profile")
+
+    def shell(self) -> Any:
+        raise RuntimeError("shell is disabled for the fixed quant profile")
+
+
+class _InternalFixedQuantSysOperationSpec:
+    """Resolve a workspace-only object without registering sys-operation tools."""
+
+    def __init__(self, member_id: str, workspace_root: str) -> None:
+        self._member_id = member_id
+        self._workspace_root = workspace_root
+
+    def resolve(self) -> _InternalFixedQuantSysOperation:
+        return _InternalFixedQuantSysOperation(
+            SysOperationCard(
+                id=f"{self._member_id}.fixed_quant_workspace",
+                mode=OperationMode.LOCAL,
+                work_config=LocalWorkConfig(
+                    shell_allowlist=[],
+                    sandbox_root=[self._workspace_root],
+                    restrict_to_sandbox=True,
+                ),
+            )
+        )
+
+
+def _resolve_deep_agent_parts_with_fixed_quant_ceiling(
+    spec: DeepAgentSpec,
+    context: Any = None,
+) -> Any:
+    """Resolve a fixed member without upstream-injected generic capabilities."""
+
+    original = _ORIGINAL_DEEP_AGENT_RESOLVE_PARTS
+    if original is None:
+        raise RuntimeError("fixed quant DeepAgentSpec adapter is not installed")
+    if not _is_fixed_quant_context(context):
+        return original(spec, context=context)
+
+    _assert_fixed_quant_upstream_compatibility()
+    card = getattr(spec, "card", None)
+    member_id = str(getattr(card, "id", "") or "fixed_quant_member")
+    workspace = getattr(spec, "workspace", None)
+    workspace_root_value = str(
+        getattr(workspace, "root_path", "") or ""
+    ).strip()
+    if not workspace_root_value:
+        raise RuntimeError(
+            "fixed quant capability ceiling requires a non-empty member workspace"
+        )
+    workspace_root = str(Path(workspace_root_value).expanduser().resolve())
+    bounded_rails = [
+        rail
+        for rail in (spec.rails or [])
+        if getattr(rail, "type", None) in _FIXED_QUANT_ALLOWED_RAIL_SPEC_TYPES
+    ]
+    bounded_spec = spec.model_copy(
+        update={
+            "add_general_purpose_agent": False,
+            "approval_required_tools": [],
+            "enable_async_subagent": False,
+            "enable_skill_discovery": False,
+            "enable_task_loop": False,
+            "enable_task_planning": False,
+            "mcps": [],
+            # TeamAgentConfigurator injects core.sys_operation and
+            # core.team.workspace after project enrichment. Retain only the
+            # fixed prompt/safety rails, bounded team messaging/policy, and
+            # no-op observability before upstream provider resolution.
+            "rails": bounded_rails,
+            "skills": [],
+            "subagents": [],
+            "sys_operation": _InternalFixedQuantSysOperationSpec(
+                member_id,
+                workspace_root,
+            ),
+        }
+    )
+    parts = original(bounded_spec, context=context)
+    # openjiuwen 0.1.15.post3 hard-codes this value inside resolve_parts.
+    # Reset the resolved config at the final project-owned seam.
+    parts.config.enable_task_loop = False
+
+    leaked_rails = sorted(
+        {
+            type(rail).__name__
+            for rail in parts.rails
+            if type(rail).__name__ in _FORBIDDEN_FIXED_QUANT_RAIL_TYPES
+        }
+    )
+    if leaked_rails:
+        raise RuntimeError(
+            f"fixed quant capability ceiling leaked rails: {leaked_rails}"
+        )
+    return parts
+
+
+class FixedQuantTeamPolicyRail(DeepAgentRail):
+    """Minimal fixed-pipeline role and messaging policy without task-board text."""
+
+    priority = 12
+
+    def __init__(
+        self,
+        *,
+        role: str,
+        member_name: str,
+        language: str,
+        team_backend: Any = None,
+    ) -> None:
+        super().__init__()
+        self._builder: Any = None
+        self._team_backend = team_backend
+        self._team_bootstrapped = False
+        self._is_leader = str(role).strip().lower() == "leader"
+        self._member_name = member_name
+        role_name = "Coordinator" if role == "leader" else "Analyst"
+        member = member_name or role_name
+        self._section = PromptSection(
+            name="fixed_quant_team_policy",
+            content={
+                "cn": (
+                    "# 固定量化团队能力边界\n\n"
+                    f"你的 member_name 是 `{member}`，角色是 {role_name}。"
+                    "本轮唯一编排器是服务端八阶段量化状态机。只调用当前角色已暴露的 "
+                    "Quant 工具；跨成员通信只使用 `send_message`。严格等待前一阶段 "
+                    "`success=true` 后再继续。不得构建或清理团队，不得创建、查看、认领、"
+                    "更新或完成任务，不得使用文件、shell、浏览器、子代理、技能或工作空间工具。\n"
+                ),
+                "en": (
+                    "# Fixed Quant Team Capability Boundary\n\n"
+                    f"Your member_name is `{member}` and your role is {role_name}. "
+                    "The server-owned eight-stage quant state machine is the sole orchestrator. "
+                    "Use only the Quant tools exposed for your role; use `send_message` only for "
+                    "cross-member communication. Wait for `success=true` before the next stage. "
+                    "Do not build or clean teams, manage tasks, or use file, shell, browser, "
+                    "subagent, skill, or workspace capabilities.\n"
+                ),
+            },
+            priority=11,
+        )
+
+    def init(self, agent: Any) -> None:
+        super().init(agent)
+        self._builder = getattr(agent, "system_prompt_builder", None)
+
+    def uninit(self, agent: Any) -> None:
+        if self._builder is not None:
+            self._builder.remove_section(self._section.name)
+        self._builder = None
+
+    async def _ensure_fixed_team_bootstrapped(self) -> None:
+        """Create the fixed roster server-side without exposing build_team."""
+
+        if not self._is_leader or self._team_bootstrapped:
+            return
+        backend = self._team_backend
+        if backend is None:
+            raise RuntimeError(
+                "fixed quant leader requires a team backend for roster bootstrap"
+            )
+
+        configured_members = {
+            str(getattr(member, "member_name", "") or "").strip()
+            for member in (getattr(backend, "predefined_members", None) or [])
+        }
+        configured_members.discard("")
+        configured_members.add(
+            str(getattr(backend, "member_name", "") or "").strip()
+        )
+        if configured_members != _FIXED_QUANT_REQUIRED_MEMBERS:
+            raise RuntimeError(
+                "fixed quant configured roster mismatch: "
+                f"expected={sorted(_FIXED_QUANT_REQUIRED_MEMBERS)}, "
+                f"actual={sorted(configured_members)}"
+            )
+
+        if await backend.get_team_info() is None:
+            await backend.build_team(
+                display_name="Fixed Quant Team",
+                desc="Server-owned fixed eight-stage quant pipeline",
+                leader_display_name=self._member_name or "quant-leader",
+                leader_desc="Fixed quant pipeline coordinator",
+            )
+
+        actual_members = {
+            str(getattr(member, "member_name", "") or "").strip()
+            for member in await backend.list_members()
+        }
+        actual_members.discard("")
+        actual_members.add(
+            str(getattr(backend, "member_name", "") or "").strip()
+        )
+        if actual_members != _FIXED_QUANT_REQUIRED_MEMBERS:
+            raise RuntimeError(
+                "fixed quant runtime roster mismatch: "
+                f"expected={sorted(_FIXED_QUANT_REQUIRED_MEMBERS)}, "
+                f"actual={sorted(actual_members)}"
+            )
+        self._team_bootstrapped = True
+
+    async def before_model_call(self, ctx: AgentCallbackContext) -> None:
+        _ = ctx
+        await self._ensure_fixed_team_bootstrapped()
+        if self._builder is not None:
+            self._builder.add_section(self._section)
+
+
+def build_bounded_team_tool_rail(params: dict[str, Any], context: Any) -> Any:
+    """Expose exactly send_message for fixed quant; delegate generic teams."""
+
+    from openjiuwen.agent_teams.rails.elements import (
+        TeamToolInput,
+        build_team_tool_rail,
+    )
+
+    if not _is_fixed_quant_context(context):
+        return build_team_tool_rail(params, context)
+
+    _assert_fixed_quant_upstream_compatibility()
+    backend = get_team_backend(context)
+    if backend is None:
+        return None
+
+    from openjiuwen.agent_teams.rails.team_tool_rail import TeamToolRail
+
+    inp = TeamToolInput.resolve(params, context)
+    excluded = _SUPPORTED_TEAM_TOOL_SURFACE - _FIXED_QUANT_ALLOWED_TEAM_TOOLS
+    return TeamToolRail(
+        team_backend=backend,
+        role=inp.role,
+        teammate_mode=inp.teammate_mode,
+        lifecycle=inp.lifecycle,
+        language=inp.language,
+        on_teammate_created=get_on_teammate_created(context),
+        exclude_tools=set(excluded),
+        workspace_manager=None,
+        qualify_ids=inp.qualify_ids,
+        team_name=inp.team_name,
+        member_name=inp.member_name,
+        messager=get_messager(context),
+        team_permissions_enabled=inp.team_permissions_enabled,
+    )
+
+
+def build_bounded_team_policy_rail(params: dict[str, Any], context: Any) -> Any:
+    """Replace task-oriented team policy only for the fixed quant profile."""
+
+    from openjiuwen.agent_teams.rails.elements import build_team_policy_rail
+
+    if not _is_fixed_quant_context(context):
+        return build_team_policy_rail(params, context)
+
+    _assert_fixed_quant_upstream_compatibility()
+    backend = get_team_backend(context)
+    return FixedQuantTeamPolicyRail(
+        role=str(getattr(context, "role", "") or "teammate"),
+        member_name=str(getattr(context, "member_name", "") or ""),
+        language=str(getattr(context, "language", "") or "cn"),
+        team_backend=backend,
+    )
+
+
+def install_fixed_quant_runtime_adapters() -> None:
+    """Install idempotent fixed-context adapters at public registry seams."""
+
+    global _ORIGINAL_DEEP_AGENT_RESOLVE_PARTS
+    if _ORIGINAL_DEEP_AGENT_RESOLVE_PARTS is None:
+        _ORIGINAL_DEEP_AGENT_RESOLVE_PARTS = DeepAgentSpec.resolve_parts
+
+        @wraps(_ORIGINAL_DEEP_AGENT_RESOLVE_PARTS)
+        def resolve_parts(
+            spec: DeepAgentSpec,
+            context: Any = None,
+        ) -> Any:
+            return _resolve_deep_agent_parts_with_fixed_quant_ceiling(
+                spec,
+                context=context,
+            )
+
+        DeepAgentSpec.resolve_parts = resolve_parts
+
+    # openjiuwen's provider registry intentionally uses last registration wins.
+    register_rail_provider(TEAM_TOOL, build_bounded_team_tool_rail)
+    register_rail_provider(TEAM_POLICY, build_bounded_team_policy_rail)
 
 
 def _workspace_root(ctx: SwarmBuildContext) -> str | None:

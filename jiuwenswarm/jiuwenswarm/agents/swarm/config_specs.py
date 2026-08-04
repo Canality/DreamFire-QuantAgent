@@ -707,11 +707,16 @@ def build_member_deep_agent_spec(
         config, mode, role, enable_permissions=enable_permissions,
     )
 
-    merged_rails = list(base_spec.rails or [])
+    fixed_quant_pipeline = config.get(_FIXED_QUANT_PROFILE_KEY) is True
+    merged_rails = [] if fixed_quant_pipeline else list(base_spec.rails or [])
     merged_rails.extend(rails_specs)
-    merged_tools = list(base_spec.tools or [])
+    merged_tools = [] if fixed_quant_pipeline else list(base_spec.tools or [])
     merged_tools.extend(tool_specs)
-    merged_mcps = _merge_mcp_configs(base_spec.mcps, mcp_configs)
+    merged_mcps = (
+        []
+        if fixed_quant_pipeline
+        else _merge_mcp_configs(base_spec.mcps, mcp_configs)
+    )
 
     retrieval_enabled = _retrieval_enabled(config)
     if retrieval_enabled:
@@ -722,8 +727,23 @@ def build_member_deep_agent_spec(
         "tools": merged_tools,
         "mcps": merged_mcps,
     }
+    if fixed_quant_pipeline:
+        update.update(
+            {
+                "add_general_purpose_agent": False,
+                "approval_required_tools": [],
+                "enable_async_subagent": False,
+                "enable_skill_discovery": False,
+                "enable_task_loop": False,
+                "enable_task_planning": False,
+                "skills": [],
+                "subagents": [],
+            }
+        )
     if not _is_code_mode(mode):
-        update["enable_skill_discovery"] = not retrieval_enabled
+        update["enable_skill_discovery"] = (
+            False if fixed_quant_pipeline else not retrieval_enabled
+        )
 
     subagent_specs = build_member_subagent_specs(config, mode, role)
 
@@ -735,7 +755,7 @@ def build_member_deep_agent_spec(
     # In code mode build_member_subagent_specs already returns SWARM_BROWSER_AGENT,
     # so this branch only runs for non-code modes.
     team_browser_spec: SubAgentSpec | None = None
-    if not _is_code_mode(mode):
+    if not fixed_quant_pipeline and not _is_code_mode(mode):
         react_cfg = (config or {}).get("react", {})
         react_cfg = react_cfg if isinstance(react_cfg, dict) else {}
         subagents_cfg = react_cfg.get("subagents", {}) if isinstance(react_cfg, dict) else {}
@@ -745,7 +765,7 @@ def build_member_deep_agent_spec(
                 "browser_agent", registry.SWARM_BROWSER_AGENT, react_cfg, language
             )
 
-    if subagent_specs or team_browser_spec:
+    if not fixed_quant_pipeline and (subagent_specs or team_browser_spec):
         merged_subagents = list(base_spec.subagents or [])
         # Remove any browser_agent from base_spec to prevent the shared
         # playwright_official_stdio entry from co-existing with our isolated one.

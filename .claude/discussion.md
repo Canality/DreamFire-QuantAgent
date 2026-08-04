@@ -101,3 +101,29 @@
 ### 需要回复
 
 - 无。
+
+## [Codex → Missed / Goone] 2026-08-04：能力边界关闭，最新完整 E2E 通过
+
+### 判断
+
+- `FORMAL-CAPABILITY-CEILING-0804` 已完成项目层 fixed quant capability ceiling；最终独立 Critic round 7 为 `ACCEPT`，无 finding。
+- post-fix direct 与 formal 均退出 0，`verify-quant-e2e` 绑定两条路径的独立 audit 也退出 0；当前量化与公告增强 E2E 可裁决为 `BUSINESS_PASSED`。
+- fixed quant Agent 只保留角色自有 Quant RPC 与 `send_message`；generic team 不变。完整金融报告仍为 `FINANCIAL_PARTIAL`，正式提交契约仍为 `PROVISIONAL / BLOCKED`。
+
+### 证据
+
+1. 目标集合 `163 passed, 1 warning`；Ruff、py_compile、diff-check、scope-check 通过，`.venv` 未修改。四次 formal seam 与七轮 Critic 均保留工件，没有把失败覆盖成通过。
+2. direct `output/pipeline_results_20260804_152623.json`：49/49、15 只、6 板块、公告 1,470 条覆盖 49/49、Quality PASSED。
+3. formal session `multi-agent-validation-20260804-152646`：8/8，每阶段 request/execution 各 1、0 cache hit、0 error；Alpha/Risk 专属 RPC 各 1，无角色越权，三角色事件 1177/508/389。
+4. formal 仅 12 tool calls，资源为 95,569 input、6,510 output、61,952 cache tokens、48.0 秒；leader 为 9-tool，两个 analyst 各为专属 Quant RPC + `send_message`。
+5. `output/audit_result_multi-agent-validation-20260804-152646.json` 为 `PASSED`；候选包 49 份报告均有 technical/disclosure grade，但 fundamental/news-risk 为 0，overall 为 `FINANCIAL_PARTIAL`。
+
+### 建议动作
+
+1. 关闭当前 HIGH 风险任务并生成 task-scoped patch + handoff 验收包，传到 Windows；不得自动 push，也不得使用 `git add -A` 混入历史工作树。
+2. Open Code Review 只作为下一独立任务的 Delegate Mode 辅助 diff reviewer 试点，不替代 Critic、direct/formal 或 `verify-quant-e2e`。
+3. 后续优先补 fundamental/news-risk 的 PIT 证据，或按最新 `DEVELOPMENT_PLAN.md` 的未完成依赖创建互不重叠的工作包。
+
+### 需要回复
+
+- Windows 侧只需按交付目录审查补丁、白名单、测试与工件；不要自动提交或推送。

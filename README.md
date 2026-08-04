@@ -2,7 +2,7 @@
 
 华为 openJiuwen Track 2 参赛项目。系统在官方 49 家上市公司范围内完成行情获取、多因子分析、Alpha/Risk & Evidence 多 Agent 审查、选股、配仓、20 日回测和逐公司报告生成。
 
-> 当前状态：共享行情、公告 PIT 和量化 direct 路径已真实通过；最新 direct 为 49/49 行情、1,470 条公告和 49/49 披露。正式验证器也已能精确加载 `quant_team` 三角色，但最新 formal 被通用任务看板拖偏并在 0/8 阶段失败关闭，因此完整 E2E 仍为 **FAILED**。正式 Agent 仍残留 task-board、文件、browser 和 sys-operation 能力，capability ceiling 尚未验收。最新数量、证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)；下一阶段架构与验收路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
+> 当前状态：共享行情、公告 PIT、量化 direct 与 fixed `quant_team` formal 均已真实通过；最新 direct 为 49/49 行情、1,470 条公告和 49/49 披露，最新 formal 为严格 8/8、三角色真实参与、无角色越权，绑定两者的独立 E2E audit 退出 0。fixed quant 运行时已收敛到角色自有 Quant RPC 与 `send_message`，但报告仍为 `FINANCIAL_PARTIAL`，正式提交契约仍受官方口径冲突阻断。最新数量、证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)；下一阶段架构与验收路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
 
 ## 项目定位
 
@@ -33,9 +33,9 @@ Sina → Tencent → akshare → baostock → yfinance
 | 行情数据 | 五源逐只补缺、逐 ticker 来源、49/49 fail-closed |
 | 时序安全 | 决策日前训练、首日开盘固定股数、20 日前向持有 |
 | 仓位安全 | 选股输入与配仓输入一致；单股 ≤10%、板块 ≤25%、现金 ≥5% |
-| 多 Agent | 正式入口精确选择 Coordinator/Alpha/Risk & Evidence 三角色；历史有 8/8 路径证据，但最新 formal 被通用任务工具拖偏为 0/8，能力边界仍待修复 |
-| 报告 | direct 可生成 49 份公司报告、组合报告、行情快照和 49/49 公告披露；formal 尚未重新到达报告阶段，完整 E2E 失败 |
-| 资源 | 正式路径按角色记录 token、耗时、CPU、峰值工作集 |
+| 多 Agent | 正式入口精确选择 Coordinator/Alpha/Risk & Evidence 三角色；最新 formal 严格 8/8，每阶段恰好执行 1 次，角色专属 RPC 1/1 且无越权 |
+| 报告 | direct/formal 均到达报告路径；49 份公司报告、组合报告、行情快照和 49/49 公告披露通过独立 E2E audit，整体仍为 `FINANCIAL_PARTIAL` |
+| 资源 | 正式路径按角色记录 token、耗时和 CPU；最新峰值工作集与最大并发明确标为缺测，不伪填 0 |
 | 失败策略 | 数据不全、报告缺失、hash 错误、角色越权和重复失败均关闭 |
 
 正式路径的具体 session、token、耗时、收益和回撤数字以 `VALIDATION.md` 绑定的 timestamped `output/` 产物为准。`output/validation_summary.json` 仍是可再生的动态摘要入口，但不是项目事实源；只有它绑定当前产物且独立 E2E audit 退出 0，才能写 `BUSINESS_PASSED`。8/8 本身只证明量化 Agent 路径可运行。这只是路径验收区间，不是比赛成绩预测。
@@ -59,7 +59,7 @@ Sina → Tencent → akshare → baostock → yfinance
 - Alpha/Risk & Evidence 观点来自角色专属 RPC，不由 Coordinator 冒充；
 - 资源日志来自 openJiuwen 运行事件，不用估算值填 0。
 
-公告 Provider 的 point-in-time 分页、终止诊断和归档已通过真实 49/49 smoke 与 direct；最新 direct 候选含 1,470 条公告事实。formal 尚未重新执行到报告阶段，基本面、新闻、宏观与另类数据也未形成当前可审计覆盖，因此仍不是 `FULL_REPORT_PASSED` 最终作品。
+公告 Provider 的 point-in-time 分页、终止诊断和归档已通过真实 49/49 smoke、direct 与 formal；最新候选含 1,470 条公告事实。基本面、新闻、宏观与另类数据尚未形成当前可审计覆盖，因此仍不是 `FULL_REPORT_PASSED` 最终作品。
 
 ## 对比赛的竞争力
 
@@ -73,10 +73,10 @@ Sina → Tencent → akshare → baostock → yfinance
 
 短板：
 
-1. 最新 formal 在 22 秒内已消耗 140,181 input tokens（其中 101,248 cache tokens）和 14 次工具调用，却因任务看板噪声停在 0/8；资源效率与能力边界仍可能显著失分。
+1. 最新 formal 已收敛为 95,569 input、6,510 output、61,952 cache tokens、12 次工具调用和 48 秒；相较历史通用团队路径显著下降，但官方资源基准未公布，仍不能断言资源分达标。
 2. alpha 尚未得到样本外证明；工程可信不等于收益领先。
 3. 报告仍偏技术面，完整金融分析深度不足。
-4. Agent 路径仍暴露通用任务看板、文件工具和 browser 能力；当前最小能力 profile 没有真正到达运行时 capability ceiling。
+4. fixed quant capability ceiling 依赖锁定的 openJiuwen `0.1.15.post3` 接口与工具面；依赖升级会故意失败关闭，必须重新审查和双路径验收。
 5. 赛题规则仍有 49/50、现金和报告权重冲突，正式契约保持 PROVISIONAL。
 
 ## 快速复现
@@ -92,7 +92,7 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 .\.venv\Scripts\python.exe scripts/run_quant_pipeline.py
 
 # JiuwenSwarm 正式多 Agent 路径
-.\.venv\Scripts\python.exe -u evaluation/run_multi_agent.py
+.\.venv\Scripts\python.exe -u evaluation/run_multi_agent.py --start-date 2025-01-02 --end-date 2025-05-21
 ```
 
 完整端到端审计命令见 [VALIDATION.md](VALIDATION.md)。

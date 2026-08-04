@@ -25,7 +25,7 @@ import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from jiuwenswarm.agents.swarm import (
@@ -66,12 +66,14 @@ from openjiuwen.agent_teams.schema.deep_agent_spec import (
     BuiltinToolSpec,
     DeepAgentSpec,
     RailSpec,
+    SubAgentSpec,
     TeamModelConfig,
     WorkspaceSpec,
     register_rail_provider,
 )
 from openjiuwen.core.foundation.llm import ModelClientConfig
 from openjiuwen.core.foundation.tool import McpServerConfig
+from openjiuwen.core.single_agent import AgentCard
 from openjiuwen.core.single_agent.rail.base import (
     AgentCallbackContext,
     AgentCallbackEvent,
@@ -445,6 +447,397 @@ def test_fixed_quant_capability_profile_is_minimal(role: str) -> None:
     assert registry.MEMBER_SKILL_TOOLKIT not in {spec.type for spec in rails_specs}
 
 
+@pytest.mark.parametrize("role", ["leader", "teammate"])
+def test_fixed_quant_deep_spec_drops_all_inherited_capabilities(role: str) -> None:
+    """Fixed members cannot inherit browser, skill, MCP, or task capabilities."""
+
+    inherited_browser = SubAgentSpec(
+        agent_card=AgentCard(name="browser_agent"),
+        system_prompt="browse",
+        subagent_type="browser_agent",
+    )
+    inherited_mcp = McpServerConfig(
+        server_id="inherited",
+        server_name="inherited",
+        server_path="stdio://inherited",
+        client_type="stdio",
+        params={"command": "python"},
+    )
+    base = DeepAgentSpec(
+        add_general_purpose_agent=True,
+        enable_async_subagent=True,
+        enable_skill_discovery=True,
+        enable_task_loop=True,
+        enable_task_planning=True,
+        mcps=[inherited_mcp],
+        rails=[RailSpec(type=registry.TASK_PLANNING)],
+        skills=["inherited-skill"],
+        subagents=[inherited_browser],
+        tools=[BuiltinToolSpec(type=registry.WEB_SEARCH)],
+    )
+    config = {
+        "_fixed_quant_pipeline": True,
+        "react": {"subagents": {"browser_agent": {"enabled": True}}},
+        "symphony": {"skill_retrieval": {"enabled": True}},
+    }
+
+    spec = build_member_deep_agent_spec(config, "team", role, base)
+
+    assert spec.add_general_purpose_agent is False
+    assert spec.enable_async_subagent is False
+    assert spec.enable_skill_discovery is False
+    assert spec.enable_task_loop is False
+    assert spec.enable_task_planning is False
+    assert not spec.mcps
+    assert not spec.skills
+    assert not spec.subagents
+    assert {rail.type for rail in (spec.rails or [])} == {
+        registry.RUNTIME_PROMPT,
+        registry.RESPONSE_PROMPT,
+        registry.STREAM_EVENT,
+        registry.SECURITY,
+        registry.HEARTBEAT,
+        registry.CONTEXT_PROCESSOR,
+    }
+    assert {tool.type for tool in (spec.tools or [])} == {registry.QUANT_TOOLKIT}
+
+
+def test_fixed_quant_resolve_adapter_removes_upstream_default_rails(
+    tmp_path: Path,
+) -> None:
+    """Runtime resolution closes forced task-loop, skill, and subagent seams."""
+
+    register_swarm_providers()
+    parts = DeepAgentSpec(
+        add_general_purpose_agent=True,
+        enable_skill_discovery=True,
+        enable_task_loop=True,
+        enable_task_planning=True,
+        skills=["inherited-skill"],
+        workspace=WorkspaceSpec(root_path=str(tmp_path)),
+    ).resolve_parts(
+        context=SwarmBuildContext(config={"_fixed_quant_pipeline": True})
+    )
+
+    rail_types = {type(rail).__name__ for rail in parts.rails}
+    assert parts.config.enable_task_loop is False
+    assert not (parts.config.skills or [])
+    assert not (parts.config.subagents or [])
+    assert parts.config.sys_operation.fs() is not None
+    with pytest.raises(RuntimeError, match="code execution is disabled"):
+        parts.config.sys_operation.code()
+    with pytest.raises(RuntimeError, match="shell is disabled"):
+        parts.config.sys_operation.shell()
+    assert not parts.tool_cards
+    assert rail_types.isdisjoint(
+        {"SkillUseRail", "SubagentRail", "SysOperationRail", "TaskPlanningRail"}
+    )
+
+
+def test_fixed_quant_resolve_strips_team_configurator_capabilities(
+    tmp_path: Path,
+) -> None:
+    """Formal-build rail injection cannot restore sys-op or workspace access."""
+
+    from openjiuwen.agent_teams.rails.builtin_elements import OBSERVABILITY
+    from openjiuwen.agent_teams.rails.elements import (
+        TEAM_POLICY,
+        TEAM_TOOL,
+        TEAM_WORKSPACE,
+    )
+
+    register_swarm_providers()
+    ctx = SwarmBuildContext(
+        config={"_fixed_quant_pipeline": True},
+        language="cn",
+        member_name="quant-leader",
+        role="leader",
+    )
+    ctx.extras["team.team_backend"] = object()
+    ctx.extras["team.workspace_manager"] = object()
+    parts = DeepAgentSpec(
+        workspace=WorkspaceSpec(root_path=str(tmp_path)),
+        rails=[
+            RailSpec(type=registry.RUNTIME_PROMPT),
+            RailSpec(type=registry.SYS_OPERATION),
+            RailSpec(
+                type=TEAM_TOOL,
+                params={
+                    "lifecycle": "persistent",
+                    "team_name": "quant_team_formal-session",
+                    "teammate_mode": "build_mode",
+                },
+            ),
+            RailSpec(type=TEAM_POLICY),
+            RailSpec(type=TEAM_WORKSPACE),
+            RailSpec(type=OBSERVABILITY),
+        ],
+    ).resolve_parts(context=ctx)
+
+    rail_types = {type(rail).__name__ for rail in parts.rails}
+    assert "RuntimePromptRail" in rail_types
+    assert "TeamToolRail" in rail_types
+    assert "FixedQuantTeamPolicyRail" in rail_types
+    assert rail_types.isdisjoint(
+        {
+            "SkillUseRail",
+            "SubagentRail",
+            "SysOperationRail",
+            "TaskPlanningRail",
+            "TeamWorkspaceRail",
+        }
+    )
+    assert parts.config.sys_operation.fs() is not None
+    with pytest.raises(RuntimeError, match="code execution is disabled"):
+        parts.config.sys_operation.code()
+    with pytest.raises(RuntimeError, match="shell is disabled"):
+        parts.config.sys_operation.shell()
+    assert not parts.tool_cards
+    team_rail = next(rail for rail in parts.rails if type(rail).__name__ == "TeamToolRail")
+    assert member_rails._SUPPORTED_TEAM_TOOL_SURFACE - team_rail._exclude_tools == {
+        "send_message"
+    }
+    assert team_rail._workspace_manager is None
+
+
+@pytest.mark.asyncio
+async def test_fixed_quant_internal_fs_only_initializes_member_workspace(
+    tmp_path: Path,
+) -> None:
+    """Framework workspace bootstrap keeps FS private and sandboxed."""
+
+    register_swarm_providers()
+    parts = DeepAgentSpec(
+        workspace=WorkspaceSpec(root_path=str(tmp_path)),
+    ).resolve_parts(
+        context=SwarmBuildContext(config={"_fixed_quant_pipeline": True})
+    )
+
+    marker = tmp_path / "agent" / ".workspace"
+    result = await parts.config.sys_operation.fs().write_file(
+        str(marker),
+        "",
+        prepend_newline=False,
+    )
+    assert result.code == 0
+    assert marker.is_file()
+
+    outside = tmp_path.parent / "fixed-quant-outside-workspace.txt"
+    denied = await parts.config.sys_operation.fs().write_file(
+        str(outside),
+        "forbidden",
+        prepend_newline=False,
+    )
+    assert denied.code != 0
+    assert not outside.exists()
+    assert not parts.tool_cards
+    assert "SysOperationRail" not in {
+        type(rail).__name__ for rail in parts.rails
+    }
+    assert parts.config.sys_operation._run_config.sandbox_root == [
+        str(tmp_path.resolve())
+    ]
+    assert parts.config.sys_operation._run_config.restrict_to_sandbox is True
+
+
+@pytest.mark.parametrize(
+    "workspace",
+    [
+        None,
+        WorkspaceSpec(root_path=""),
+        WorkspaceSpec(root_path="   "),
+    ],
+)
+def test_fixed_quant_resolve_requires_non_empty_member_workspace(
+    workspace: WorkspaceSpec | None,
+) -> None:
+    """Fixed resolution never widens a missing workspace to process CWD."""
+
+    register_swarm_providers()
+    with pytest.raises(RuntimeError, match="non-empty member workspace"):
+        DeepAgentSpec(workspace=workspace).resolve_parts(
+            context=SwarmBuildContext(config={"_fixed_quant_pipeline": True})
+        )
+
+
+def test_generic_resolve_adapter_preserves_upstream_behavior() -> None:
+    """The fixed adapter is a no-op without the fixed build-context marker."""
+
+    register_swarm_providers()
+    parts = DeepAgentSpec(enable_task_loop=False).resolve_parts(
+        context=SwarmBuildContext(config={})
+    )
+
+    # Pinned upstream currently hard-codes True. This intentionally records
+    # exact pass-through behavior instead of normalizing a generic team.
+    assert parts.config.enable_task_loop is True
+
+
+def test_fixed_quant_team_tool_provider_keeps_only_send_message() -> None:
+    """Fixed team coordination excludes task-board, spawn, and workspace tools."""
+
+    register_swarm_providers()
+
+    async def on_teammate_created(member_name: str) -> None:
+        _ = member_name
+
+    ctx = SwarmBuildContext(
+        config={"_fixed_quant_pipeline": True},
+        language="cn",
+        member_name="quant-leader",
+        role="leader",
+    )
+    ctx.extras["team.team_backend"] = object()
+    ctx.extras["team.on_teammate_created"] = on_teammate_created
+
+    rail = member_rails.build_bounded_team_tool_rail(
+        {
+            "lifecycle": "temporary",
+            "team_name": "quant_team_session",
+            "teammate_mode": "build_mode",
+        },
+        ctx,
+    )
+
+    assert rail.__class__.__name__ == "TeamToolRail"
+    assert rail._workspace_manager is None
+    assert rail._on_teammate_created is on_teammate_created
+    assert member_rails._SUPPORTED_TEAM_TOOL_SURFACE - rail._exclude_tools == {
+        "send_message"
+    }
+
+
+def test_fixed_quant_team_policy_replaces_task_oriented_upstream_policy() -> None:
+    """Fixed policy contains one bounded role/messaging section."""
+
+    register_swarm_providers()
+    rail = member_rails.build_bounded_team_policy_rail(
+        {},
+        SwarmBuildContext(
+            config={"_fixed_quant_pipeline": True},
+            language="cn",
+            member_name="alpha_analyst",
+            role="teammate",
+        ),
+    )
+
+    assert isinstance(rail, member_rails.FixedQuantTeamPolicyRail)
+    assert rail._section.name == "fixed_quant_team_policy"
+    content = rail._section.content["cn"]
+    assert "alpha_analyst" in content
+    assert "send_message" in content
+    assert "唯一编排器" in content
+
+
+@pytest.mark.asyncio
+async def test_fixed_quant_leader_bootstraps_exact_roster_server_side() -> None:
+    """The fixed roster exists before LLM use without exposing build_team."""
+
+    backend = SimpleNamespace(
+        member_name="quant-leader",
+        predefined_members=[
+            SimpleNamespace(member_name="alpha_analyst"),
+            SimpleNamespace(member_name="risk_evidence_analyst"),
+        ],
+        get_team_info=AsyncMock(return_value=None),
+        build_team=AsyncMock(),
+        list_members=AsyncMock(
+            return_value=[
+                SimpleNamespace(member_name="alpha_analyst"),
+                SimpleNamespace(member_name="risk_evidence_analyst"),
+            ]
+        ),
+    )
+    rail = member_rails.FixedQuantTeamPolicyRail(
+        role="leader",
+        member_name="quant-leader",
+        language="cn",
+        team_backend=backend,
+    )
+    callback = AgentCallbackContext(agent=None, inputs=None, session=None)
+
+    await rail.before_model_call(callback)
+    await rail.before_model_call(callback)
+
+    backend.build_team.assert_awaited_once_with(
+        display_name="Fixed Quant Team",
+        desc="Server-owned fixed eight-stage quant pipeline",
+        leader_display_name="quant-leader",
+        leader_desc="Fixed quant pipeline coordinator",
+    )
+    assert rail._team_bootstrapped is True
+
+
+@pytest.mark.asyncio
+async def test_fixed_quant_leader_roster_bootstrap_fails_closed() -> None:
+    """Missing or unexpected runtime members cannot reach the first LLM call."""
+
+    backend = SimpleNamespace(
+        member_name="quant-leader",
+        predefined_members=[SimpleNamespace(member_name="alpha_analyst")],
+        get_team_info=AsyncMock(return_value=None),
+        build_team=AsyncMock(),
+        list_members=AsyncMock(return_value=[]),
+    )
+    rail = member_rails.FixedQuantTeamPolicyRail(
+        role="leader",
+        member_name="quant-leader",
+        language="cn",
+        team_backend=backend,
+    )
+
+    with pytest.raises(RuntimeError, match="configured roster mismatch"):
+        await rail.before_model_call(
+            AgentCallbackContext(agent=None, inputs=None, session=None)
+        )
+    backend.build_team.assert_not_awaited()
+
+
+def test_generic_team_provider_wrappers_delegate_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Generic team tool and policy providers stay entirely upstream-owned."""
+
+    from openjiuwen.agent_teams.rails import elements
+
+    tool_sentinel = object()
+    policy_sentinel = object()
+    params = {"team_name": "generic"}
+    ctx = SwarmBuildContext(config={})
+    monkeypatch.setattr(
+        elements,
+        "build_team_tool_rail",
+        lambda actual_params, actual_ctx: (
+            tool_sentinel
+            if actual_params is params and actual_ctx is ctx
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        elements,
+        "build_team_policy_rail",
+        lambda actual_params, actual_ctx: (
+            policy_sentinel
+            if actual_params is params and actual_ctx is ctx
+            else None
+        ),
+    )
+
+    assert member_rails.build_bounded_team_tool_rail(params, ctx) is tool_sentinel
+    assert member_rails.build_bounded_team_policy_rail(params, ctx) is policy_sentinel
+
+
+def test_fixed_quant_adapter_fails_closed_on_upstream_version_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dependency upgrade cannot silently widen the fixed capability set."""
+
+    monkeypatch.setattr(member_rails, "distribution_version", lambda _: "future")
+
+    with pytest.raises(RuntimeError, match="requires openjiuwen"):
+        member_rails._assert_fixed_quant_upstream_compatibility()
+
+
 def test_member_skill_toolkit_carries_selected_skills() -> None:
     """The skill-toolkit rail forwards the role's cleaned skill selection."""
     config = {
@@ -778,7 +1171,12 @@ def test_enrich_quant_team_selects_fixed_pipeline_profile(
         leader=LeaderSpec(member_name="quant-leader"),
     )
 
-    enrich_team_spec_for_swarm(spec, session_id="s", mode="team", channel_id="web")
+    enrich_team_spec_for_swarm(
+        spec,
+        session_id="validation-session",
+        mode="team",
+        channel_id="web",
+    )
 
     for member in spec.agents.values():
         rail_names = {rail.type for rail in (member.rails or [])}
@@ -788,6 +1186,38 @@ def test_enrich_quant_team_selects_fixed_pipeline_profile(
         assert tool_names == {registry.QUANT_TOOLKIT}
         assert not (member.mcps or [])
     assert spec.build_context.config["_fixed_quant_pipeline"] is True
+    assert spec.build_context_seed["_fixed_quant_pipeline"] is True
+
+
+def test_quant_team_prefix_does_not_capture_unrelated_generic_team(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the exact session-scoped quant identity gets the fixed profile."""
+
+    monkeypatch.setattr("jiuwenswarm.agents.swarm.assembly.get_config", dict)
+    spec = TeamAgentSpec(
+        agents={
+            "leader": DeepAgentSpec(
+                rails=[RailSpec(type=registry.TASK_PLANNING)],
+                tools=[BuiltinToolSpec(type=registry.WEB_SEARCH)],
+            ),
+        },
+        team_name="quant_team_research",
+        leader=LeaderSpec(member_name="research-leader"),
+    )
+
+    enrich_team_spec_for_swarm(
+        spec,
+        session_id="different-session",
+        mode="team",
+        channel_id="web",
+    )
+
+    member = spec.agents["leader"]
+    assert registry.TASK_PLANNING in {rail.type for rail in (member.rails or [])}
+    assert registry.WEB_SEARCH in {tool.type for tool in (member.tools or [])}
+    assert "_fixed_quant_pipeline" not in spec.build_context.config
+    assert "_fixed_quant_pipeline" not in spec.build_context_seed
 
 
 def test_enrich_team_spec_defaults_member_workspace_to_project_dir() -> None:
@@ -2103,6 +2533,96 @@ def test_distributed_member_rebuild_reconstructs_build_context() -> None:
     existing = rebuilt.build_context
     rebuilt.materialize_build_context()
     assert rebuilt.build_context is existing
+
+
+def test_fixed_quant_ceiling_survives_distributed_context_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The fixed discriminator and bounded runtime survive serialization."""
+
+    monkeypatch.setattr("jiuwenswarm.agents.swarm.assembly.get_config", dict)
+    monkeypatch.setattr("jiuwenswarm.agents.swarm.registry.get_config", dict)
+    register_swarm_providers()
+    spec = TeamAgentSpec(
+        agents={"leader": DeepAgentSpec()},
+        team_name="quant_team_formal-session",
+        leader=LeaderSpec(member_name="quant-leader"),
+    )
+    enrich_team_spec_for_swarm(
+        spec,
+        session_id="formal-session",
+        mode="team",
+        channel_id="web",
+    )
+
+    payload = spec.model_dump(mode="json")
+    assert payload["build_context_seed"]["_fixed_quant_pipeline"] is True
+    rebuilt = TeamAgentSpec.model_validate(payload)
+    rebuilt.materialize_build_context()
+    ctx = rebuilt.build_context
+
+    assert isinstance(ctx, SwarmBuildContext)
+    assert ctx.config["_fixed_quant_pipeline"] is True
+    parts = DeepAgentSpec(
+        add_general_purpose_agent=True,
+        enable_skill_discovery=True,
+        enable_task_loop=True,
+        enable_task_planning=True,
+        skills=["inherited-skill"],
+        workspace=WorkspaceSpec(root_path=str(tmp_path)),
+    ).resolve_parts(context=ctx)
+    assert parts.config.enable_task_loop is False
+    assert not (parts.config.skills or [])
+    assert not (parts.config.subagents or [])
+    assert {type(rail).__name__ for rail in parts.rails}.isdisjoint(
+        {"SkillUseRail", "SubagentRail", "SysOperationRail", "TaskPlanningRail"}
+    )
+    assert parts.config.sys_operation.fs() is not None
+    with pytest.raises(RuntimeError, match="code execution is disabled"):
+        parts.config.sys_operation.code()
+    with pytest.raises(RuntimeError, match="shell is disabled"):
+        parts.config.sys_operation.shell()
+
+    ctx.role = "leader"
+    ctx.member_name = "quant-leader"
+    ctx.extras["team.team_backend"] = object()
+    team_rail = member_rails.build_bounded_team_tool_rail(
+        {
+            "lifecycle": "temporary",
+            "team_name": spec.team_name,
+            "teammate_mode": "build_mode",
+        },
+        ctx,
+    )
+    assert member_rails._SUPPORTED_TEAM_TOOL_SURFACE - team_rail._exclude_tools == {
+        "send_message"
+    }
+    assert team_rail._workspace_manager is None
+
+
+def test_fixed_quant_context_seed_discriminator_fails_closed() -> None:
+    """A marker cannot widen an unrelated team or carry an invalid value."""
+
+    from openjiuwen.agent_teams.schema.build_context import build_context_from_seed
+
+    register_swarm_providers()
+    with pytest.raises(RuntimeError, match="does not match team identity"):
+        build_context_from_seed(
+            {
+                "session_id": "s",
+                "team_id": "quant_team_research",
+                "_fixed_quant_pipeline": True,
+            }
+        )
+    with pytest.raises(RuntimeError, match="expected true"):
+        build_context_from_seed(
+            {
+                "session_id": "s",
+                "team_id": "unit_team_s",
+                "_fixed_quant_pipeline": False,
+            }
+        )
 
 
 def test_rebuilt_member_spec_keeps_provider_declarations() -> None:

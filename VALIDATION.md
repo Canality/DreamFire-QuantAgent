@@ -7,15 +7,15 @@
 | 对象 | 证据等级 | 结论 |
 |---|---|---|
 | 量化核心与行情证据链 | BUSINESS_PASSED | 最新 direct `2025-01-02 → 2025-05-21` 真实通过共享五源 Provider、因果切分和仓位约束；49/49、6/6、15 只，收益 `+0.7476%`、最大回撤 `1.6424%` |
-| JiuwenSwarm 多 Agent 路径 | BUSINESS_FAILED | 最新 session `multi-agent-validation-20260804-131332` 已精确加载 `quant_team` 三角色，但被通用任务看板连续调用拖偏，0/8 量化阶段并由 guard 失败关闭；历史 8/8 只保留为旧路径证据 |
-| 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_BLOCKED | 公告 Provider、49-ticker smoke 和最新 direct 均为 1,470 条、49/49 披露；formal 尚未执行到报告阶段，不能写双入口通过 |
-| 完整金融分析作品 | PARTIAL / FAILED | 公告 direct 覆盖已恢复，但基本面、新闻、宏观、独立风险证据与 formal 报告仍未共同形成可审计覆盖，不能宣称 `FULL_REPORT_PASSED` |
+| JiuwenSwarm 多 Agent 路径 | BUSINESS_PASSED | 最新 session `multi-agent-validation-20260804-152646` 在 fixed quant capability ceiling 下完成 8/8；每阶段恰好请求/执行 1 次、0 cache hit、0 error，三角色真实参与且无角色 RPC 越权 |
+| 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct 与 formal 报告路径均携带 1,470 条、49/49 披露；独立 E2E audit 退出 0，报告等级仍为 `FINANCIAL_PARTIAL`，不得升级为完整金融分析 |
+| 完整金融分析作品 | PARTIAL / FAILED | direct/formal 报告与公告披露已形成可审计覆盖，但基本面、新闻、宏观和另类数据仍缺失，不能宣称 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 最新答疑与静态文档仍有 3 项冲突，不能把候选包改名为正式提交包 |
 | 策略 alpha | RESEARCH_ONLY | competition-aligned 20 窗重跑中 T2 配对收益差 +0.8356pp、效用胜出 17/20；全部仍是已观察开发窗口。最新 A0/A1/A2 消融存在配仓缓存串线，不能作为 Agent 无增量证据 |
-| WP1-A 数据一致性与市场状态 | PATH_PASSED | direct/formal 均已改用共享 OHLCV Bundle，并在本轮真实取得 49/49 主源、49/49 独立二源、CSI300、6/6 板块诊断和九文件 snapshot；完整报告证据仍单独失败 |
+| WP1-A 数据一致性与市场状态 | PATH_PASSED | direct/formal 均已改用共享 OHLCV Bundle，并在本轮真实取得 49/49 主源、49/49 独立二源、CSI300、6/6 板块诊断和九文件 snapshot；完整报告仍因 fundamental/news-risk 缺失保持 partial |
 | 正式路径失败关闭 | PATH_PASSED | 已修复“先失败、后成功仍判通过”的 validator 缺陷；回归测试 2/2，通过后的严格 session 每阶段只请求并执行 1 次 |
 | 正式团队精确选择 | PATH_PASSED | `FORMAL-TEAM-SELECT-0804` 为 TeamManager 增加显式 team selector；真实 formal 构建 `quant-leader` 和两个预定义分析师，不再误选通用 `jiuwen_team` |
-| Agent 资源与能力瘦身 | BLOCKED | 最新 formal 在 22 秒内产生 14 次通用工具调用，任务看板无量化进展达到 12 次；运行时仍注入 task-board、文件、browser 和 sys-operation，`WP1A-ORCH-0803` 尚未满足 capability ceiling |
+| Agent 资源与能力瘦身 | PATH_PASSED | fixed quant 运行时仅保留角色自有 Quant RPC 与 `send_message`；leader 为 9-tool、两名 analyst 各为 2-tool，无 task-board、文件、shell、browser、skill、subagent 或通用 team-management 工具；最新 formal 为 12 次业务/消息调用 |
 
 以上结论适用于当前未提交工作树（HEAD `170e904`）。`output/` 是本机验收产物，不进入 Git。
 
@@ -32,6 +32,22 @@
 因此 `SubmissionContract.can_proceed_formal()` 当前必须失败关闭。解除阻断需要主办方的可归档书面答复，不得由 Agent 自行猜测。
 
 ## 本轮真实验收
+
+### -11. Fixed quant capability ceiling 与最新完整双路径复验（2026-08-04 13:35–15:28）
+
+证据等级：fixed quant 能力边界为 `PATH_PASSED`；direct、formal 与绑定两者的独立审计均为 `BUSINESS_PASSED`。报告覆盖仍为 `FINANCIAL_PARTIAL`，正式提交契约仍为 `PROVISIONAL / BLOCKED`，不得据此宣称项目已可正式提交。
+
+- `FORMAL-CAPABILITY-CEILING-0804` 在项目层为 exact `quant_team` 及其 canonical session 名实现 fail-closed discriminator。固定团队清空继承的 skills、MCPs、browser/general subagents、task loop/planning/discovery 与通用 rails；generic team 和 generic `DeepAgentSpec` 继续直接委托 pinned openJiuwen 行为。
+- 固定 leader 的 agent-facing 工具精确为 8 个 Quant RPC 加 `send_message`；`alpha_analyst` 与 `risk_evidence_analyst` 各自只有专属 Quant RPC 加 `send_message`。task-board、spawn/build/clean/async team-management、workspace、文件、code、shell、browser、cron、skill 和 subagent 均未暴露。
+- DeepAgent 内部 workspace 初始化只获得一个未注册为 rail/tool card 的 FS 对象，唯一 sandbox root 为显式 member workspace，`restrict_to_sandbox=true`；缺失/空白 workspace 失败关闭，code 与 shell 永久拒绝。该内部对象不形成 Agent 可见文件工具。
+- pinned openJiuwen 在移除 model-visible `build_team` 后不会注册预定义成员；fixed leader 因此在首个 model call 前服务端确定性创建并核对精确三成员 roster。`send_message` 仅保留上游 `on_teammate_created` 句柄，用于启动已注册的 `UNSTARTED` 成员，不恢复 allocator、workspace、swarmflow 或任何 spawn/build/task 工具。
+- 四次未通过的 formal seam 均保留：第一次因 configurator 注入 sys-operation 失败关闭；第二次因 DeepAgent workspace bootstrap 缺 FS 失败关闭；第三次遗漏验收日期而作废并暴露 roster 未注册；第四次使用正确日期、完成 roster 和两次消息投递，但因遗漏成员启动回调被人工中断。每次发现均补回归、重新走独立 Critic，未覆盖成成功记录。
+- 独立 Critic 共七轮；最终 round 7 为 `ACCEPT`、无 finding。其行为探针证明实际 team tool 精确为 `send_message`，且投递前以同一 callback 启动已注册成员；聚焦测试 6/6 通过。完整冻结目标集合为 `163 passed, 1 warning`，Ruff、py_compile、diff-check、scope-check 均退出 0，`.venv` 未修改。
+- post-fix direct：`output/direct_pipeline_FORMAL-CAPABILITY-CEILING-0804_20260804_1522.log` 与 `output/pipeline_results_20260804_152623.json`，日期 `2025-01-02 → 2025-05-21`，退出 0；49/49 行情、90 日、15 只、6 板块、现金 5.06%，收益 `+0.7476%`、最大回撤 `1.6424%`、Sharpe `1.107`；公告 1,470 条、49/49，rails 4/4，Quality PASSED。
+- post-fix formal：session `multi-agent-validation-20260804-152646`，日志/summary/chunks 分别为 `output/formal_run_FORMAL-CAPABILITY-CEILING-0804_20260804_1526.log`、`output/multi_agent_summary_20260804-152646.json`、`output/multi_agent_chunks_20260804-152646.json`。退出 0，8/8 阶段均恰好请求/执行 1 次、0 cache hit；12 tool calls、0 error、48.0 秒，三角色事件为 1177/508/389，Alpha/Risk 专属 RPC 各 1 次且无越权。
+- formal 资源为 95,569 input、6,510 output、61,952 cache tokens、CPU 12.68 秒；leader 为 71,390/4,007/54,784 tokens 与 8 calls，Alpha 为 12,495/1,389/2,304 与 2 calls，Risk 为 11,684/1,114/4,864 与 2 calls。峰值内存和最大并发缺测，未伪填为 0。
+- `verify-quant-e2e` 绑定 fresh direct results/log 与 formal log/chunks 后写出 `output/audit_result_multi-agent-validation-20260804-152646.json`，退出 0：15 只、6 板块、总仓位 94.94%，八工具遍历齐全，三角色参与和角色 RPC 均满足契约，工件 SHA-256 已记录。
+- formal 生成的候选包质量门通过且无 warning；49 份报告均达到 technical/disclosure grade，公告 1,470 条覆盖 49/49。fundamental/news-risk grade 仍为 0，整体等级为 `FINANCIAL_PARTIAL`，所以 `FULL_REPORT_PASSED` 仍禁止使用。
 
 ### -10. 公告 PIT、正式团队选择与最新双路径复验（2026-08-04 11:46–13:14）
 
@@ -296,10 +312,10 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 
 ## 已知问题与竞争风险
 
-1. **资源成本高**：正式运行总输入 token 约 120.5 万。官方基准尚未公布，不能折算分数，但这是当前最明确的工程短板。
+1. **资源成本仍需基准化**：最新 capability-ceiling formal 已降至 95,569 input、6,510 output、61,952 cache tokens 和 12 tool calls，显著低于历史通用团队路径；官方基准尚未公布，仍不能折算分数或宣称资源分已达标。
 2. **Agent 路径有随机性**：本轮曾出现 Agent 在正确配仓后擅自删掉一只股票并二次配仓。正式验收正确失败；Extension 现已把选股、配仓、回测、报告的输入锁定为服务端缓存的前序结果，LLM 只能触发、不能改写。150 秒阶段无进展和 8/8 后显式 runtime teardown 也已加入，但减少 prompt/上下文膨胀仍是 P0。
 3. **报告广度不足**：当前 49 份报告主要来自技术面和市场行情，`data_provider_status` 仍为 partial；不能宣称已经完成基本面、公告、新闻或宏观分析。
-4. **报告深度不均**：只有进入 Bull/Bear 候选集合的 20 家包含 AgentView，其余公司是确定性技术报告。
+4. **报告深度不均**：49 家均有技术面与公告披露报告，但只有被 Alpha/Risk 覆盖的候选包含角色观点；fundamental/news-risk grade 仍为 0。
 5. **策略未完成样本外晋级**：T2 在 21 个开发窗口优于生产，但未完成封存/未来窗口验证，生产配置未切换。
 6. **契约未确认**：49/50、现金口径、报告对初赛的作用仍需主办方书面答复。
 7. **上游弃用警告**：正式运行出现 Authlib、Pydantic/openJiuwen 弃用警告；当前不影响退出码和业务结果，但升级依赖前必须回归。
@@ -327,6 +343,6 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 
 1. 获取主办方对 3 项契约冲突的书面答复，更新 contract JSON、hash 与负向测试。
 2. 将 Agent 上下文和报告生成改为摘要/按需检索，目标是在不降低 8/8 成功率的前提下降低 token。
-3. 建立至少一个真实 point-in-time Provider（优先交易所公告），保存原文、URL、发布时间、可用时间和 hash，并双路径验收。
+3. 在已通过的公告 PIT 与 capability ceiling 基线上补齐 fundamental/news-risk 的真实 point-in-time Provider 和证据归档；未达到两类 grade 前不得改写 `FINANCIAL_PARTIAL`。
 4. 先按“决策收盘 → 1 个交易日 embargo → 首日开盘买入 → 20 日固定股数 → 末日收盘卖出”重跑 production/T2/统一基线，再执行嵌套外层验证；重跑前不得沿用旧 T2 晋级结论。
 5. 最终提交前重新运行本文件全部命令，再生成 zip；不得复用当前候选包冒充正式包。

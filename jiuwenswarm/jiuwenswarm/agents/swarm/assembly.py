@@ -29,6 +29,9 @@ from openjiuwen.agent_teams.schema.deep_agent_spec import WorkspaceSpec
 
 from jiuwenswarm.agents.swarm.config_specs import build_member_deep_agent_spec
 from jiuwenswarm.agents.swarm.context import SwarmBuildContext
+from jiuwenswarm.agents.swarm.providers.member_rails import (
+    is_fixed_quant_team_identity,
+)
 from jiuwenswarm.agents.swarm.registry import register_swarm_providers
 from jiuwenswarm.common.config import get_config
 from jiuwenswarm.common.mcp_config import build_enabled_mcp_server_configs
@@ -37,13 +40,6 @@ from jiuwenswarm.common.utils import get_agent_skills_dir
 logger = logging.getLogger(__name__)
 
 _FIXED_QUANT_PROFILE_KEY = "_fixed_quant_pipeline"
-
-
-def _is_fixed_quant_team_name(team_name: object) -> bool:
-    """Match the configured quant team and its session-suffixed runtime name."""
-
-    normalized = str(team_name or "").strip().lower()
-    return normalized == "quant_team" or normalized.startswith("quant_team_")
 
 def _with_project_workspace(member_spec: Any, project_dir: str | None) -> Any:
     """Default a member workspace to the request project directory."""
@@ -96,7 +92,10 @@ def enrich_team_spec_for_swarm(
     register_swarm_providers()
 
     config = get_config()
-    fixed_quant_pipeline = _is_fixed_quant_team_name(spec.team_name)
+    fixed_quant_pipeline = is_fixed_quant_team_identity(
+        spec.team_name,
+        session_id,
+    )
     capability_config = config
     if fixed_quant_pipeline:
         capability_config = dict(config)
@@ -147,7 +146,19 @@ def enrich_team_spec_for_swarm(
             # machine.  Preserve identity/model/prompt fields while replacing
             # all capability collections for this fixed server-owned pipeline.
             base_spec = base_spec.model_copy(
-                update={"rails": [], "tools": [], "mcps": []}
+                update={
+                    "add_general_purpose_agent": False,
+                    "approval_required_tools": [],
+                    "enable_async_subagent": False,
+                    "enable_skill_discovery": False,
+                    "enable_task_loop": False,
+                    "enable_task_planning": False,
+                    "mcps": [],
+                    "rails": [],
+                    "skills": [],
+                    "subagents": [],
+                    "tools": [],
+                }
             )
         member_spec = build_member_deep_agent_spec(
             capability_config,
@@ -166,7 +177,13 @@ def enrich_team_spec_for_swarm(
     # Carry a serializable seed alongside the live context so members rebuilt
     # across a serialization boundary (spawned teammate, distributed remote,
     # cold recovery) can reconstruct the context via the registered factory.
-    spec.build_context_seed = base.to_seed()
+    build_context_seed = base.to_seed()
+    if fixed_quant_pipeline:
+        # The receiving process reloads config.yaml instead of serializing the
+        # live config. Carry only this validated profile discriminator so the
+        # runtime ceiling survives spawn/distributed/recovery boundaries.
+        build_context_seed[_FIXED_QUANT_PROFILE_KEY] = True
+    spec.build_context_seed = build_context_seed
     logger.info(
         "[swarm.assembly] enriched team spec '%s' (roles=%s, session=%s, mcps=%d)",
         spec.team_name,

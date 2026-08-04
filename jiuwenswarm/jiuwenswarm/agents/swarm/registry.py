@@ -132,6 +132,7 @@ CODE_CONFIRM_INTERRUPT = _OJ_CONFIRM_INTERRUPT
 CODE_WORKTREE = _OJ_WORKTREE
 
 _REGISTERED = False
+_FIXED_QUANT_PROFILE_KEY = "_fixed_quant_pipeline"
 
 # Per-(session_id, team_id) trajectory registries, so members of the same team
 # rebuilt in one process share evolution state while different processes / teams
@@ -157,9 +158,33 @@ def _build_swarm_context_from_seed(seed: dict[str, Any]) -> SwarmBuildContext:
     Registered with openjiuwen so ``from_spawn_payload`` / ``recover_from_session``
     restore the provider build context after deserialization.
     """
+    team_name = seed.get("team_id")
+    session_id = seed.get("session_id")
+    fixed_identity = _member_rails.is_fixed_quant_team_identity(
+        team_name,
+        session_id,
+    )
+    marker_present = _FIXED_QUANT_PROFILE_KEY in seed
+    marker = seed.get(_FIXED_QUANT_PROFILE_KEY)
+    if marker_present and marker is not True:
+        raise RuntimeError(
+            "invalid fixed quant build-context discriminator: expected true"
+        )
+    if marker is True and not fixed_identity:
+        raise RuntimeError(
+            "fixed quant build-context discriminator does not match team identity"
+        )
+
+    config = get_config()
+    if fixed_identity:
+        # Re-derive from the exact base/canonical session identity as a
+        # fail-closed fallback for pre-discriminator serialized payloads.
+        config = dict(config)
+        config[_FIXED_QUANT_PROFILE_KEY] = True
+
     return SwarmBuildContext.from_seed(
         seed,
-        config=get_config(),
+        config=config,
         trajectory_registry=_trajectory_registry_for(seed),
     )
 
@@ -182,6 +207,7 @@ def register_swarm_providers() -> None:
     # worktree / lsp / explore_agent / ...) are declared and registered.
     ensure_harness_elements_registered()
     register_from_catalog()
+    _member_rails.install_fixed_quant_runtime_adapters()
     register_build_context_factory(_build_swarm_context_from_seed)
 
     _REGISTERED = True
