@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""Phase B: 2×2 mechanism experiment — factor weight shrinkage × score-tilted allocation.
-
-Pre-registered before run. No threshold adjustments after seeing results.
-"""
+"""WP1-B competition-aligned nested evaluation and promotion evidence."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util as _iu
 import json
 import time
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
-import numpy as np
-
+from jiuwenswarm.quant.nested_evaluation import (
+    NestedEvaluationPlan,
+    build_git_binding,
+    evaluate_nested_promotion,
+)
 from jiuwenswarm.quant.strategy_configs import STRATEGY_SPECS
 
 _EVAL_DIR = Path(__file__).resolve().parent
@@ -26,160 +29,220 @@ _UE = _iu.module_from_spec(_UE_SPEC)
 assert _UE_SPEC.loader is not None
 _UE_SPEC.loader.exec_module(_UE)
 
-# ---- Pre-registration (frozen before run) ----
-PHASE_B_BASELINES = (
-    "production_six_factor",
+WP1B_OUTPUT_ROOT = _UE.REPO_ROOT / "output" / "wp1b_evaluations"
+BASELINE = "production_six_factor"
+CANDIDATES = (
     "phase_b_t0_control",
     "phase_b_t1_shrink",
     "phase_b_t2_score_alloc",
     "phase_b_t3_joint",
 )
+PHASE_B_BASELINES = (BASELINE, *CANDIDATES)
+DEFAULT_PLAN = NestedEvaluationPlan()
 
 PREREGISTRATION = {
-    "hypothesis": (
-        "1. Shrinking volume_trend from 0.29 to 0.15 reduces recent decay. "
-        "2. Mild score-tilted allocation (inv-vol × exp(0.20×clip(z,-2,2))) "
-        "converts selection advantage into higher realized returns."
+    "protocol": "competition_nested_v1",
+    "legacy_next_day_entry": "RESEARCH_ONLY",
+    "legacy_phase_b_conclusion": (
+        "Deprecated: historical +0.91pp and mutable latest results cannot promote"
     ),
-    "design": "2×2: factor weights (0.71/0.29 vs 0.85/0.15) × allocation (pure inv-vol vs score-tilted)",
-    "fixed_constraints": {
-        "selection": "positive composite, naked top 15",
-        "max_single_stock": 0.10,
-        "max_single_sector": 0.25,
-        "max_total_weight": 0.95,
-        "embargo": "one full trading day after decision before entry (via CompetitionWindowPolicy)",
+    "outer_results_may_select_candidate": False,
+    "candidate_set": list(CANDIDATES),
+    "selection": (
+        "Choose one frozen candidate using inner windows only; evaluate the "
+        "locked candidate on untouched chronological outer windows"
+    ),
+    "official_window": {
+        "decision": "close",
+        "embargo_trading_days": 1,
+        "entry": "open",
+        "holding_days": 20,
+        "exit": "close",
+        "shares": "fixed",
     },
-    "success_criteria": {
-        "goal": (
-            "Preserve ~+0.77pp pairwise return advantage over production while "
-            "keeping median DD worsening ≤ +0.30pp and ≥ 2/3 consecutive "
-            "7-window time blocks with positive composite utility."
-        ),
-        "utility": "0.70 × total_return - 0.30 × max_drawdown",
-    },
+    "thresholds": asdict(DEFAULT_PLAN),
+    "promotion_rule": (
+        "Statistical gates plus exact pairing, current protocol, verified WP1-A "
+        "snapshot provenance and clean Git state; any failure is fail-closed"
+    ),
 }
 
 
-def paired_compare(candidate_rows, baseline_rows):
-    """Per-window paired comparison of candidate vs baseline."""
-    n = len(candidate_rows)
-    ret_deltas = np.array([
-        c["official"]["total_return"] - b["official"]["total_return"]
-        for c, b in zip(candidate_rows, baseline_rows)
-    ])
-    dd_deltas = np.array([
-        c["official"]["max_drawdown"] - b["official"]["max_drawdown"]
-        for c, b in zip(candidate_rows, baseline_rows)
-    ])
-    utility = 0.70 * ret_deltas - 0.30 * dd_deltas
-    wins = int((utility > 0).sum())
-    recent4 = int((utility[-4:] > 0).sum()) if n >= 4 else wins
-    # time-block: 3 consecutive 7-window blocks
-    block_wins = []
-    for start in range(0, n - 6, 7):
-        block = utility[start:start + 7]
-        block_wins.append(int((block > 0).sum()))
-    blocks_positive = sum(1 for bw in block_wins if bw >= 4)
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
+
+def _canonical_sha256(payload: Any) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def build_snapshot_binding(
+    snapshot_dir: Path,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Bind the manifest and recognize only explicit verified WP1-A metadata."""
+
+    manifest_path = snapshot_dir / "manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError(f"Snapshot manifest missing: {manifest_path}")
+    manifest = snapshot["manifest"]
+    disk_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest != disk_manifest:
+        raise ValueError("Loaded snapshot manifest differs from hashed manifest file")
+    wp1a = manifest.get("wp1a_binding")
+    verified_reports: dict[str, dict[str, str]] | None = None
+    if isinstance(wp1a, dict) and wp1a.get("status") == "VERIFIED":
+        verified_reports = {}
+        for label in ("consistency_report", "regime_report"):
+            path_value = wp1a.get(f"{label}_path")
+            hash_value = str(wp1a.get(f"{label}_sha256", "")).lower()
+            if not path_value:
+                raise ValueError(f"WP1-A binding missing {label}_path")
+            report_path = Path(str(path_value))
+            if not report_path.is_absolute():
+                report_path = (snapshot_dir / report_path).resolve()
+            if not report_path.is_file() or _sha256(report_path) != hash_value:
+                raise ValueError(f"WP1-A {label} hash/path mismatch")
+            verified_reports[label] = {
+                "path": str(report_path),
+                "sha256": hash_value,
+            }
+    verified_wp1a = verified_reports is not None
     return {
-        "median_return_delta_pp": round(float(np.median(ret_deltas)) * 100, 4),
-        "mean_return_delta_pp": round(float(np.mean(ret_deltas)) * 100, 4),
-        "median_dd_delta_pp": round(float(np.median(dd_deltas)) * 100, 4),
-        "utility_wins": f"{wins}/{n}",
-        "utility_win_rate": round(wins / n, 4),
-        "recent4_wins": f"{recent4}/4",
-        "block_7w_positive": f"{blocks_positive}/{len(block_wins)}",
-        "worst_return_delta_pp": round(
-            float(min(c["official"]["total_return"] for c in candidate_rows)
-                  - min(b["official"]["total_return"] for b in baseline_rows)) * 100, 4
-        ),
+        "snapshot_id": manifest["snapshot_id"],
+        "manifest_path": str(manifest_path.resolve()),
+        "manifest_sha256": _sha256(manifest_path),
+        "manifest": manifest,
+        "source": manifest.get("source"),
+        "adjustment": manifest.get("adjustment"),
+        "n_stocks": manifest.get("n_stocks"),
+        "n_sectors": manifest.get("n_sectors"),
+        "verified_wp1a": verified_wp1a,
+        "wp1a_binding": wp1a if isinstance(wp1a, dict) else None,
+        "verified_reports": verified_reports,
     }
+
+
+def build_config_binding(plan: NestedEvaluationPlan) -> dict[str, Any]:
+    payload = {
+        "preregistration": PREREGISTRATION,
+        "plan": asdict(plan),
+        "strategies": {
+            name: asdict(STRATEGY_SPECS[name]) for name in PHASE_B_BASELINES
+        },
+    }
+    return {"sha256": _canonical_sha256(payload), "payload": payload}
+
+
+def write_research_artifact(report: dict[str, Any], output_dir: Path) -> Path:
+    """Write exactly one immutable artifact; never update a latest pointer."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_id = str(report.get("run_id", "")).strip()
+    if not run_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for char in run_id):
+        raise ValueError(f"Unsafe run_id: {run_id!r}")
+    path = output_dir / f"{run_id}.json"
+    with path.open("x", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=2, ensure_ascii=False, allow_nan=False)
+        handle.write("\n")
+    return path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--datalen", type=int, default=500)
+    parser.add_argument("--seed", type=int, default=DEFAULT_PLAN.seed)
+    parser.add_argument(
+        "--bootstrap-iterations",
+        type=int,
+        default=DEFAULT_PLAN.bootstrap_iterations,
+    )
+    parser.add_argument("--output-dir", type=Path, default=WP1B_OUTPUT_ROOT)
     args = parser.parse_args()
 
     started = time.time()
+    plan = NestedEvaluationPlan(
+        seed=args.seed,
+        bootstrap_iterations=args.bootstrap_iterations,
+    )
     print("=" * 78)
-    print("Phase B: 2×2 mechanism experiment")
+    print("WP1-B: competition-aligned nested evaluation")
     print(json.dumps(PREREGISTRATION, ensure_ascii=False, indent=2))
     print("=" * 78)
 
-    # Load or create snapshot (shared with Phase A)
-    snapshot_dir = args.snapshot.resolve() if args.snapshot else _UE.create_snapshot(args.datalen)
+    snapshot_dir = (
+        args.snapshot.resolve()
+        if args.snapshot
+        else _UE.create_snapshot(args.datalen)
+    )
     snapshot = _UE.load_snapshot(snapshot_dir)
     opens, closes, volumes, index_close = _UE._prepare_frames(snapshot)
     starts = _UE.build_schedule(len(index_close))
-    print(
-        f"Snapshot {snapshot_dir.name}: {len(index_close)} index days, "
-        f"{len(starts)} non-overlapping windows"
-    )
-
-    # Run all baselines
-    details: dict[str, list] = {}
-    summaries: dict[str, dict] = {}
+    details: dict[str, list[dict[str, Any]]] = {}
+    summaries: dict[str, dict[str, Any]] = {}
     for name in PHASE_B_BASELINES:
-        spec = STRATEGY_SPECS[name]
-        print(f"[Run] {name}: {spec.description}")
-        rows = _UE.evaluate_strategy(name, opens, closes, volumes, index_close, starts)
+        print(f"[Run] {name}: {STRATEGY_SPECS[name].description}")
+        rows = _UE.evaluate_strategy(
+            name,
+            opens,
+            closes,
+            volumes,
+            index_close,
+            starts,
+        )
         details[name] = rows
         summaries[name] = _UE.summarize(rows)
 
-    # Pairwise comparisons vs production
-    prod_rows = details["production_six_factor"]
-    comparisons = {}
-    for name in PHASE_B_BASELINES:
-        if name == "production_six_factor":
-            continue
-        comparisons[name] = paired_compare(details[name], prod_rows)
+    snapshot_binding = build_snapshot_binding(snapshot_dir, snapshot)
+    config_binding = build_config_binding(plan)
+    nested = evaluate_nested_promotion(
+        details=details,
+        baseline_name=BASELINE,
+        candidate_names=CANDIDATES,
+        git_state=build_git_binding(_UE.REPO_ROOT),
+        snapshot_binding=snapshot_binding,
+        config_binding=config_binding,
+        plan=plan,
+    )
 
-    # Print results
-    print("\n" + "=" * 78)
-    print("  Phase B Results")
-    print("=" * 78)
-    print(f"{'Strategy':<28s} {'MedRet%':>8s} {'Worst%':>8s} {'MedDD%':>7s} "
-          f"{'PosWin':>6s} {'vsProd_Δpp':>9s} {'UtilWins':>9s} {'Rec4':>5s} {'Blk7':>6s}")
-    print("-" * 78)
-    for name in PHASE_B_BASELINES:
-        s = summaries[name]
-        ret_pct = s["median_return"] * 100
-        worst_pct = s["worst_return"] * 100
-        dd_pct = s["median_drawdown"] * 100
-        pos = f"{s['positive_windows']}/{s['n_windows']}"
-        if name == "production_six_factor":
-            print(f"{name:<28s} {ret_pct:>7.2f}% {worst_pct:>7.2f}% "
-                  f"{dd_pct:>6.2f}% {pos:>6s} {'(baseline)':>9s}")
-        else:
-            c = comparisons[name]
-            print(f"{name:<28s} {ret_pct:>7.2f}% {worst_pct:>7.2f}% "
-                  f"{dd_pct:>6.2f}% {pos:>6s} "
-                  f"{c['median_return_delta_pp']:>+8.2f} "
-                  f"{c['utility_wins']:>9s} {c['recent4_wins']:>5s} {c['block_7w_positive']:>6s}")
-
-    # Save
-    run_id = datetime.now().strftime("phase_b_%Y%m%d_%H%M%S")
+    run_id = datetime.now().strftime("wp1b_%Y%m%d_%H%M%S")
     report = {
+        "schema": "wp1b_evaluation_run/v1",
         "run_id": run_id,
         "created_at": datetime.now().astimezone().isoformat(),
-        "git": _UE._git_state(),
         "preregistration": PREREGISTRATION,
-        "snapshot_id": snapshot["manifest"]["snapshot_id"],
+        "snapshot_binding": snapshot_binding,
+        "config_binding": config_binding,
         "summaries": summaries,
-        "comparisons": comparisons,
-        # Preserve per-window evidence so downstream local scoring and audits
-        # never have to reconstruct results from rounded summaries.
+        "nested_evidence": nested,
         "details": details,
+        "status": nested["status"],
+        "promotion_eligible": nested["promotion_eligible"],
+        "legacy_latest_files_modified": False,
+        "elapsed_seconds": round(time.time() - started, 2),
     }
-    out_path = _EVAL_DIR / f"{run_id}.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False, default=str)
-    latest = _EVAL_DIR / "phase_b_latest.json"
-    with open(latest, "w", encoding="utf-8") as f:
-        json.dump(report, f, indent=2, ensure_ascii=False, default=str)
-    print(f"\nSaved to {out_path}  ({time.time() - started:.0f}s)")
+    path = write_research_artifact(report, args.output_dir.resolve())
+    print(json.dumps({
+        "status": report["status"],
+        "promotion_eligible": report["promotion_eligible"],
+        "selected_candidate": nested["selected_candidate"],
+        "evaluation_hash": nested["evaluation_hash"],
+        "artifact": str(path),
+    }, ensure_ascii=False, indent=2))
+    print("Legacy phase_b_latest.json and historical phase_b_*.json were not modified")
     return 0
 
 

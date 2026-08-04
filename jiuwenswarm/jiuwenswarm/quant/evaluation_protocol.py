@@ -9,6 +9,7 @@ and formal paths.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import List, NamedTuple
 
 import pandas as pd
@@ -146,6 +147,72 @@ class CompetitionWindowPolicy:
                 f"but must end at index {start_idx - 1} "
                 f"(embargo day is at index {start_idx})"
             )
+
+    @staticmethod
+    def _shanghai_timestamp(value: object) -> pd.Timestamp:
+        timestamp = pd.Timestamp(value)
+        if timestamp.tzinfo is None:
+            return timestamp.tz_localize("Asia/Shanghai")
+        return timestamp.tz_convert("Asia/Shanghai")
+
+    def validate_decision_inputs(
+        self,
+        window: WindowDates,
+        *,
+        price_last_timestamp: object,
+        factor_timestamps: Iterable[object] = (),
+        evidence_timestamps: Iterable[object] = (),
+    ) -> None:
+        """Fail closed when any decision input crosses the information cutoff.
+
+        Daily prices and factors may use the decision date but never the
+        embargo date. Timestamped evidence must be available no later than the
+        decision-day 15:00 Asia/Shanghai close.
+        """
+
+        decision_day = self._shanghai_timestamp(window.decision_date).normalize()
+        decision_close = decision_day + pd.Timedelta(hours=15)
+        price_last = self._shanghai_timestamp(price_last_timestamp)
+        if price_last > decision_close:
+            raise ValueError(
+                f"price timestamp {price_last.isoformat()} exceeds decision close "
+                f"{decision_close.isoformat()}"
+            )
+        for value in factor_timestamps:
+            timestamp = self._shanghai_timestamp(value)
+            if timestamp > decision_close:
+                raise ValueError(
+                    f"factor timestamp {timestamp.isoformat()} exceeds decision "
+                    f"close {decision_close.isoformat()}"
+                )
+        for value in evidence_timestamps:
+            timestamp = self._shanghai_timestamp(value)
+            if timestamp > decision_close:
+                raise ValueError(
+                    f"evidence timestamp {timestamp.isoformat()} exceeds decision "
+                    f"close {decision_close.isoformat()}"
+                )
+
+    def serialize_window(self, window: WindowDates) -> dict[str, object]:
+        """Return the exact machine-readable competition date sequence."""
+
+        valuation_dates = [str(value.date()) for value in window.valuation_dates]
+        if len(valuation_dates) != self.holding_days:
+            raise ValueError(
+                f"Expected {self.holding_days} valuation dates, got "
+                f"{len(valuation_dates)}"
+            )
+        if window.entry_date != window.valuation_dates[0]:
+            raise ValueError("Entry date must equal the first valuation date")
+        if window.exit_date != window.valuation_dates[-1]:
+            raise ValueError("Exit date must equal the final valuation date")
+        return {
+            "decision_date": str(window.decision_date.date()),
+            "embargo_date": str(window.embargo_date.date()),
+            "entry_date": str(window.entry_date.date()),
+            "valuation_dates": valuation_dates,
+            "exit_date": str(window.exit_date.date()),
+        }
 
     def __repr__(self) -> str:
         return (

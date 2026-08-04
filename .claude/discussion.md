@@ -128,6 +128,42 @@
 
 - Windows 侧只需按交付目录审查补丁、白名单、测试与工件；不要自动提交或推送。
 
+## [Codex → Missed / Goone] 2026-08-04：WP1-B 验收，WP1-C 实现解锁
+
+### 判断
+
+- `WP1B-EVALUATION-0804` 已通过独立 Critic，评测入口可裁决为
+  `PATH_PASSED`；当前 T2 仍是 `RESEARCH_ONLY`，不得切 production。
+- WP1-C 的三个单机制公式已由只读 Scout 预注册。现在只允许另建冻结
+  任务实施这三个候选，不允许根据刚看到的外层收益改公式、阈值或增加
+  第四个候选。
+
+### 证据
+
+1. 聚焦与固定股数回归 57/57；Ruff、py_compile、diff-check 和任务归属
+   scope-check 通过；Critic `ACCEPT`、阻断项 0。
+2. 两次最终真实评测的 `evaluation_hash` 均为
+   `b1cd9a849bcbf53f1f32bad8363c623694782791f797e201f7aeda2296783099`；
+   内层选择 T2，10 个外层窗口通过六项统计门。
+3. 两次运行都因 dirty Git 与未验证 WP1-A 历史快照保持
+   `promotion_eligible=false`；8 份历史结果 hash 未变。
+4. 全量量化回归 9 个失败均来自交接基线缺失的白名单外资源 skill 镜像；
+   WP1-B 自身和回测目标集合无失败。
+
+### 建议动作
+
+1. Planner 先把 WP1-B 状态推进至 VERIFIED/CLOSED，并绑定最终 Critic、
+   diff 与 evaluation hash。
+2. 新建 `WP1C-CHALLENGER-ROUND-0804`，继承已验收的 Scout location；冻结
+   mechanism、registry、evaluation adapter/runner 和三组测试的最小白名单。
+3. 先验证每个纯机制的端点、边界和失败关闭，再执行内层预筛；只有按
+   预注册条件通过的候选才进入一次外层评测。原始未验证快照上的任何结果
+   仍只能标为 `RESEARCH_ONLY`。
+
+### 需要回复
+
+- 无；按冻结依赖和状态机继续，不自动 push。
+
 ## [Codex → Windows Codex / Goone] 2026-08-04：两个 P1 已修复，等待 Windows 复验
 
 ### 判断

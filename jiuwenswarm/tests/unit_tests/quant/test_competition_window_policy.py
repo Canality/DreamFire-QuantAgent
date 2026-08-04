@@ -246,6 +246,80 @@ def test_validate_embargo_fails_well_above_start(
         policy.validate_embargo(history_len=100, start_idx=80)
 
 
+def test_serialized_window_contains_exact_valuation_dates(
+    policy: CompetitionWindowPolicy, calendar: pd.DatetimeIndex,
+) -> None:
+    window = policy.get_window(calendar, start_idx=80)
+    payload = policy.serialize_window(window)
+    assert payload["decision_date"] == str(calendar[79].date())
+    assert payload["embargo_date"] == str(calendar[80].date())
+    assert payload["entry_date"] == str(calendar[81].date())
+    assert payload["valuation_dates"] == [
+        str(value.date()) for value in calendar[81:101]
+    ]
+    assert payload["exit_date"] == payload["valuation_dates"][-1]
+
+
+def test_embargo_day_factor_timestamp_fails_closed(
+    policy: CompetitionWindowPolicy, calendar: pd.DatetimeIndex,
+) -> None:
+    window = policy.get_window(calendar, start_idx=80)
+    with pytest.raises(ValueError, match="factor timestamp"):
+        policy.validate_decision_inputs(
+            window,
+            price_last_timestamp=window.decision_date,
+            factor_timestamps=[window.embargo_date],
+        )
+
+
+def test_decision_day_post_close_price_and_factor_fail_closed(
+    policy: CompetitionWindowPolicy, calendar: pd.DatetimeIndex,
+) -> None:
+    window = policy.get_window(calendar, start_idx=80)
+    with pytest.raises(ValueError, match="price timestamp"):
+        policy.validate_decision_inputs(
+            window,
+            price_last_timestamp=window.decision_date + pd.Timedelta(hours=16),
+        )
+    with pytest.raises(ValueError, match="factor timestamp"):
+        policy.validate_decision_inputs(
+            window,
+            price_last_timestamp=window.decision_date,
+            factor_timestamps=[window.decision_date + pd.Timedelta(hours=16)],
+        )
+
+
+def test_post_close_or_embargo_evidence_fails_closed(
+    policy: CompetitionWindowPolicy, calendar: pd.DatetimeIndex,
+) -> None:
+    window = policy.get_window(calendar, start_idx=80)
+    with pytest.raises(ValueError, match="evidence timestamp"):
+        policy.validate_decision_inputs(
+            window,
+            price_last_timestamp=window.decision_date,
+            evidence_timestamps=[window.decision_date + pd.Timedelta(hours=16)],
+        )
+
+    with pytest.raises(ValueError, match="evidence timestamp"):
+        policy.validate_decision_inputs(
+            window,
+            price_last_timestamp=window.decision_date,
+            evidence_timestamps=[window.embargo_date],
+        )
+
+
+def test_decision_day_pre_close_evidence_is_allowed(
+    policy: CompetitionWindowPolicy, calendar: pd.DatetimeIndex,
+) -> None:
+    window = policy.get_window(calendar, start_idx=80)
+    policy.validate_decision_inputs(
+        window,
+        price_last_timestamp=window.decision_date,
+        factor_timestamps=[window.decision_date],
+        evidence_timestamps=[window.decision_date + pd.Timedelta(hours=14)],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Repr
 # ---------------------------------------------------------------------------

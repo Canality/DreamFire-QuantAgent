@@ -11,8 +11,9 @@
 | 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct 与 formal 分别绑定各自 create-once 候选包，均携带 1,470 条公告、49/49 披露；独立 E2E audit 重算两套文件树与 manifest 哈希后退出 0，报告等级仍为 `FINANCIAL_PARTIAL` |
 | 完整金融分析作品 | PARTIAL / FAILED | direct/formal 报告与公告披露已形成可审计覆盖，但基本面、新闻、宏观和另类数据仍缺失，不能宣称 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 最新答疑与静态文档仍有 3 项冲突，不能把候选包改名为正式提交包 |
-| 策略 alpha | RESEARCH_ONLY | competition-aligned 20 窗重跑中 T2 配对收益差 +0.8356pp、效用胜出 17/20；全部仍是已观察开发窗口。最新 A0/A1/A2 消融存在配仓缓存串线，不能作为 Agent 无增量证据 |
+| 策略 alpha | RESEARCH_ONLY | WP1-B 内层冻结 T2 后，10 个未参与选择的外层窗口中配对中位收益差 `+0.8356pp`，六项统计门通过；但运行 Git dirty、历史 Sina 快照未绑定已验证 WP1-A，不能晋级或切生产 |
 | WP1-A 数据一致性与市场状态 | PATH_PASSED | direct/formal 均已改用共享 OHLCV Bundle，并在本轮真实取得 49/49 主源、49/49 独立二源、CSI300、6/6 板块诊断和九文件 snapshot；完整报告仍因 fundamental/news-risk 缺失保持 partial |
+| WP1-B 嵌套评测与晋级边界 | PATH_PASSED | competition-aligned 入口已实现内外层隔离、Block Bootstrap、P10/回撤非劣、不可变证据与 Git/config/snapshot/WP1-A 绑定；两次真实历史快照重跑 hash 一致并正确保持 `RESEARCH_ONLY` |
 | 正式路径失败关闭 | PATH_PASSED | 已修复“先失败、后成功仍判通过”的 validator 缺陷；回归测试 2/2，通过后的严格 session 每阶段只请求并执行 1 次 |
 | 正式团队精确选择 | PATH_PASSED | `FORMAL-TEAM-SELECT-0804` 为 TeamManager 增加显式 team selector；真实 formal 构建 `quant-leader` 和两个预定义分析师，不再误选通用 `jiuwen_team` |
 | Agent 资源与能力瘦身 | PATH_PASSED | fixed quant 运行时仅保留角色自有 Quant RPC 与 `send_message`；leader 为 9-tool、两名 analyst 各为 2-tool，无 task-board、文件、shell、browser、skill、subagent 或通用 team-management 工具；最新 formal 为 12 次业务/消息调用 |
@@ -32,6 +33,46 @@
 因此 `SubmissionContract.can_proceed_formal()` 当前必须失败关闭。解除阻断需要主办方的可归档书面答复，不得由 Agent 自行猜测。
 
 ## 本轮真实验收
+
+### -13. WP1-B 嵌套评测与策略晋级边界（2026-08-04 17:40–18:20）
+
+证据等级：WP1-B 评测入口为 `PATH_PASSED`；当前 T2 结果仍为
+`RESEARCH_ONLY`，`promotion_eligible=false`。本节不改变 production 指针，
+也不声明策略已通过正式晋级。
+
+- `CompetitionWindowPolicy` 现在机器可读记录 `decision_date → embargo_date
+  → entry_date → 20 valuation_dates → exit_date`，并以 Asia/Shanghai 15:00
+  为 decision-close 截止。embargo 日、同日收盘后 price/factor/evidence 注入
+  均有失败关闭测试；entry-open 到第 20 日 close 使用固定股数。
+- 新 `nested_evaluation.py` 仅以 0–9 内层窗口选择冻结候选，再以 10–19
+  未触碰外层窗口生成逐窗 paired table、三窗口 circular moving-block
+  Bootstrap、P10/最差收益、中位/最差回撤、近期加权与分 regime 证据。
+  非注册 selector、缺 valuation date、错配窗口、非默认计划和外层指标访问
+  都会失败或失去晋级资格。
+- 晋级边界会独立重算 Git 状态、配置 payload hash、磁盘 snapshot manifest
+  hash，以及 manifest 声明的两份 WP1-A 报告路径、hash 与语义
+  `status=VERIFIED`。自报 clean Git、伪造 verified flag、自哈希错误策略集、
+  报告内容为 `FAILED` 或运行后 Git 漂移均不能晋级。
+- 最终独立 Critic verdict 为 `ACCEPT`、阻断项 0；工件为
+  `output/agent_handoffs/WP1B-EVALUATION-0804/review.json`。聚焦与固定股数
+  回归 `57 passed`，Ruff、py_compile、task diff-check 和带并行任务归属说明
+  的 frozen scope-check 均通过。
+- 最终两次真实运行工件为
+  `output/wp1b_evaluations/wp1b_20260804_181757.json` 与
+  `output/wp1b_evaluations/wp1b_20260804_181808.json`；两者
+  `evaluation_hash` 均为
+  `b1cd9a849bcbf53f1f32bad8363c623694782791f797e201f7aeda2296783099`。
+  内层选择 `phase_b_t2_score_alloc`；外层中位收益差 `+0.8356pp`、
+  Bootstrap 正概率 `1.0`、效用胜率 `0.8`，六项统计门均通过。
+- 两次运行都因 `clean_git=false`、`verified_wp1a_snapshot=false` 保持
+  `RESEARCH_ONLY`；旧 `phase_b_latest.json`、`unified_baselines_latest.json`
+  和 8 份历史 Phase-B/统一基线 JSON 的冻结 hash 均未改变。
+- 量化目录全量回归为 `396 passed, 1 skipped, 9 failed`；9 项都因交接
+  基线缺少白名单外的资源镜像
+  `jiuwenswarm/jiuwenswarm/resources/agent/workspace/skills/quant-investment/SKILL.md`
+  而 `FileNotFoundError`，未越界修复。WP1-B 新模块未被 direct/formal 入口
+  导入；本任务未重跑两入口，沿用 -12 的最新 BUSINESS_PASSED 事实，待
+  Windows 对最终交付包执行正式双路径复验。
 
 ### -12. Windows 两项 P1 修复与不可变候选绑定复验（2026-08-04 16:55–17:24）
 

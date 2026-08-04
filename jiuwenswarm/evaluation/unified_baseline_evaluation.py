@@ -32,6 +32,8 @@ from jiuwenswarm.quant.strategy_configs import STRATEGY_SPECS, get_strategy_spec
 
 EVALUATION_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = EVALUATION_DIR.parent
+REPO_ROOT = PROJECT_ROOT.parent
+WP1B_OUTPUT_ROOT = REPO_ROOT / "output" / "wp1b_evaluations"
 SNAPSHOT_ROOT = EVALUATION_DIR / "data_snapshots"
 HORIZON = 20
 MIN_HISTORY = 80
@@ -347,6 +349,10 @@ def evaluate_strategy(
         window_dates = POLICY.get_window(index_close.index, start)
         entry_open, test_closes = POLICY.slice_window(opens, closes, start)
         POLICY.validate_embargo(len(history), start)
+        POLICY.validate_decision_inputs(
+            window_dates,
+            price_last_timestamp=history.index[-1],
+        )
         if len(test_closes) != HORIZON:
             raise RuntimeError(f"{strategy_name} window {idx}: incomplete forward window")
         official = BacktestEngine(transaction_cost=0.0).run_open_to_close(
@@ -370,17 +376,17 @@ def evaluate_strategy(
         if total_weight > spec.max_total_weight + 1e-9:
             raise RuntimeError(f"{strategy_name} window {idx}: total weight {total_weight}")
 
+        serialized_window = POLICY.serialize_window(window_dates)
         results.append({
             "idx": idx,
-            "decision_date": str(decision_date.date()),
-            "embargo_date": str(window_dates.embargo_date.date()),
-            "entry_date": str(window_dates.entry_date.date()),
-            "exit_date": str(window_dates.exit_date.date()),
+            **serialized_window,
             "test_start": str(test_closes.index[0].date()),
             "test_end": str(test_closes.index[-1].date()),
             "regime": regime,
             "n_history_days": len(history),
             "n_forward_closes": len(test_closes),
+            "n_stocks_covered": EXPECTED_STOCKS,
+            "n_sectors_covered": EXPECTED_SECTORS,
             "selected_tickers": selected,
             "n_selected": len(selected),
             "n_selected_sectors": len({SECTOR_MAP[ticker] for ticker in selected}),
@@ -470,7 +476,17 @@ def compare_to_production(
         "recent_four_utility_wins": recent_wins,
         "worst_return_delta": round(float(candidate_worst - production_worst), 6),
         "acceptance_checks": checks,
-        "verdict": "QUALIFIES" if all(checks.values()) else "DOES_NOT_QUALIFY",
+        "statistical_verdict": (
+            "STATISTICALLY_QUALIFIES"
+            if all(checks.values())
+            else "DOES_NOT_QUALIFY"
+        ),
+        "verdict": "RESEARCH_ONLY",
+        "promotion_eligible": False,
+        "promotion_blocker": (
+            "Legacy all-window comparison has no untouched outer evidence; "
+            "use WP1-B nested promotion evidence instead"
+        ),
     }
 
 
@@ -478,6 +494,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path, help="Reuse an immutable snapshot directory")
     parser.add_argument("--datalen", type=int, default=500)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=WP1B_OUTPUT_ROOT,
+        help="Create-only research artifacts; tracked legacy latest files are never updated",
+    )
     args = parser.parse_args()
 
     started = time.time()
@@ -511,10 +533,11 @@ def main() -> int:
         if name != "production_six_factor"
     }
     run_id = datetime.now().strftime("unified_baselines_%Y%m%d_%H%M%S")
+    git_state = _git_state()
     report = {
         "run_id": run_id,
         "created_at": datetime.now().astimezone().isoformat(),
-        "git": _git_state(),
+        "git": git_state,
         "preregistration": PREREGISTRATION,
         "snapshot": {
             "path": str(snapshot_dir),
@@ -536,10 +559,7 @@ def main() -> int:
             "n_windows": len(starts),
             "windows": [
                 {
-                    "decision_date": str(index_close.index[start - 1].date()),
-                    "embargo_date": str(index_close.index[start].date()),
-                    "entry_date": str(index_close.index[start + POLICY.embargo_trading_days].date()),
-                    "exit_date": str(index_close.index[start + POLICY.embargo_trading_days + HORIZON - 1].date()),
+                    **POLICY.serialize_window(POLICY.get_window(index_close.index, start)),
                     "test_start": str(index_close.index[start + POLICY.embargo_trading_days].date()),
                     "test_end": str(index_close.index[start + POLICY.embargo_trading_days + HORIZON - 1].date()),
                 }
@@ -549,16 +569,24 @@ def main() -> int:
         "summaries": summaries,
         "comparisons_to_production": comparisons,
         "details": details,
+        "promotion_status": "RESEARCH_ONLY",
+        "promotion_eligible": False,
+        "promotion_blockers": [
+            "No untouched outer evidence in the legacy unified comparison",
+            "Snapshot is not bound to verified WP1-A economic/provenance diagnostics",
+            *( ["Git worktree is dirty"] if git_state["dirty"] else [] ),
+        ],
         "elapsed_seconds": round(time.time() - started, 2),
     }
-    immutable_path = EVALUATION_DIR / f"{run_id}.json"
-    latest_path = EVALUATION_DIR / "unified_baselines_latest.json"
+    output_dir = args.output_dir.resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    immutable_path = output_dir / f"{run_id}.json"
     payload = json.dumps(report, ensure_ascii=False, indent=2)
-    immutable_path.write_text(payload, encoding="utf-8")
-    latest_path.write_text(payload, encoding="utf-8")
+    with immutable_path.open("x", encoding="utf-8") as handle:
+        handle.write(payload)
     print(json.dumps({"summaries": summaries, "comparisons": comparisons}, ensure_ascii=False, indent=2))
     print(f"Saved immutable result: {immutable_path}")
-    print(f"Updated latest result:  {latest_path}")
+    print("Legacy unified_baselines_latest.json was not modified")
     return 0
 
 
