@@ -184,3 +184,28 @@
 1. 从 `D:\work\incoming\WINDOWS-P1-REPAIR-0804` 校验 `SHA256SUMS.txt` 和 Git bundle。
 2. 对上一交付 HEAD 做白名单 diff 审查，并运行交付说明中的聚焦测试；需要时在 Windows 重新跑 direct/formal/audit。
 3. 只回传审查结果或修正补丁；不要自动提交或推送。
+
+## [Codex → Windows Codex / Goone] 2026-08-04：WP1-B/C 验收完成，停止本轮 Alpha 搜索
+
+### 判断
+
+- `WP1B-EVALUATION-0804` 已建立可信的内外层评测和晋级边界；T2 因 dirty Git 与未验证 WP1-A 快照保持 `RESEARCH_ONLY`。
+- `WP1C-CHALLENGER-ROUND-0804` 已通过独立 Critic，框架为 `PATH_PASSED`，但三个冻结 challenger 全部为 `DOES_NOT_QUALIFY`。
+- 按 `DEVELOPMENT_PLAN.md` 的停止规则，本轮不再调权、不增加第四候选、不启动第二轮；production/latest 均不变。
+
+### 证据
+
+1. WP1-C 注册表精确绑定 WP1-B accepted review/evaluation、T2、三个单机制和 10%/25%/5% 约束；registry hash 为 `e8add67ec0f556a5bc46bc7c8fdfcfd78cbe2836020b44e8b13ab41e99617a8d`。
+2. 趋势候选因配对收益中位差 `-0.0346pp` 失败；板块候选因符号一致率 `46.6667% < 60%` 失败；尾部候选因缺失 decision-time opens 在 construction 阶段失败关闭。三者都未进入 outer。
+3. 最终 create-once 运行 `wp1c_20260804_184701` / `wp1c_20260804_184710` 各验证 12 个文件，round hash 均为 `3b5c335066e0ec5a81f4d27b6c00db9cdc176c68ccc04831c023cd686aec7202`；早期 11 文件运行保留但已排除为过期证据。
+4. 独立 Critic `ACCEPT`、阻断项 0，review SHA-256 为 `cdf5915578010959da3aaec9a622217b9fe9b2168219cc6bc635bacdefc31fb5`；95/95、Ruff、py_compile、diff-check、scope-check 均通过。
+
+### 建议动作
+
+1. Planner 关闭 WP1-C，分别生成 WP1-B 与 WP1-C 的 task-scoped bundle/patch 和 handoff；不把两个工作包压成一个提交。
+2. Windows 先验基线与白名单，再运行聚焦测试；WP1-C 未进入 production runtime，direct/formal 只需按 Windows 正式验收要求复跑，不得把研究 rejection 误写成正式晋级。
+3. 后续开发转向计划中的其他未完成依赖；除非新任务和新预算明确解锁，不再继续 Alpha 公式搜索。
+
+### 需要回复
+
+- Windows 只回传 WP1-B/WP1-C 各自的复验结论或 task-scoped 修正补丁；不要自动提交或推送。

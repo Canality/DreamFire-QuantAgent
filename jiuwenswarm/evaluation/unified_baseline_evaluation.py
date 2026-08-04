@@ -13,6 +13,7 @@ import hashlib
 import json
 import subprocess
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ import pandas as pd
 import requests
 
 from jiuwenswarm.quant.backtest_engine import BacktestEngine
+from jiuwenswarm.quant.challenger_mechanisms import OverlayResult
 from jiuwenswarm.quant.evaluation_protocol import CompetitionWindowPolicy
 from jiuwenswarm.quant.factors import FactorCalculator, PositionSizer
 from jiuwenswarm.quant.regime_fusion import RegimeFusion
@@ -315,6 +317,9 @@ def evaluate_strategy(
     volumes: pd.DataFrame,
     index_close: pd.Series,
     starts: list[int],
+    score_overlay: Callable[
+        [pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], OverlayResult
+    ] | None = None,
 ) -> list[dict[str, Any]]:
     spec = get_strategy_spec(strategy_name)
     results: list[dict[str, Any]] = []
@@ -331,6 +336,38 @@ def evaluate_strategy(
         calculator.regime = regime
         factors = calculator.compute_factors(history, history_volume)
         scores = calculator.filter_high_volatility(calculator.compute_scores(factors))
+        overlay_result: OverlayResult | None = None
+        if score_overlay is not None:
+            base_scores = scores.copy(deep=True)
+            overlay_result = score_overlay(
+                base_scores.copy(deep=True),
+                history,
+                opens.iloc[:start],
+                history_volume,
+            )
+            if not isinstance(overlay_result, OverlayResult):
+                raise RuntimeError(
+                    f"{strategy_name} window {idx}: invalid overlay result"
+                )
+            adjusted = overlay_result.adjusted_scores
+            if (
+                not adjusted.index.is_unique
+                or set(adjusted.index) != set(base_scores.index)
+                or "composite" not in adjusted
+            ):
+                raise RuntimeError(
+                    f"{strategy_name} window {idx}: overlay changed score universe"
+                )
+            non_composite = [
+                column for column in base_scores.columns if column != "composite"
+            ]
+            if not adjusted.reindex(base_scores.index)[non_composite].equals(
+                base_scores[non_composite]
+            ):
+                raise RuntimeError(
+                    f"{strategy_name} window {idx}: overlay changed base factors"
+                )
+            scores = adjusted.sort_values("composite", ascending=False)
         selected = [
             ticker for ticker in scores.index
             if float(scores.loc[ticker, "composite"]) > 0
@@ -377,7 +414,7 @@ def evaluate_strategy(
             raise RuntimeError(f"{strategy_name} window {idx}: total weight {total_weight}")
 
         serialized_window = POLICY.serialize_window(window_dates)
-        results.append({
+        row = {
             "idx": idx,
             **serialized_window,
             "test_start": str(test_closes.index[0].date()),
@@ -401,7 +438,30 @@ def evaluate_strategy(
             "factor_contributions": _factor_contributions(
                 scores, selected, factor_config, regime
             ),
-        })
+        }
+        if overlay_result is not None:
+            forward_returns = (
+                test_closes.iloc[-1].reindex(ALL_STOCKS)
+                / entry_open.reindex(ALL_STOCKS)
+                - 1.0
+            )
+            finite_forward = forward_returns[
+                np.isfinite(forward_returns.astype(float))
+            ].astype(float)
+            if finite_forward.empty:
+                raise RuntimeError(
+                    f"{strategy_name} window {idx}: no finite overlay target returns"
+                )
+            row["challenger"] = {
+                "candidate_id": overlay_result.candidate_id,
+                "diagnostics": overlay_result.diagnostics,
+                "forward_returns": finite_forward.to_dict(),
+                "forward_return_coverage": len(finite_forward),
+                "forward_return_missing": sorted(
+                    set(ALL_STOCKS) - set(finite_forward.index)
+                ),
+            }
+        results.append(row)
     return results
 
 

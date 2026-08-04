@@ -11,9 +11,10 @@
 | 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct 与 formal 分别绑定各自 create-once 候选包，均携带 1,470 条公告、49/49 披露；独立 E2E audit 重算两套文件树与 manifest 哈希后退出 0，报告等级仍为 `FINANCIAL_PARTIAL` |
 | 完整金融分析作品 | PARTIAL / FAILED | direct/formal 报告与公告披露已形成可审计覆盖，但基本面、新闻、宏观和另类数据仍缺失，不能宣称 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 最新答疑与静态文档仍有 3 项冲突，不能把候选包改名为正式提交包 |
-| 策略 alpha | RESEARCH_ONLY | WP1-B 内层冻结 T2 后，10 个未参与选择的外层窗口中配对中位收益差 `+0.8356pp`，六项统计门通过；但运行 Git dirty、历史 Sina 快照未绑定已验证 WP1-A，不能晋级或切生产 |
+| 策略 alpha | RESEARCH_ONLY | WP1-B 冻结 T2 后，WP1-C 的趋势、板块领导力和非对称尾部风险三个预注册方向全部未通过内层/构造门；按停止规则终止本轮 Alpha 搜索，继续保留 T2 为 competition-aligned 最强冻结基线，不晋级或切 production |
 | WP1-A 数据一致性与市场状态 | PATH_PASSED | direct/formal 均已改用共享 OHLCV Bundle，并在本轮真实取得 49/49 主源、49/49 独立二源、CSI300、6/6 板块诊断和九文件 snapshot；完整报告仍因 fundamental/news-risk 缺失保持 partial |
 | WP1-B 嵌套评测与晋级边界 | PATH_PASSED | competition-aligned 入口已实现内外层隔离、Block Bootstrap、P10/回撤非劣、不可变证据与 Git/config/snapshot/WP1-A 绑定；两次真实历史快照重跑 hash 一致并正确保持 `RESEARCH_ONLY` |
+| WP1-C 有限预算 Challenger 研究 | PATH_PASSED / DOES_NOT_QUALIFY | 精确三个冻结单机制、WP1-B 绑定注册表、内层预筛和 one-shot outer 边界已实现并通过独立 Critic；真实运行三候选均未进入 outer，production/latest 未改变，禁止继续调权或增加候选 |
 | 正式路径失败关闭 | PATH_PASSED | 已修复“先失败、后成功仍判通过”的 validator 缺陷；回归测试 2/2，通过后的严格 session 每阶段只请求并执行 1 次 |
 | 正式团队精确选择 | PATH_PASSED | `FORMAL-TEAM-SELECT-0804` 为 TeamManager 增加显式 team selector；真实 formal 构建 `quant-leader` 和两个预定义分析师，不再误选通用 `jiuwen_team` |
 | Agent 资源与能力瘦身 | PATH_PASSED | fixed quant 运行时仅保留角色自有 Quant RPC 与 `send_message`；leader 为 9-tool、两名 analyst 各为 2-tool，无 task-board、文件、shell、browser、skill、subagent 或通用 team-management 工具；最新 formal 为 12 次业务/消息调用 |
@@ -33,6 +34,56 @@
 因此 `SubmissionContract.can_proceed_formal()` 当前必须失败关闭。解除阻断需要主办方的可归档书面答复，不得由 Agent 自行猜测。
 
 ## 本轮真实验收
+
+### -14. WP1-C 三机制 Challenger Round 与停止裁决（2026-08-04 18:22–18:51）
+
+证据等级：WP1-C 研究框架为 `PATH_PASSED`；本轮策略结果为
+`DOES_NOT_QUALIFY`，不是晋级或 production 通过。三个预注册方向均失败，
+因此按 `DEVELOPMENT_PLAN.md` 停止 Alpha 搜索并保留 T2 冻结基线。
+
+- 注册表只包含 `wp1c_r1_trend_consistency_v1`、
+  `wp1c_r1_sector_leadership_v1` 和
+  `wp1c_r1_asymmetric_tail_v1`。其 source-frozen registry hash 为
+  `e8add67ec0f556a5bc46bc7c8fdfcfd78cbe2836020b44e8b13ab41e99617a8d`，
+  精确绑定 WP1-B review SHA-256
+  `35c72c69f1defe417cb218f84f0af55efb520b10af80883fe255e724e0b3284d`、
+  evaluation hash
+  `b1cd9a849bcbf53f1f32bad8363c623694782791f797e201f7aeda2296783099`、
+  T2 底座、10%/25%/5% 约束和未改变的 `production_six_factor` 指针。
+- 三个候选每次都从独立的 T2 分数副本开始，只允许在 factor/filter 后、
+  positive Top-15 前改变 composite score；选股、PositionSizer、固定股数回测、
+  股票/板块/现金约束和 production runtime 均未分叉。注册表漂移、第四候选、
+  输入宇宙/历史缺失、候选串联和非 composite 变更均失败关闭。
+- 内层预筛只能读取窗口 0–9；outer 10–19 无法影响公式、阈值或内层裁决。
+  通过内层的候选才允许对已验收 WP1-B 边界调用一次；测试证明失败候选调用
+  0 次、通过候选恰好 1 次。真实结果中没有候选通过，因此 outer 为空。
+- 趋势候选的 20 日 rank IC 中位数为 `0.06143484`、正 IC 窗口率为
+  `60%`，但配对收益中位差为 `-0.0346pp`，未通过正收益门。板块候选
+  top-2 命中率为 `40%`，配对收益中位差约 `+0.00065pp`，但板块符号一致率
+  `46.6667% < 60%`。尾部风险候选因 decision-time opens 含非有限值在
+  construction 阶段失败关闭；未插值、未调阈值、未重跑为其他公式。
+- 最终 create-once 工件为
+  `output/challenger_evaluations/wp1c_20260804_184701` 与
+  `output/challenger_evaluations/wp1c_20260804_184710`。每棵树独立验证 12 个
+  JSON，含 canonical `reproduction.json`；两者 round hash 均为
+  `3b5c335066e0ec5a81f4d27b6c00db9cdc176c68ccc04831c023cd686aec7202`，
+  evidence file-map digest 均为
+  `216f2be6b9b7ab4bc333cc92bfab3159df33b78bded4f94041ba46b3d527a994`。
+  manifest SHA-256 分别为
+  `cde4b69dbed571b57ed81d0f14209c85d63bde2eabbc886e40068c2e6e220f15`
+  与 `f9cb59f757f22c9b4206eff588ff7494025b794e680b00dd4448c0b9479b9df3`。
+  明细被篡改并同步重算 manifest 文件哈希的反例仍会被 reproduction 绑定拒绝。
+- 早期 11 文件运行和两次探索失败全部保留，但已明确 superseded，不能作为
+  最终验收证据。旧 `phase_b_latest.json`、`unified_baselines_latest.json`、
+  production pointer 及历史工件未被覆盖。
+- 独立 Critic verdict 为 `ACCEPT`、阻断项 0；review SHA-256 为
+  `cdf5915578010959da3aaec9a622217b9fe9b2168219cc6bc635bacdefc31fb5`。
+  相关回归 `95 passed`，Ruff、py_compile、diff-check 和 frozen scope-check
+  均通过。当前快照仍为 raw/unadjusted 且未获 WP1-A VERIFIED，Git 仍 dirty；
+  这些限制不影响“候选淘汰”裁决，但禁止把结果写成 promotion 证据。
+- WP1-C 模块未被 direct/formal 生产入口导入，本任务未重新运行两入口；
+  -12 的最新 BUSINESS_PASSED 事实保持不变。Windows 最终交付仍应重跑
+  聚焦测试并按需执行正式双路径复验，不能把 Mac 研究工件当作正式提交包。
 
 ### -13. WP1-B 嵌套评测与策略晋级边界（2026-08-04 17:40–18:20）
 
