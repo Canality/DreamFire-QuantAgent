@@ -83,8 +83,8 @@ class SymphonyExecutionTrace:
 _REQUIRED_SKILL_ORDER = [
     "fetch_data",
     "compute_factors",
-    "bull_view",
-    "bear_view",
+    "alpha_view",
+    "risk_evidence_view",
     "select_stocks",
     "allocate_positions",
     "run_backtest",
@@ -121,8 +121,8 @@ def validate_quant_plan(plan: SymphonyPlan) -> PlanValidationResult:
 
     ordering_pairs = [
         ("fetch_data", "compute_factors", "Data fetch must precede factor computation"),
-        ("compute_factors", "bull_view", "Factor computation must precede Bull analysis"),
-        ("compute_factors", "bear_view", "Factor computation must precede Bear analysis"),
+        ("compute_factors", "alpha_view", "Factor computation must precede Alpha analysis"),
+        ("compute_factors", "risk_evidence_view", "Factor computation must precede Risk & Evidence analysis"),
         ("select_stocks", "allocate_positions", "Stock selection must precede position allocation"),
         ("allocate_positions", "run_backtest", "Position allocation must precede backtest"),
         ("run_backtest", "generate_report", "Backtest must precede report generation"),
@@ -167,14 +167,14 @@ def build_static_quant_plan(query: str = "标准量化投资分析") -> Symphony
             depends_on=["1"], expected_outputs=["factor_scores", "regime_diagnosis"],
         ),
         PlanStep(
-            step_id="3", skill_name="bull_view",
-            description="Bull Analyst: evaluate momentum strength and sector leadership",
-            depends_on=["2"], expected_outputs=["bull_recommendations"],
+            step_id="3", skill_name="alpha_view",
+            description="Alpha Analyst: evaluate term-aligned trend, momentum strength, and sector leadership",
+            depends_on=["2"], expected_outputs=["alpha_proposals"],
         ),
         PlanStep(
-            step_id="4", skill_name="bear_view",
-            description="Bear Analyst: evaluate tail risk, max drawdown, and volatility constraints",
-            depends_on=["2"], expected_outputs=["bear_warnings"],
+            step_id="4", skill_name="risk_evidence_view",
+            description="Risk & Evidence Analyst: evaluate tail risk, max drawdown, divergence, and evidence conflicts",
+            depends_on=["2"], expected_outputs=["risk_vetoes"],
         ),
         PlanStep(
             step_id="5", skill_name="select_stocks",

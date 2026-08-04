@@ -1,7 +1,11 @@
-"""Parse Bull/Bear RPC output into structured AgentView objects.
+"""Parse Alpha/Risk & Evidence RPC output into structured AgentView objects.
 
 Fail-closed: malformed JSON, unknown tickers, or missing required fields
 all produce validation errors rather than silently passing bad data.
+
+Historical parse_bull_bear_pair() is retained as deprecated adapter;
+new code should use parse_agent_view() directly with role="alpha" or
+role="risk_evidence".
 """
 
 from __future__ import annotations
@@ -129,27 +133,28 @@ def parse_bull_bear_pair(
     bear_output: str | dict | None,
     contract: SubmissionContract | None = None,
 ) -> Tuple[List[AgentView], List[str]]:
-    """Parse both Bull and Bear outputs. Returns (views, errors).
+    """Parse both Alpha and Risk & Evidence outputs. Returns (views, errors).
 
+    Historical name retained for compatibility; parses with new role names.
     If one side fails, the other may still succeed.
     """
     views: List[AgentView] = []
     all_errors: List[str] = []
 
     if bull_output:
-        view, errors = parse_agent_view(bull_output, "bull", contract)
+        view, errors = parse_agent_view(bull_output, "alpha", contract)
         if view:
             views.append(view)
         all_errors.extend(errors)
     else:
-        all_errors.append("bull_output is None")
+        all_errors.append("alpha_output is None")
 
     if bear_output:
-        view, errors = parse_agent_view(bear_output, "bear", contract)
+        view, errors = parse_agent_view(bear_output, "risk_evidence", contract)
         if view:
             views.append(view)
         all_errors.extend(errors)
     else:
-        all_errors.append("bear_output is None")
+        all_errors.append("risk_evidence_output is None")
 
     return views, all_errors

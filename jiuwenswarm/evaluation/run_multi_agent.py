@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""
+r"""
 Multi-Agent Quant Team — Programmatic Validation Script.
 
-Runs the full Coordinator + Bull + Bear multi-agent workflow via
-Runner.run_agent_team_streaming(), capturing all agent interactions,
+Runs the full Coordinator + Alpha Analyst + Risk & Evidence Analyst
+multi-agent workflow via Runner.run_agent_team_streaming(), capturing
+all agent interactions,
 tool calls, and final output.
 
 Usage:
@@ -13,12 +14,16 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import importlib
 import json
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from datetime import time as datetime_time
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -33,51 +38,89 @@ os_env = __import__("os")
 # paths in config (e.g. jiuwenswarm/extensions) resolve correctly.
 os_env.chdir(str(PROJECT_ROOT))
 
-from dotenv import load_dotenv  # noqa: E402
-from jiuwenswarm.common.utils import (  # noqa: E402
-    get_env_file,
-    get_user_workspace_dir,
-    prepare_workspace,
-    cleanup_team_files,
-    reset_free_search_runtime_flags,
-)
+# These imports intentionally occur after the project-root bootstrap.  Using
+# importlib keeps the script runnable from either the repository root or the
+# jiuwenswarm subdirectory without relying on linter-specific E402 ignores.
+load_dotenv = importlib.import_module("dotenv").load_dotenv
+_common_utils = importlib.import_module("jiuwenswarm.common.utils")
+cleanup_team_files = _common_utils.cleanup_team_files
+get_env_file = _common_utils.get_env_file
+get_user_workspace_dir = _common_utils.get_user_workspace_dir
+prepare_workspace = _common_utils.prepare_workspace
+reset_free_search_runtime_flags = _common_utils.reset_free_search_runtime_flags
 
 _workspace_dir = get_user_workspace_dir()
 _config_file = _workspace_dir / "config" / "config.yaml"
 
-# Ensure workspace is ready
+# Ensure workspace config exists
 cleanup_team_files(_workspace_dir)
 if not _config_file.exists():
     prepare_workspace(overwrite=False)
 
+# Atomically refresh the current Alpha/Risk quant_team while preserving
+# unrelated user teams.
+yaml = importlib.import_module("yaml")
+
+_PROJECT_CONFIG_PATH = PROJECT_ROOT / "jiuwenswarm" / "resources" / "config.yaml"
+if _config_file.exists() and _PROJECT_CONFIG_PATH.exists():
+    with open(_config_file, "r", encoding="utf-8") as f:
+        ws_cfg = yaml.safe_load(f) or {}
+    with open(_PROJECT_CONFIG_PATH, "r", encoding="utf-8") as f:
+        prj_cfg = yaml.safe_load(f) or {}
+    prj_team = prj_cfg.get("modes", {}).get("team", {}).get("quant_team")
+    if isinstance(prj_team, dict):
+        teams = ws_cfg.setdefault("modes", {}).setdefault("team", {})
+        # Replace only quant_team; preserve unrelated user teams
+        teams["quant_team"] = prj_team
+        with open(_config_file, "w", encoding="utf-8") as f:
+            yaml.safe_dump(ws_cfg, f, allow_unicode=True, default_flow_style=False)
+
 load_dotenv(dotenv_path=get_env_file(), override=True)
 reset_free_search_runtime_flags()
 
+# Each formal run is a fresh process — phase idempotency cache
+# (_phase_results in extension.py) starts empty automatically.
+
 # ── Now safe to import framework internals ─────────────────
-from jiuwenswarm.agents.harness.team.team_manager import get_team_manager  # noqa: E402
-
-# Trigger swarm provider registrations
-import jiuwenswarm.agents.swarm.assembly  # noqa: E402, F401
-
-from openjiuwen.core.runner import Runner  # noqa: E402
-from jiuwenswarm.quant.reporting.submission_contract import get_contract  # noqa: E402
-from jiuwenswarm.quant.reporting.resource_meter import (  # noqa: E402
-    ResourceReport,
-    StageMetrics,
+# Trigger swarm provider registrations and load framework internals only after
+# workspace/config initialization has completed.
+importlib.import_module("jiuwenswarm.agents.swarm.assembly")
+_team_manager_module = importlib.import_module(
+    "jiuwenswarm.agents.harness.team.team_manager"
 )
+build_session_scoped_team_name = _team_manager_module.build_session_scoped_team_name
+get_team_manager = _team_manager_module.get_team_manager
+ToolProgressGuard = importlib.import_module(
+    "jiuwenswarm.quant.orchestration_guard"
+).ToolProgressGuard
+_resource_meter = importlib.import_module(
+    "jiuwenswarm.quant.reporting.resource_meter"
+)
+ResourceReport = _resource_meter.ResourceReport
+StageMetrics = _resource_meter.StageMetrics
+get_contract = importlib.import_module(
+    "jiuwenswarm.quant.reporting.submission_contract"
+).get_contract
+Runner = importlib.import_module("openjiuwen.core.runner").Runner
 
 # ── Constants ───────────────────────────────────────────────
 OUTPUT_DIR = PROJECT_ROOT.parent / "output"
-SESSION_ID = f"multi-agent-validation-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+SESSION_ID = (
+    "multi-agent-validation-"
+    + datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d-%H%M%S")
+)
 SUBMISSION_CONTRACT = get_contract()
 EXPECTED_STOCKS = SUBMISSION_CONTRACT.n_companies
 EXPECTED_SECTORS = SUBMISSION_CONTRACT.n_sectors
+FORMAL_TEAM_NAME = "quant_team"
+FORMAL_LEADER_NAME = "quant-leader"
+FORMAL_MEMBER_NAMES = {"alpha_analyst", "risk_evidence_analyst"}
 
 QUANT_PHASE_METHODS = {
     "fetch": "quant.fetch_data",
     "factors": "quant.compute_factors",
-    "bull_view": "quant.bull_view",
-    "bear_view": "quant.bear_view",
+    "alpha_view": "quant.alpha_view",
+    "risk_evidence_view": "quant.risk_evidence_view",
     "select": "quant.select_stocks",
     "allocate": "quant.allocate_positions",
     "backtest": "quant.run_backtest",
@@ -134,9 +177,7 @@ def _phase_payload_valid(phase: str, payload: dict) -> bool:
             return False
         if cp.get("quality_passed") is not True:
             return False
-        if cp.get("n_reports") != EXPECTED_STOCKS:
-            return False
-        return True
+        return cp.get("n_reports") == EXPECTED_STOCKS
     return True
 
 
@@ -145,9 +186,16 @@ def _validate_quant_rpc_calls(calls: list[dict]) -> tuple[dict[str, bool], list[
     issues = []
     for phase, method in QUANT_PHASE_METHODS.items():
         matching = [call for call in calls if call.get("method") == method]
-        phases[phase] = any(_phase_payload_valid(phase, call.get("payload", {})) for call in matching)
-        if matching and not phases[phase]:
-            issues.append(f"{method} was called but no result passed output validation")
+        invalid = [
+            call
+            for call in matching
+            if not _phase_payload_valid(phase, call.get("payload", {}))
+        ]
+        phases[phase] = bool(matching) and not invalid
+        if invalid:
+            issues.append(
+                f"{method} returned {len(invalid)} unsuccessful or invalid result(s)"
+            )
     return phases, issues
 
 
@@ -175,6 +223,35 @@ def _make_serializable(obj):
     return str(obj)[:500]
 
 
+async def _load_formal_team_spec(team_manager, *, session_id: str):
+    """Load the exact frozen quant team or stop before Runner execution."""
+    spec = await team_manager.get_swarm_enriched_team_spec(
+        session_id=session_id,
+        mode="team",
+        requested_team_name=FORMAL_TEAM_NAME,
+    )
+    team_name = str(getattr(spec, "team_name", ""))
+    leader_name = str(getattr(getattr(spec, "leader", None), "member_name", ""))
+    member_names = [
+        str(getattr(member, "member_name", ""))
+        for member in (getattr(spec, "predefined_members", None) or [])
+    ]
+    expected_team_name = build_session_scoped_team_name(FORMAL_TEAM_NAME, session_id)
+    if (
+        team_name != expected_team_name
+        or leader_name != FORMAL_LEADER_NAME
+        or len(member_names) != len(FORMAL_MEMBER_NAMES)
+        or set(member_names) != FORMAL_MEMBER_NAMES
+    ):
+        raise RuntimeError(
+            "formal team identity mismatch: "
+            f"expected team={expected_team_name!r}, leader={FORMAL_LEADER_NAME!r}, "
+            f"members={sorted(FORMAL_MEMBER_NAMES)!r}; got team={team_name!r}, "
+            f"leader={leader_name!r}, members={sorted(member_names)!r}"
+        )
+    return spec
+
+
 async def _init_extensions():
     """Initialize ExtensionRegistry and load quant-finance extension.
 
@@ -182,8 +259,9 @@ async def _init_extensions():
     and the LLM will retry quant_fetch_data indefinitely (34+ times).
     """
     import logging
-    from jiuwenswarm.extensions.registry import ExtensionRegistry
+
     from jiuwenswarm.extensions.manager import ExtensionManager
+    from jiuwenswarm.extensions.registry import ExtensionRegistry
 
     _log = logging.getLogger(__name__)
 
@@ -198,7 +276,7 @@ async def _init_extensions():
     # Create registry and load extensions
     try:
         callback_framework = Runner.callback_framework
-    except Exception:
+    except Exception:  # noqa: BLE001 - optional callback failure is logged
         _log.warning("[MultiAgent] Cannot access Runner.callback_framework — "
                       "extensions may not load. Run inside jiuwenswarm server for full support.")
         return
@@ -236,6 +314,18 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     print("\n[0/5] Initializing extensions...")
     await _init_extensions()
 
+    # 1. Select and validate the exact formal team before instrumenting tools
+    # or invoking Runner.
+    print("\n[1/5] Building team spec for quant_team...")
+    tm = get_team_manager()
+    t0 = time.time()
+
+    spec = await _load_formal_team_spec(tm, session_id=SESSION_ID)
+    print(f"  Team spec built in {time.time() - t0:.1f}s")
+    print(f"  Leader: {spec.leader.member_name if hasattr(spec.leader, 'member_name') else 'quant-leader'}")
+    member_count = len(spec.predefined_members) if hasattr(spec, 'predefined_members') else 0
+    print(f"  Members: {member_count}")
+
     # Record actual RPC returns. Stream chunks are presentation events and are
     # not reliable evidence that a tool completed successfully.
     from jiuwenswarm.agents.harness.common.tools.quant_toolkits import QuantToolkit
@@ -243,7 +333,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     quant_rpc_calls = []
     failure_counts = {}
     failure_guard = {"triggered": False, "detail": None}
-    repeated_tool = {"signature": None, "count": 0}
+    progress_guard = ToolProgressGuard()
     pipeline_completed_at = {"monotonic": None}
     quant_progress = {"monotonic": None, "completed": 0}
     original_call_rpc = QuantToolkit._call_rpc
@@ -254,39 +344,28 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             "method": method,
             "params_keys": sorted(params) if params else [],
             "payload": payload,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         phases, _ = _validate_quant_rpc_calls(quant_rpc_calls)
         completed = sum(phases.values())
         if completed > quant_progress["completed"]:
             quant_progress["completed"] = completed
             quant_progress["monotonic"] = time.monotonic()
+            progress_guard.record_quant_progress(completed)
         if all(phases.values()) and pipeline_completed_at["monotonic"] is None:
             pipeline_completed_at["monotonic"] = time.monotonic()
         if isinstance(payload, dict) and payload.get("success") is True:
             failure_counts[method] = 0
         else:
             failure_counts[method] = failure_counts.get(method, 0) + 1
-            if failure_counts[method] >= 3:
-                failure_guard["triggered"] = True
-                failure_guard["detail"] = f"{method} failed {failure_counts[method]} times"
+            failure_guard["triggered"] = True
+            failure_guard["detail"] = (
+                f"{method} returned an unsuccessful or invalid payload; "
+                "formal quant RPCs are fail-closed"
+            )
         return payload
 
     QuantToolkit._call_rpc = audited_call_rpc
-
-    # 1. Get team manager and build spec
-    print("\n[1/5] Building team spec for quant_team...")
-    tm = get_team_manager()
-    t0 = time.time()
-
-    spec = await tm.get_swarm_enriched_team_spec(
-        session_id=SESSION_ID,
-        mode="team",
-    )
-    print(f"  Team spec built in {time.time() - t0:.1f}s")
-    print(f"  Leader: {spec.leader.member_name if hasattr(spec.leader, 'member_name') else 'quant-leader'}")
-    member_count = len(spec.predefined_members) if hasattr(spec, 'predefined_members') else 0
-    print(f"  Members: {member_count}")
 
     # 2. Run the team
     print(f"\n[2/5] Running team with prompt:\n  \"{prompt}\"")
@@ -354,26 +433,10 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             tc = _extract_tool_call(chunk)
             if tc:
                 tool_calls.append(tc)
-                signature = json.dumps(
-                    {
-                        "name": tc.get("name"),
-                        "args": tc.get("arguments", tc.get("args")),
-                        "result": tc.get("result"),
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    default=str,
-                )
-                if signature == repeated_tool["signature"]:
-                    repeated_tool["count"] += 1
-                else:
-                    repeated_tool = {"signature": signature, "count": 1}
-                if repeated_tool["count"] >= 3:
+                guard_detail = progress_guard.record_tool_call(tc)
+                if guard_detail:
                     failure_guard["triggered"] = True
-                    failure_guard["detail"] = (
-                        f"identical tool call repeated {repeated_tool['count']} times: "
-                        f"{tc.get('name', '?')}"
-                    )
+                    failure_guard["detail"] = guard_detail
                 print(f"  [TOOL] {tc.get('name', '?')} → {str(tc.get('result', ''))[:150]}", flush=True)
 
             # Detect errors
@@ -391,8 +454,8 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             current_role_calls = _role_rpc_calls(chunks_log)
             if (
                 all(current_phases.values())
-                and current_role_calls["bull_analyst"] > 0
-                and current_role_calls["bear_analyst"] > 0
+                and current_role_calls["alpha_analyst"] > 0
+                and current_role_calls["risk_evidence_analyst"] > 0
             ):
                 print("\n  Business completion gate reached; closing the agent stream.")
                 break
@@ -417,7 +480,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         else:
             errors.append("agent stream did not close within 90s after 8/8 business completion")
         print(f"\n  ⚠ Async timeout after {time.time() - t_start:.0f}s")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - stream failure becomes evidence
         errors.append(str(e))
         print(f"\n  ✗ Exception: {e}")
         import traceback
@@ -457,21 +520,74 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     phases_completed, validation_issues = _validate_quant_rpc_calls(quant_rpc_calls)
     errors.extend(issue for issue in validation_issues if issue not in errors)
     completed_count = sum(1 for v in phases_completed.values() if v)
-    loop_complete = completed_count == len(QUANT_PHASE_METHODS) and not failure_guard["triggered"]
+    phase_request_counts = {
+        phase: sum(
+            call.get("method") == method
+            for call in quant_rpc_calls
+        )
+        for phase, method in QUANT_PHASE_METHODS.items()
+    }
+    phase_execution_counts = {
+        phase: sum(
+            call.get("method") == method
+            and call.get("payload", {}).get("success") is True
+            and call.get("payload", {}).get("executed") is True
+            for call in quant_rpc_calls
+        )
+        for phase, method in QUANT_PHASE_METHODS.items()
+    }
+    phase_cache_hit_counts = {
+        phase: sum(
+            call.get("method") == method
+            and call.get("payload", {}).get("success") is True
+            and call.get("payload", {}).get("cached") is True
+            for call in quant_rpc_calls
+        )
+        for phase, method in QUANT_PHASE_METHODS.items()
+    }
+    execution_counts_valid = all(
+        not phases_completed[phase] or phase_execution_counts[phase] == 1
+        for phase in QUANT_PHASE_METHODS
+    )
+    if not execution_counts_valid:
+        errors.append(
+            "successful phase business execution count must be exactly one: "
+            + ", ".join(
+                f"{phase}={count}"
+                for phase, count in phase_execution_counts.items()
+                if phases_completed[phase] and count != 1
+            )
+        )
+    loop_complete = (
+        completed_count == len(QUANT_PHASE_METHODS)
+        and execution_counts_valid
+        and not failure_guard["triggered"]
+    )
     participation = _agent_participation(chunks_log)
     role_rpc_calls = _role_rpc_calls(chunks_log)
     role_rpc_violations = _role_rpc_violations(chunks_log)
+    # Exact role set: exactly 3 members, no stale Bull/Bear ghosts
+    EXPECTED_ROLES = {"quant-leader", "alpha_analyst", "risk_evidence_analyst"}
+    actual_roles = set(participation.keys())
+    extra_roles = actual_roles - EXPECTED_ROLES
+    missing_roles = EXPECTED_ROLES - actual_roles
+    role_set_valid = not extra_roles and not missing_roles
     multi_agent_working = (
         participation.get("quant-leader", 0) > 0
-        and role_rpc_calls["bull_analyst"] > 0
-        and role_rpc_calls["bear_analyst"] > 0
+        and role_rpc_calls["alpha_analyst"] > 0
+        and role_rpc_calls["risk_evidence_analyst"] > 0
         and not role_rpc_violations
+        and role_set_valid
     )
+    if extra_roles:
+        errors.append(f"UNEXPECTED ROLES DETECTED: {sorted(extra_roles)} — config may contain stale Bull/Bear members")
+    if missing_roles:
+        errors.append(f"MISSING REQUIRED ROLES: {sorted(missing_roles)}")
     validation_passed = loop_complete and multi_agent_working
     if not multi_agent_working:
         missing = [
             member
-            for member in ("bull_analyst", "bear_analyst")
+            for member in ("alpha_analyst", "risk_evidence_analyst")
             if role_rpc_calls[member] == 0
         ]
         parts = []
@@ -484,6 +600,9 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             errors.append(issue)
     print(f"  Phases: {', '.join(f'{k}={v}' for k, v in phases_completed.items())}")
     print(f"  Completed: {completed_count}/8, Loop complete: {loop_complete}")
+    print(f"  Phase requests: {phase_request_counts}")
+    print(f"  Business executions: {phase_execution_counts}")
+    print(f"  Cache hits: {phase_cache_hit_counts}")
     print(f"  Agent participation: {participation}, Multi-agent working: {multi_agent_working}")
     print(f"  Role-owned RPC calls: {role_rpc_calls}")
     print(f"  Role RPC violations: {role_rpc_violations}")
@@ -493,7 +612,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
 
     summary = {
         "session_id": SESSION_ID,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "prompt": prompt,
         "elapsed_seconds": round(elapsed, 1),
         "stats": {
@@ -504,14 +623,20 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             "quant_rpc_calls": len(quant_rpc_calls),
         },
         "quant_phases": phases_completed,
+        "phase_request_counts": phase_request_counts,
+        "phase_execution_counts": phase_execution_counts,
+        "phase_cache_hit_counts": phase_cache_hit_counts,
         "loop_complete": loop_complete,
         "agent_participation": participation,
         "role_rpc_calls": role_rpc_calls,
         "role_rpc_violations": role_rpc_violations,
         "multi_agent_working": multi_agent_working,
         "validation_passed": validation_passed,
-        "success_criterion": "8/8 validated RPC outputs plus Bull/Bear-owned view RPCs",
-        "repeated_failure_guard": failure_guard,
+        "success_criterion": "8/8 validated RPC outputs plus Alpha/Risk & Evidence-owned view RPCs",
+        "repeated_failure_guard": {
+            **failure_guard,
+            "progress_budget": progress_guard.as_dict(),
+        },
         "quant_rpc_calls": quant_rpc_calls,
         "issues": errors if errors else None,
     }
@@ -521,24 +646,32 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     # Full chunk log
     artifact_id = SESSION_ID.removeprefix("multi-agent-validation-")
     chunks_path = OUTPUT_DIR / f"multi_agent_chunks_{artifact_id}.json"
-    with open(chunks_path, "w", encoding="utf-8") as f:
-        json.dump(chunks_log, f, ensure_ascii=False, indent=2, default=str)
+    chunks_path.write_text(
+        json.dumps(chunks_log, ensure_ascii=False, indent=2, default=str) + "\n",
+        encoding="utf-8",
+    )
 
     # Summary
     summary_path = OUTPUT_DIR / f"multi_agent_summary_{artifact_id}.json"
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     # Combined text output
     text_path = OUTPUT_DIR / f"multi_agent_output_{artifact_id}.md"
-    with open(text_path, "w", encoding="utf-8") as f:
-        f.write("# Multi-Agent Quant Team Output\n\n")
-        f.write(f"**Session**: {SESSION_ID}\n")
-        f.write(f"**Time**: {datetime.now().isoformat()}\n")
-        f.write(f"**Elapsed**: {elapsed:.0f}s\n\n")
-        f.write("---\n\n")
-        for i, t in enumerate(text_output):
-            f.write(f"## Segment {i+1}\n\n{t}\n\n")
+    text_path.write_text(
+        "# Multi-Agent Quant Team Output\n\n"
+        f"**Session**: {SESSION_ID}\n"
+        f"**Time**: {datetime.now(timezone.utc).isoformat()}\n"
+        f"**Elapsed**: {elapsed:.0f}s\n\n"
+        "---\n\n"
+        + "".join(
+            f"## Segment {index + 1}\n\n{text}\n\n"
+            for index, text in enumerate(text_output)
+        ),
+        encoding="utf-8",
+    )
 
     # Real resource report for the formal Agent path. Token usage comes from
     # openJiuwen llm_usage chunks; absent measurements remain None.
@@ -625,8 +758,10 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         resource_report.save_json(str(candidate_path / "resource_usage.json"))
         resource_report.save_markdown(str(candidate_path / "resource_usage.md"))
         summary["resource_usage"] = resource_report.to_dict()
-        with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump(summary, f, ensure_ascii=False, indent=2)
+        summary_path.write_text(
+            json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     print(f"  Chunks log:  {chunks_path}")
     print(f"  Summary:     {summary_path}")
@@ -640,15 +775,15 @@ def _canonical_member_name(member: object) -> str:
     normalized = str(member or "").strip().lower().replace("-", "_")
     aliases = {
         "quant_leader": "quant-leader",
-        "bull_analyst": "bull_analyst",
-        "bear_analyst": "bear_analyst",
+        "alpha_analyst": "alpha_analyst",
+        "risk_evidence_analyst": "risk_evidence_analyst",
     }
     return aliases.get(normalized, normalized)
 
 
 def _agent_participation(chunks_log: list[dict]) -> dict[str, int]:
     """Count emitted chunks by member; creation alone is not participation."""
-    counts = {"quant-leader": 0, "bull_analyst": 0, "bear_analyst": 0}
+    counts = {"quant-leader": 0, "alpha_analyst": 0, "risk_evidence_analyst": 0}
     for chunk in chunks_log:
         member = _canonical_member_name(chunk.get("source_member"))
         if member in counts:
@@ -657,10 +792,10 @@ def _agent_participation(chunks_log: list[dict]) -> dict[str, int]:
 
 
 def _role_rpc_calls(chunks_log: list[dict]) -> dict[str, int]:
-    """Require Bull/Bear to call their own view RPC; leader labels are insufficient."""
+    """Require Alpha/Risk & Evidence to call their own view RPC; leader labels are insufficient."""
     expected = {
-        "bull_analyst": "quant_bull_view",
-        "bear_analyst": "quant_bear_view",
+        "alpha_analyst": "quant_alpha_view",
+        "risk_evidence_analyst": "quant_risk_evidence_view",
     }
     counts = {member: 0 for member in expected}
     for chunk in chunks_log:
@@ -680,8 +815,8 @@ def _role_rpc_calls(chunks_log: list[dict]) -> dict[str, int]:
 def _role_rpc_violations(chunks_log: list[dict]) -> list[str]:
     """Reject analyst calls outside their one role-owned Quant RPC."""
     allowed = {
-        "bull_analyst": {"quant_bull_view"},
-        "bear_analyst": {"quant_bear_view"},
+        "alpha_analyst": {"quant_alpha_view"},
+        "risk_evidence_analyst": {"quant_risk_evidence_view"},
     }
     violations = []
     for chunk in chunks_log:
@@ -730,8 +865,8 @@ def _extract_text(chunk) -> str | None:
                     value = candidate.get(key)
                     if isinstance(value, str) and value.strip():
                         return value.strip()
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 - unknown chunk model has no text
+            return None
 
     return None
 
@@ -741,7 +876,7 @@ def _extract_tool_call(chunk) -> dict | None:
     if hasattr(chunk, "model_dump"):
         try:
             d = chunk.model_dump()
-        except Exception:
+        except Exception:  # noqa: BLE001 - unknown chunk model has no tool call
             return None
     elif isinstance(chunk, dict):
         d = chunk
@@ -782,30 +917,56 @@ def _extract_error(chunk) -> str | None:
     return None
 
 
-async def main():
-    end_date = datetime.now().date()
-    start_date = end_date - timedelta(days=400)
+def _default_validation_end_date(*, now: datetime | None = None) -> date:
+    """Avoid asking the formal Agent to fetch an incomplete current session."""
+
+    shanghai = ZoneInfo("Asia/Shanghai")
+    local_now = (now or datetime.now(shanghai)).astimezone(shanghai)
+    end_date = local_now.date()
+    if local_now.time() < datetime_time(15, 30):
+        end_date -= timedelta(days=1)
+    return end_date
+
+
+async def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date", help="Inclusive market-data start date")
+    parser.add_argument("--end-date", help="Inclusive market-data end date")
+    args = parser.parse_args(argv)
+    end_date = (
+        date.fromisoformat(args.end_date)
+        if args.end_date
+        else _default_validation_end_date()
+    )
+    start_date = (
+        date.fromisoformat(args.start_date)
+        if args.start_date
+        else end_date - timedelta(days=400)
+    )
+    if start_date >= end_date:
+        raise ValueError("start-date must be earlier than end-date")
     prompt = (
         f"请作为量化投资团队，分析当前{EXPECTED_STOCKS}只A股股票池，完成以下任务：\n"
         f"1. 获取 {start_date.isoformat()} 至 {end_date.isoformat()} 的股票数据；"
         "调用 quant_fetch_data 时必须原样使用这两个日期，不得自行猜测年份\n"
+        "   八个 quant_* 工具必须严格串行：必须收到前一阶段 success=true 后再调用下一阶段，禁止并发或预调用\n"
         "2. 计算多因子得分（动量、波动率、回撤、成交量等）\n"
-        "3. Bull分析师从看多视角推荐股票，Bear分析师从风控视角审查风险\n"
-        "   必须用 send_message 分别把任务委派给 bull_analyst 和 bear_analyst；"
-        "Coordinator 禁止代为调用 quant_bull_view 或 quant_bear_view，"
+        "3. Alpha分析师从趋势和板块领导力视角提交纳入提案，Risk & Evidence分析师从尾部风险和证据冲突视角行使否决\n"
+        "   必须用 send_message 分别把任务委派给 alpha_analyst 和 risk_evidence_analyst；"
+        "Coordinator 禁止代为调用 quant_alpha_view 或 quant_risk_evidence_view，"
         "必须等待两个成员各自调用其专属工具并返回结果\n"
         "4. 综合双方意见，选择15只股票并分配仓位\n"
         "5. 运行回测并生成简版投资报告\n"
         "请用中文回复。"
     )
 
-    summary, chunks = await run_multi_agent_team(prompt, timeout_seconds=600)
+    summary, _chunks = await run_multi_agent_team(prompt, timeout_seconds=600)
 
     print("\n" + "=" * 70)
     print("  VALIDATION RESULT")
     print("=" * 70)
     if summary["validation_passed"]:
-        print("  [OK] Full quant loop completed with leader/Bull/Bear participation")
+        print("  [OK] Full quant loop completed with Alpha/Risk & Evidence participation")
     else:
         print("  [FAIL] Formal multi-agent validation did not pass")
         phases = summary.get("quant_phases", {})

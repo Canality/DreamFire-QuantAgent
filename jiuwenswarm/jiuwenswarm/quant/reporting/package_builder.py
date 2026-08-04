@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, Mapping, Tuple
 
 from jiuwenswarm.quant.reporting.company_report import generate_company_report
@@ -16,6 +17,7 @@ from jiuwenswarm.quant.reporting.models import (
     ReportQualityResult,
 )
 from jiuwenswarm.quant.reporting.quality_gate import validate_submission
+from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
 from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract
 
 
@@ -34,7 +36,7 @@ _MANAGED_PACKAGE_FILES = (
     "reproducibility.md",
     "framework_changes.md",
 )
-_MANAGED_PACKAGE_DIRS = ("company_reports", "data_snapshot")
+_MANAGED_PACKAGE_DIRS = ("company_reports", "data_snapshot", "evidence_archive")
 
 
 def _clear_previous_candidate(package_path: str) -> None:
@@ -152,6 +154,7 @@ def build_candidate_package(
     strategy_label: str = "production",
     *,
     evidence_manifest: Mapping[str, EvidenceRef] | None = None,
+    evidence_archive: EvidenceArchive | None = None,
 ) -> Tuple[bool, ReportQualityResult, str]:
     """Generate a complete candidate submission package.
 
@@ -214,7 +217,20 @@ def build_candidate_package(
         report_codes_on_disk=report_codes_on_disk,
         generated_at=generated_at,
         evidence_manifest=ev_refs if ev_refs else None,
+        archive=evidence_archive,
     )
+
+    # Install every non-market evidence item in the candidate itself. External
+    # source_url remains the human-verifiable publication URL; this local copy
+    # is the immutable machine-verifiable payload.
+    if evidence_archive is not None:
+        candidate_archive = EvidenceArchive(Path(package_path) / "evidence_archive")
+        for evidence_id, ref in ev_refs.items():
+            if ref.source_type == "market_data":
+                continue
+            content = evidence_archive.read(evidence_id)
+            if content is not None:
+                candidate_archive.write(evidence_id, content, ref)
 
     # ---- Portfolio.json (official format: 6-digit code → weight) ----
     portfolio_official = {

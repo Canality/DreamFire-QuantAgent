@@ -39,9 +39,13 @@ class MetricFact:
 
 @dataclass(frozen=True)
 class AgentView:
-    """Structured output from a Bull or Bear analyst."""
+    """Structured output from an Alpha or Risk & Evidence analyst.
 
-    role: str                         # "bull" | "bear"
+    Historical "bull"/"bear" roles are deprecated but still accepted
+    for backward compatibility with archived data.
+    """
+
+    role: str                         # "bull" | "bear" | "alpha" | "risk_evidence"
     verdict: str                      # "overweight" | "neutral" | "underweight"
     confidence: str                   # "high" | "medium" | "low"
     candidate_tickers: Tuple[str, ...]

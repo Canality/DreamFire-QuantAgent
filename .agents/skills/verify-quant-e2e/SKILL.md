@@ -31,9 +31,9 @@ description: 对量化项目执行发布前端到端验收，验证研发旁路�
 
 多 Agent 路径必须同时满足：
 
-- Coordinator、Bull、Bear 被真实创建；Bull 必须亲自调用 `quant_bull_view`，Bear 必须亲自调用 `quant_bear_view`。只有成员输出或 leader 代调不算通过。
+- Coordinator、Alpha Analyst、Risk & Evidence Analyst 被真实创建；Alpha 必须亲自调用 `quant_alpha_view`，Risk & Evidence 必须亲自调用 `quant_risk_evidence_view`。只有成员输出或 leader 代调不算通过。
 - ExtensionRegistry 已初始化，QuantFinance 的 8 个 RPC handler 已加载。
-- 至少完成 fetch、compute、Bull、Bear、select、allocate、backtest、report 全链路。
+- 至少完成 fetch、compute、Alpha、Risk & Evidence、select、allocate、backtest、report 全链路。
 - 工具返回 `success: false` 时任务必须失败，不得靠 LLM 重试掩盖。
 - 成功判据基于业务阶段和产物字段，不得使用“有文本且有工具调用”。
 - 8 个量化阶段必须全部成功；“完成任意 5 个阶段”不能算通过。
@@ -60,7 +60,7 @@ python .agents/skills/verify-quant-e2e/scripts/audit_run_artifacts.py `
   --multi-chunks output/multi_agent_chunks_<session>.json
 ```
 
-退出码为 0 才表示结构性验收通过。审计会检查工具调用的成员归属：Bull/Bear 必须分别调用自己的视角 RPC；成员仅被创建、发一段文字或由 leader 代调都不算多 Agent 参与。脚本不能证明无前视偏差；时间因果性仍需单独检查回测实现。
+退出码为 0 才表示结构性验收通过。审计会检查工具调用的成员归属：Alpha/Risk & Evidence 必须分别调用自己的视角 RPC；成员仅被创建、发一段文字或由 leader 代调都不算多 Agent 参与。脚本不能证明无前视偏差；时间因果性仍需单独检查回测实现。
 
 ## 禁止行为
 

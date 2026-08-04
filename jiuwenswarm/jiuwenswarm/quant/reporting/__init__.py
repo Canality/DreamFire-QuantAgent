@@ -9,7 +9,16 @@ R5: resource_meter — real resource measurement (no estimation)
 R6: submission runner (see evaluation/)
 """
 
-from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract, get_contract
+from jiuwenswarm.quant.reporting.agent_view_parser import (
+    parse_agent_view,
+    parse_bull_bear_pair,
+)
+from jiuwenswarm.quant.reporting.announcement_service import (
+    AnnouncementService,
+    ServiceResult,
+    run_announcement_service,
+)
+from jiuwenswarm.quant.reporting.company_report import generate_company_report
 from jiuwenswarm.quant.reporting.models import (
     AgentView,
     CompanyFactBundle,
@@ -18,11 +27,15 @@ from jiuwenswarm.quant.reporting.models import (
     PortfolioSnapshot,
     ReportQualityResult,
 )
-from jiuwenswarm.quant.reporting.company_report import generate_company_report
-from jiuwenswarm.quant.reporting.quality_gate import validate_submission
 from jiuwenswarm.quant.reporting.package_builder import build_candidate_package
+from jiuwenswarm.quant.reporting.quality_gate import validate_submission
+from jiuwenswarm.quant.reporting.report_grade import (
+    GradeResult,
+    ReportGrade,
+    grade_bundle,
+    grade_submission,
+)
 from jiuwenswarm.quant.reporting.report_service import ReportService
-from jiuwenswarm.quant.reporting.agent_view_parser import parse_agent_view, parse_bull_bear_pair
 from jiuwenswarm.quant.reporting.resource_meter import (
     ResourceMeter,
     ResourceReport,
@@ -30,56 +43,72 @@ from jiuwenswarm.quant.reporting.resource_meter import (
     new_resource_report,
 )
 from jiuwenswarm.quant.reporting.snapshot_writer import (
+    MarketDataSnapshotArtifacts,
     SnapshotArtifacts,
+    install_market_data_snapshot_in_candidate,
     install_snapshot_in_candidate,
+    load_market_data_snapshot,
     load_snapshot_artifacts,
+    verify_market_data_snapshot,
     verify_snapshot_artifacts,
     write_data_snapshot,
+    write_market_data_snapshot,
+)
+from jiuwenswarm.quant.reporting.submission_contract import (
+    SubmissionContract,
+    get_contract,
 )
 from jiuwenswarm.quant.reporting.symphony_adapter import (
     PlanStep,
     PlanValidationResult,
+    SymphonyExecutionTrace,
     SymphonyPlan,
     SymphonyPlanRequest,
-    SymphonyExecutionTrace,
     build_static_quant_plan,
     validate_quant_plan,
 )
 
 __all__ = [
-    # R0
-    "SubmissionContract",
-    "get_contract",
-    # R1
-    "EvidenceRef",
-    "MetricFact",
-    "CompanyFactBundle",
-    "PortfolioSnapshot",
     "AgentView",
-    "ReportQualityResult",
-    "generate_company_report",
-    "validate_submission",
-    "build_candidate_package",
-    # R2
-    "ReportService",
-    "parse_agent_view",
-    "parse_bull_bear_pair",
-    # R3
+    "AnnouncementService",
+    "CompanyFactBundle",
+    "EvidenceRef",
+    "GradeResult",
+    "MarketDataSnapshotArtifacts",
+    "MetricFact",
     "PlanStep",
     "PlanValidationResult",
-    "SymphonyPlan",
-    "SymphonyPlanRequest",
-    "SymphonyExecutionTrace",
-    "build_static_quant_plan",
-    "validate_quant_plan",
-    # R5
+    "PortfolioSnapshot",
+    "ReportGrade",
+    "ReportQualityResult",
+    "ReportService",
     "ResourceMeter",
     "ResourceReport",
-    "StageMetrics",
-    "new_resource_report",
+    "ServiceResult",
     "SnapshotArtifacts",
-    "write_data_snapshot",
-    "load_snapshot_artifacts",
-    "verify_snapshot_artifacts",
+    "StageMetrics",
+    "SubmissionContract",
+    "SymphonyExecutionTrace",
+    "SymphonyPlan",
+    "SymphonyPlanRequest",
+    "build_candidate_package",
+    "build_static_quant_plan",
+    "generate_company_report",
+    "get_contract",
+    "grade_bundle",
+    "grade_submission",
+    "install_market_data_snapshot_in_candidate",
     "install_snapshot_in_candidate",
+    "load_market_data_snapshot",
+    "load_snapshot_artifacts",
+    "new_resource_report",
+    "parse_agent_view",
+    "parse_bull_bear_pair",
+    "run_announcement_service",
+    "validate_quant_plan",
+    "validate_submission",
+    "verify_market_data_snapshot",
+    "verify_snapshot_artifacts",
+    "write_data_snapshot",
+    "write_market_data_snapshot",
 ]

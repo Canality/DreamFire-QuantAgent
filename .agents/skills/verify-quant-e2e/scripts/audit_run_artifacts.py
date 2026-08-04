@@ -6,16 +6,20 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import importlib
 import json
 import re
 import sys
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(PROJECT_ROOT / "jiuwenswarm"))
 
-from jiuwenswarm.quant.reporting.submission_contract import get_contract
+get_contract = importlib.import_module(
+    "jiuwenswarm.quant.reporting.submission_contract"
+).get_contract
 
 SUBMISSION_CONTRACT = get_contract()
 EXPECTED_STOCKS = SUBMISSION_CONTRACT.n_companies
@@ -24,13 +28,23 @@ EXPECTED_SECTORS = SUBMISSION_CONTRACT.n_sectors
 REQUIRED_MULTI_TOOLS = (
     "quant_fetch_data",
     "quant_compute_factors",
-    "quant_bull_view",
-    "quant_bear_view",
+    "quant_alpha_view",
+    "quant_risk_evidence_view",
     "quant_select_stocks",
     "quant_allocate_positions",
     "quant_run_backtest",
     "quant_generate_report",
 )
+MARKET_ARTIFACT_NAMES = {
+    "opens",
+    "highs",
+    "lows",
+    "closes",
+    "volumes",
+    "secondary_closes",
+    "benchmark_closes",
+    "diagnostics",
+}
 
 
 def load_text(path: Path) -> str:
@@ -47,14 +61,100 @@ def canonical_member_name(member: object) -> str:
     normalized = str(member or "").strip().lower().replace("-", "_")
     aliases = {
         "quant_leader": "quant-leader",
-        "bull_analyst": "bull_analyst",
-        "bear_analyst": "bear_analyst",
+        "alpha_analyst": "alpha_analyst",
+        "risk_evidence_analyst": "risk_evidence_analyst",
     }
     return aliases.get(normalized, normalized)
 
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def audit_market_snapshot(
+    snapshot_dir: Path,
+    failures: list[str],
+) -> tuple[dict, Path] | None:
+    """Verify either the current nine-file bundle or one legacy snapshot."""
+
+    manifests = list(snapshot_dir.glob("*_manifest.json")) if snapshot_dir.is_dir() else []
+    if len(manifests) != 1:
+        failures.append(
+            f"candidate: expected exactly one snapshot manifest, got {len(manifests)}"
+        )
+        return None
+    manifest_path = manifests[0]
+    manifest = json.loads(load_text(manifest_path))
+    if manifest.get("schema") == "market_data_bundle/v1":
+        recorded = manifest.get("artifacts", {})
+        if set(recorded) != MARKET_ARTIFACT_NAMES:
+            failures.append("candidate: market-data artifact set does not match schema")
+            return None
+        if len(list(snapshot_dir.iterdir())) != len(MARKET_ARTIFACT_NAMES) + 1:
+            failures.append("candidate: market-data snapshot must contain exactly nine files")
+        raw_artifacts: dict[str, bytes] = {}
+        for name in sorted(MARKET_ARTIFACT_NAMES):
+            entry = recorded[name]
+            artifact_path = snapshot_dir / str(entry.get("file", ""))
+            try:
+                archived = artifact_path.read_bytes()
+                if sha256_bytes(archived) != entry.get("file_sha256"):
+                    failures.append(f"candidate: snapshot {name} file SHA-256 mismatch")
+                raw = archived if name == "diagnostics" else gzip.decompress(archived)
+                if sha256_bytes(raw) != entry.get("content_sha256"):
+                    failures.append(f"candidate: snapshot {name} content SHA-256 mismatch")
+                raw_artifacts[name] = raw
+            except Exception as exc:  # noqa: BLE001 - artifact failure is reported
+                failures.append(f"candidate: snapshot {name} verification failed: {exc}")
+        if set(raw_artifacts) == MARKET_ARTIFACT_NAMES:
+            combined = b"".join(
+                name.encode("utf-8") + b"\0" + raw_artifacts[name] + b"\0"
+                for name in sorted(raw_artifacts)
+            )
+            if sha256_bytes(combined) != manifest.get("content_sha256"):
+                failures.append("candidate: combined market-data content SHA-256 mismatch")
+        if manifest.get("diagnostics_passed") is not True:
+            failures.append("candidate: market-data diagnostics are not passed")
+        policy = manifest.get("diagnostic_policy", {})
+        if int(policy.get("minimum_rows") or 0) < 61:
+            failures.append("candidate: market-data diagnostic policy is below 61 rows")
+        if int(manifest.get("n_trading_days") or 0) < int(
+            policy.get("minimum_rows") or 0
+        ):
+            failures.append("candidate: snapshot history is shorter than its policy")
+    else:
+        prices_files = list(snapshot_dir.glob("*_prices.csv.gz"))
+        volumes_files = list(snapshot_dir.glob("*_volumes.csv.gz"))
+        if (len(prices_files), len(volumes_files)) != (1, 1):
+            failures.append(
+                "candidate: expected one legacy prices/volumes snapshot, got "
+                f"{len(prices_files)}/{len(volumes_files)}"
+            )
+            return None
+        prices_path = snapshot_dir / manifest["prices_file"]
+        volumes_path = snapshot_dir / manifest["volumes_file"]
+        prices_gzip = prices_path.read_bytes()
+        volumes_gzip = volumes_path.read_bytes()
+        prices_raw = gzip.decompress(prices_gzip)
+        volumes_raw = gzip.decompress(volumes_gzip)
+        checks = {
+            "prices_file_sha256": sha256_bytes(prices_gzip),
+            "volumes_file_sha256": sha256_bytes(volumes_gzip),
+            "prices_content_sha256": sha256_bytes(prices_raw),
+            "volumes_content_sha256": sha256_bytes(volumes_raw),
+            "content_sha256": sha256_bytes(
+                prices_raw + b"\n--VOLUMES--\n" + volumes_raw
+            ),
+        }
+        for field, actual in checks.items():
+            if manifest.get(field) != actual:
+                failures.append(f"candidate: snapshot {field} mismatch")
+
+    if set(manifest.get("provider_ledger", {})) != set(
+        manifest.get("stock_codes", [])
+    ):
+        failures.append("candidate: provider ledger does not cover stock codes exactly")
+    return manifest, manifest_path
 
 
 def audit_candidate_evidence(candidate: Path, failures: list[str]) -> None:
@@ -82,54 +182,27 @@ def audit_candidate_evidence(candidate: Path, failures: list[str]) -> None:
             if int(resource.get("total_tool_calls") or 0) < len(REQUIRED_MULTI_TOOLS):
                 failures.append("candidate: resource tool-call count is incomplete")
             roles = resource.get("role_breakdown", {})
-            if set(roles) != {"quant-leader", "bull_analyst", "bear_analyst"}:
+            if set(roles) != {"quant-leader", "alpha_analyst", "risk_evidence_analyst"}:
                 failures.append("candidate: resource role breakdown is incomplete")
             for role, metrics in roles.items():
                 if int(metrics.get("input_tokens") or 0) <= 0:
                     failures.append(f"candidate: {role} input tokens are not measured")
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - malformed resource data is reported
             failures.append(f"candidate: resource usage verification failed: {exc}")
 
-    snapshot_dir = candidate / "data_snapshot"
-    manifests = list(snapshot_dir.glob("*_manifest.json")) if snapshot_dir.is_dir() else []
-    prices_files = list(snapshot_dir.glob("*_prices.csv.gz")) if snapshot_dir.is_dir() else []
-    volumes_files = list(snapshot_dir.glob("*_volumes.csv.gz")) if snapshot_dir.is_dir() else []
-    if (len(manifests), len(prices_files), len(volumes_files)) != (1, 1, 1):
-        failures.append(
-            "candidate: expected exactly one manifest/prices/volumes snapshot, got "
-            f"{len(manifests)}/{len(prices_files)}/{len(volumes_files)}"
-        )
-        return
     try:
-        manifest_path = manifests[0]
-        manifest = json.loads(load_text(manifest_path))
-        prices_path = snapshot_dir / manifest["prices_file"]
-        volumes_path = snapshot_dir / manifest["volumes_file"]
-        prices_gzip = prices_path.read_bytes()
-        volumes_gzip = volumes_path.read_bytes()
-        prices_raw = gzip.decompress(prices_gzip)
-        volumes_raw = gzip.decompress(volumes_gzip)
-        checks = {
-            "prices_file_sha256": sha256_bytes(prices_gzip),
-            "volumes_file_sha256": sha256_bytes(volumes_gzip),
-            "prices_content_sha256": sha256_bytes(prices_raw),
-            "volumes_content_sha256": sha256_bytes(volumes_raw),
-            "content_sha256": sha256_bytes(
-                prices_raw + b"\n--VOLUMES--\n" + volumes_raw
-            ),
-        }
-        for field, actual in checks.items():
-            if manifest.get(field) != actual:
-                failures.append(f"candidate: snapshot {field} mismatch")
-        if set(manifest.get("provider_ledger", {})) != set(manifest.get("stock_codes", [])):
-            failures.append("candidate: provider ledger does not cover stock codes exactly")
+        snapshot_result = audit_market_snapshot(candidate / "data_snapshot", failures)
+        if snapshot_result is None:
+            return
+        manifest, manifest_path = snapshot_result
 
         evidence = json.loads(load_text(candidate / "evidence_manifest.json"))
         refs = evidence.get("evidence_refs", {})
-        if set(refs) != {manifest["snapshot_id"]}:
-            failures.append("candidate: evidence IDs do not identify the sole snapshot")
+        snapshot_id = manifest["snapshot_id"]
+        if snapshot_id not in refs:
+            failures.append("candidate: snapshot EvidenceRef is missing")
         else:
-            ref = refs[manifest["snapshot_id"]]
+            ref = refs[snapshot_id]
             relative = Path(str(ref.get("source_url", "")))
             referenced = (candidate / relative).resolve()
             if candidate.resolve() not in referenced.parents:
@@ -138,7 +211,60 @@ def audit_candidate_evidence(candidate: Path, failures: list[str]) -> None:
                 failures.append("candidate: EvidenceRef URL does not point to snapshot manifest")
             elif ref.get("content_sha256") != sha256_bytes(manifest_path.read_bytes()):
                 failures.append("candidate: EvidenceRef hash does not match snapshot manifest")
-    except Exception as exc:
+
+        portfolio_meta = json.loads(load_text(candidate / "portfolio_meta.json"))
+        decision_time = datetime.fromisoformat(portfolio_meta["as_of_time"])
+        archive_root = candidate / "evidence_archive"
+        for evidence_id, ref in refs.items():
+            if evidence_id == snapshot_id:
+                continue
+            if ref.get("evidence_id") != evidence_id:
+                failures.append(
+                    f"candidate: EvidenceRef key/id mismatch for {evidence_id}"
+                )
+                continue
+            source_url = str(ref.get("source_url") or "")
+            if not source_url.startswith(("https://", "http://")):
+                failures.append(
+                    f"candidate: external evidence has invalid source URL: {evidence_id}"
+                )
+            digest = str(ref.get("content_sha256") or "")
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                failures.append(
+                    f"candidate: external evidence has invalid SHA-256: {evidence_id}"
+                )
+                continue
+            available_raw = ref.get("available_at")
+            if not available_raw:
+                failures.append(
+                    f"candidate: external evidence has no available_at: {evidence_id}"
+                )
+            elif datetime.fromisoformat(available_raw) > decision_time:
+                failures.append(
+                    f"candidate: future evidence referenced: {evidence_id}"
+                )
+            if not re.fullmatch(r"[a-zA-Z0-9_.-]+", evidence_id) or ".." in evidence_id:
+                failures.append(
+                    f"candidate: unsafe evidence ID: {evidence_id}"
+                )
+                continue
+            archive_path = archive_root / evidence_id[:2] / f"{evidence_id}.json"
+            if not archive_path.is_file():
+                failures.append(
+                    f"candidate: archived evidence is missing: {evidence_id}"
+                )
+            elif sha256_bytes(archive_path.read_bytes()) != digest:
+                failures.append(
+                    f"candidate: archived evidence hash mismatch: {evidence_id}"
+                )
+
+        report_manifest = json.loads(load_text(candidate / "report_manifest.json"))
+        quality_metrics = report_manifest.get("quality_metrics", {})
+        if int(report_manifest.get("evidence_count") or 0) <= 1:
+            failures.append("candidate: announcement evidence was not integrated")
+        if int(quality_metrics.get("report_grade_disclosure") or 0) <= 0:
+            failures.append("candidate: disclosure facts were not integrated")
+    except Exception as exc:  # noqa: BLE001 - malformed candidate is reported
         failures.append(f"candidate: snapshot evidence verification failed: {exc}")
 
 
@@ -160,6 +286,12 @@ def main() -> int:
     multi_log = load_text(args.multi_log) if args.multi_log else ""
     multi_chunks = json.loads(load_text(args.multi_chunks))
     audit_candidate_evidence(args.results.parent / "submission_candidate", failures)
+    summary_path = _multi_summary_path(args.multi_chunks)
+    multi_summary = (
+        json.loads(load_text(summary_path))
+        if summary_path is not None and summary_path.is_file()
+        else {}
+    )
 
     if "Done." not in direct_log or "Results saved to" not in direct_log:
         failures.append("direct: run did not complete and save a fresh result")
@@ -246,11 +378,11 @@ def main() -> int:
     if raw_prices_via_chunks or raw_prices_via_log:
         failures.append("multi: raw price matrix passed through LLM instead of Extension cache")
 
-    member_counts = {"quant-leader": 0, "bull_analyst": 0, "bear_analyst": 0}
-    role_rpc_counts = {"bull_analyst": 0, "bear_analyst": 0}
+    member_counts = {"quant-leader": 0, "alpha_analyst": 0, "risk_evidence_analyst": 0}
+    role_rpc_counts = {"alpha_analyst": 0, "risk_evidence_analyst": 0}
     expected_role_rpc = {
-        "bull_analyst": "quant_bull_view",
-        "bear_analyst": "quant_bear_view",
+        "alpha_analyst": "quant_alpha_view",
+        "risk_evidence_analyst": "quant_risk_evidence_view",
     }
     forbidden_role_calls: list[str] = []
     for chunk in multi_chunks:
@@ -280,6 +412,41 @@ def main() -> int:
             "multi: analyst role boundary violated: " + ", ".join(forbidden_role_calls)
         )
 
+    execution_counts = multi_summary.get("phase_execution_counts", {})
+    if set(execution_counts) != {
+        "fetch", "factors", "alpha_view", "risk_evidence_view",
+        "select", "allocate", "backtest", "report",
+    }:
+        failures.append("multi: business execution counts are missing or incomplete")
+    else:
+        invalid_counts = {
+            phase: count
+            for phase, count in execution_counts.items()
+            if count != 1
+        }
+        if invalid_counts:
+            failures.append(
+                f"multi: business execution count must be exactly one: {invalid_counts}"
+            )
+
+    passed = len(failures) == 0
+
+    # Write machine-readable audit result for summary generator
+    _write_audit_json(
+        passed=passed,
+        failures=failures,
+        portfolio_n=len(portfolio),
+        sector_n=len(sector_weights),
+        total_weight=total_weight,
+        member_counts=member_counts,
+        role_rpc_counts=role_rpc_counts,
+        multi_chunks_path=args.multi_chunks,
+        results_path=args.results,
+        direct_log_path=args.direct_log,
+        multi_log_path=args.multi_log,
+        multi_summary_path=summary_path,
+    )
+
     if failures:
         print("E2E AUDIT: FAILED")
         for item in failures:
@@ -293,6 +460,84 @@ def main() -> int:
     print("- member events: " + ", ".join(f"{k}={v}" for k, v in member_counts.items()))
     print("- role-owned RPCs: " + ", ".join(f"{k}={v}" for k, v in role_rpc_counts.items()))
     return 0
+
+
+def _write_audit_json(
+    passed: bool,
+    failures: list[str],
+    portfolio_n: int,
+    sector_n: int,
+    total_weight: float,
+    member_counts: dict,
+    role_rpc_counts: dict,
+    multi_chunks_path: str,
+    results_path: str,
+    direct_log_path: str,
+    multi_log_path: str | None,
+    multi_summary_path: Path | None,
+) -> None:
+    """Write audit_result_<session>.json for consumption by summary generator."""
+    session_id = "unknown"
+    # Try to extract session_id from the multi summary JSON (full name)
+    chunks_dir = Path(multi_chunks_path).parent
+    chunks_stem = Path(multi_chunks_path).stem
+    if chunks_stem.startswith("multi_agent_chunks_"):
+        candidate_session = chunks_stem[len("multi_agent_chunks_"):]
+        summary_path = chunks_dir / f"multi_agent_summary_{candidate_session}.json"
+        if summary_path.exists():
+            try:
+                with open(summary_path, encoding="utf-8") as f:
+                    summary_data = json.load(f)
+                session_id = summary_data.get("session_id", session_id)
+            except Exception:  # noqa: BLE001 - session remains explicit unknown
+                session_id = "unknown"
+
+    results_data = json.loads(load_text(Path(results_path)))
+    audit_data = {
+        "passed": passed,
+        "session_id": session_id,
+        "direct_snapshot_id": results_data.get("snapshot_id"),
+        "failures": failures,
+        "portfolio": {"n_stocks": portfolio_n, "n_sectors": sector_n, "total_weight": round(total_weight, 6)},
+        "members": dict(member_counts),
+        "role_rpc_counts": dict(role_rpc_counts),
+        "tools_verified": list(REQUIRED_MULTI_TOOLS),
+    }
+    artifact_paths = {
+        "results": Path(results_path),
+        "direct_log": Path(direct_log_path),
+        "multi_chunks": Path(multi_chunks_path),
+    }
+    if multi_log_path is not None:
+        artifact_paths["multi_log"] = Path(multi_log_path)
+    if multi_summary_path is not None:
+        artifact_paths["multi_summary"] = Path(multi_summary_path)
+    audit_data["artifact_paths"] = {
+        label: str(path.resolve())
+        for label, path in artifact_paths.items()
+    }
+    audit_data["artifact_sha256"] = {}
+    for label, path in artifact_paths.items():
+        try:
+            digest = sha256_bytes(path.read_bytes())
+            audit_data["artifact_sha256"][label] = digest
+            audit_data[f"{label}_sha256"] = digest
+        except Exception:  # noqa: BLE001 - missing hash is recorded as null
+            audit_data["artifact_sha256"][label] = None
+            audit_data[f"{label}_sha256"] = None
+
+    out_path = Path(results_path).parent / f"audit_result_{session_id}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(audit_data, f, indent=2, ensure_ascii=False)
+    print(f"Audit JSON written to {out_path}")
+
+
+def _multi_summary_path(multi_chunks_path: Path) -> Path | None:
+    chunks_stem = multi_chunks_path.stem
+    if not chunks_stem.startswith("multi_agent_chunks_"):
+        return None
+    artifact_id = chunks_stem[len("multi_agent_chunks_"):]
+    return multi_chunks_path.parent / f"multi_agent_summary_{artifact_id}.json"
 
 
 if __name__ == "__main__":

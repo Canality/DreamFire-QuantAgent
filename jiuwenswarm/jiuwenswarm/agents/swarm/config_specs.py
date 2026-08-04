@@ -20,34 +20,34 @@ so openjiuwen builds the member from the merged spec. Two modes are supported:
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from typing import (
     Any,
-    Callable,
 )
 
+from openjiuwen.agent_teams.rails.builtin_elements import SKILL_USE as CORE_SKILL_USE
 from openjiuwen.agent_teams.schema.deep_agent_spec import (
     BuiltinToolSpec,
     DeepAgentSpec,
     RailSpec,
     SubAgentSpec,
 )
-from openjiuwen.agent_teams.rails.builtin_elements import SKILL_USE as CORE_SKILL_USE
 from openjiuwen.core.foundation.tool import McpServerConfig
 from openjiuwen.core.single_agent import AgentCard
 from openjiuwen.harness.prompts import resolve_language
 from openjiuwen.harness.rails import SkillUseRail
 
-from jiuwenswarm.common.config import (
-    get_evolution_auto_save_enabled,
-    get_evolution_auto_scan_enabled,
-    get_skill_create_enabled,
-)
 from jiuwenswarm.agents.harness.team.team_runtime_inheritance import (
     get_context_engine_enabled,
     resolve_model_config,
 )
 from jiuwenswarm.agents.swarm import registry
 from jiuwenswarm.agents.swarm.providers import tools as _tools
+from jiuwenswarm.common.config import (
+    get_evolution_auto_save_enabled,
+    get_evolution_auto_scan_enabled,
+    get_skill_create_enabled,
+)
 
 # Modes that route to the code adapter and get the code member profile.
 _CODE_MODES: frozenset[str] = frozenset({"code.team", "team.plan"})
@@ -95,6 +95,21 @@ _COMMON_TOOL_NAMES: tuple[str, ...] = (
     registry.CRON_TOOLS,
     registry.SEND_FILE,
 )
+
+# A fixed quant team already has one authoritative eight-stage state machine in
+# the server-side Quant Extension.  Generic planning, skill, web, filesystem,
+# and media capabilities add a competing state machine and a large tool schema;
+# they are deliberately absent from this profile.
+_FIXED_QUANT_PROFILE_KEY = "_fixed_quant_pipeline"
+_FIXED_QUANT_RAIL_NAMES: tuple[str, ...] = (
+    registry.RUNTIME_PROMPT,
+    registry.RESPONSE_PROMPT,
+    registry.STREAM_EVENT,
+    registry.SECURITY,
+    registry.HEARTBEAT,
+    registry.CONTEXT_PROCESSOR,
+)
+_FIXED_QUANT_TOOL_NAMES: tuple[str, ...] = (registry.QUANT_TOOLKIT,)
 
 # Parameterless code-profile rails (the code variant of the common rails plus
 # code-specific rails). ``code_confirm_interrupt`` and ``member_skill_toolkit``
@@ -403,14 +418,20 @@ def _build_team_capability_specs(
     enable_permissions: bool = False,
 ) -> tuple[list[RailSpec], list[BuiltinToolSpec]]:
     """Build the chat-team profile rail/tool specs for a member."""
+    fixed_quant_pipeline = config.get(_FIXED_QUANT_PROFILE_KEY) is True
+    rail_names = (
+        _FIXED_QUANT_RAIL_NAMES
+        if fixed_quant_pipeline
+        else _COMMON_RAIL_NAMES
+    )
     rails_specs: list[RailSpec] = [
         RailSpec(type=name, params=_rail_params(name, config))
-        for name in _COMMON_RAIL_NAMES
+        for name in rail_names
     ]
-    if role == "leader":
+    if role == "leader" and not fixed_quant_pipeline:
         rails_specs.append(RailSpec(type=registry.STRUCTURED_ASK_USER))
 
-    if _retrieval_enabled(config):
+    if not fixed_quant_pipeline and _retrieval_enabled(config):
         rails_specs.append(
             RailSpec(
                 type=CORE_SKILL_USE,
@@ -420,12 +441,13 @@ def _build_team_capability_specs(
                 },
             )
         )
-    rails_specs.append(
-        RailSpec(
-            type=registry.MEMBER_SKILL_TOOLKIT,
-            params={"skills": _resolve_member_skills(config, role)},
+    if not fixed_quant_pipeline:
+        rails_specs.append(
+            RailSpec(
+                type=registry.MEMBER_SKILL_TOOLKIT,
+                params={"skills": _resolve_member_skills(config, role)},
+            )
         )
-    )
 
     if enable_permissions and role == "teammate":
         rails_specs.append(
@@ -443,11 +465,17 @@ def _build_team_capability_specs(
             ),
         )
 
-    rails_specs.extend(_role_evolution_rails(config, role))
+    if not fixed_quant_pipeline:
+        rails_specs.extend(_role_evolution_rails(config, role))
 
+    tool_names = (
+        _FIXED_QUANT_TOOL_NAMES
+        if fixed_quant_pipeline
+        else _COMMON_TOOL_NAMES
+    )
     tool_specs: list[BuiltinToolSpec] = [
         BuiltinToolSpec(type=name, params=_tool_params(name, config))
-        for name in _COMMON_TOOL_NAMES
+        for name in tool_names
     ]
     return rails_specs, tool_specs
 
@@ -778,6 +806,6 @@ def _merge_mcp_configs(
 
 __all__ = [
     "build_member_capability_specs",
-    "build_member_subagent_specs",
     "build_member_deep_agent_spec",
+    "build_member_subagent_specs",
 ]

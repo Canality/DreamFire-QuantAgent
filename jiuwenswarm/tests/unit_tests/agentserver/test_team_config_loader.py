@@ -228,6 +228,57 @@ def test_load_team_spec_dict_uses_first_team_from_modes_team(monkeypatch, tmp_pa
     assert spec["agents"]["leader"]["skills"] == ["alpha-skill"]
 
 
+def test_load_team_spec_dict_selects_requested_team_instead_of_first_entry():
+    config = {
+        **_wrap_modes_team(
+            {
+                "unrelated_team": {
+                    "team_name": "unrelated_team",
+                    "leader": {"member_name": "unrelated-leader"},
+                },
+                "quant_team": {
+                    "team_name": "quant_team",
+                    "leader": {"member_name": "quant-leader"},
+                },
+            }
+        )
+    }
+
+    spec = load_team_spec_dict(config_base=config, requested_team_name="quant_team")
+
+    assert spec["team_name"] == "quant_team"
+    assert spec["leader"]["member_name"] == "quant-leader"
+
+
+def test_load_team_spec_dict_rejects_unknown_requested_team():
+    config = _wrap_modes_team(
+        {"unrelated_team": {"team_name": "unrelated_team"}}
+    )
+
+    with pytest.raises(ValueError, match="requested team 'quant_team' was not found"):
+        load_team_spec_dict(config_base=config, requested_team_name="quant_team")
+
+
+def test_load_team_spec_dict_rejects_requested_team_when_team_config_missing():
+    with pytest.raises(ValueError, match="requested team 'quant_team' was not found"):
+        load_team_spec_dict(config_base={}, requested_team_name="quant_team")
+
+
+@pytest.mark.parametrize("requested_team_name", ["   ", 123])
+def test_load_team_spec_dict_rejects_invalid_explicit_team_name(
+    requested_team_name,
+):
+    config = _wrap_modes_team(
+        {"unrelated_team": {"team_name": "unrelated_team"}}
+    )
+
+    with pytest.raises(ValueError, match="must be a non-empty string"):
+        load_team_spec_dict(
+            config_base=config,
+            requested_team_name=requested_team_name,
+        )
+
+
 def test_load_team_spec_dict_fills_default_transport_and_workspace(monkeypatch, tmp_path):
     """Missing team transport/workspace should fall back to local inprocess defaults."""
     config = {

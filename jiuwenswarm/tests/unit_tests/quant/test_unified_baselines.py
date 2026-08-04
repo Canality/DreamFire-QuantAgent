@@ -49,10 +49,12 @@ def test_schedule_is_non_overlapping_and_causal():
     evaluator = _load_evaluator()
     starts = evaluator.build_schedule(500)
     assert starts[0] == 80
-    assert starts[-1] == 480
+    # With embargo=1, total_forward_days=21, so last start = 500-21 = 479 → 460
+    assert starts[-1] == 460
     assert all(b - a == 20 for a, b in zip(starts, starts[1:]))
     assert all(start - 1 < start for start in starts)
-    assert all(start + 19 < 500 for start in starts)
+    # Each window needs embargo (1) + holding (20) = 21 forward days
+    assert all(start + 21 <= 500 for start in starts)
 
 
 def test_preregistered_acceptance_is_frozen_before_run():

@@ -36,6 +36,15 @@ from jiuwenswarm.common.utils import get_agent_skills_dir
 
 logger = logging.getLogger(__name__)
 
+_FIXED_QUANT_PROFILE_KEY = "_fixed_quant_pipeline"
+
+
+def _is_fixed_quant_team_name(team_name: object) -> bool:
+    """Match the configured quant team and its session-suffixed runtime name."""
+
+    normalized = str(team_name or "").strip().lower()
+    return normalized == "quant_team" or normalized.startswith("quant_team_")
+
 def _with_project_workspace(member_spec: Any, project_dir: str | None) -> Any:
     """Default a member workspace to the request project directory."""
     project_root = str(project_dir or "").strip()
@@ -87,6 +96,11 @@ def enrich_team_spec_for_swarm(
     register_swarm_providers()
 
     config = get_config()
+    fixed_quant_pipeline = _is_fixed_quant_team_name(spec.team_name)
+    capability_config = config
+    if fixed_quant_pipeline:
+        capability_config = dict(config)
+        capability_config[_FIXED_QUANT_PROFILE_KEY] = True
     workspace = spec.workspace
     team_ws_root = (
         workspace.root_path
@@ -109,21 +123,34 @@ def enrich_team_spec_for_swarm(
         team_skills_dir=team_skills_dir,
         global_skills_dir=global_skills_dir,
         trajectory_registry=InMemoryTrajectoryRegistry(),
-        config=config,
+        config=capability_config,
     )
-    mcp_configs = build_enabled_mcp_server_configs(
-        config,
-        server_id_scope=f"team:{spec.team_name}",
+    mcp_configs = (
+        []
+        if fixed_quant_pipeline
+        else build_enabled_mcp_server_configs(
+            config,
+            server_id_scope=f"team:{spec.team_name}",
+        )
     )
 
-    # Agent template keys can be named roles (for example bull_analyst and
-    # bear_analyst), not only the literal key "teammate".  Treat every
+    # Agent template keys can be named roles (for example alpha_analyst and
+    # risk_evidence_analyst), not only the literal key "teammate".  Treat every
     # non-leader template as a teammate so it receives the same rails/tools.
     enriched_roles: list[str] = []
     for template_name, base_spec in list(spec.agents.items()):
         capability_role = "leader" if template_name == "leader" else "teammate"
+        if fixed_quant_pipeline:
+            # Config loading may already have populated generic rails/tools on
+            # the base member.  Appending a minimal profile is insufficient:
+            # TaskPlanningRail would still expose a competing task state
+            # machine.  Preserve identity/model/prompt fields while replacing
+            # all capability collections for this fixed server-owned pipeline.
+            base_spec = base_spec.model_copy(
+                update={"rails": [], "tools": [], "mcps": []}
+            )
         member_spec = build_member_deep_agent_spec(
-            config,
+            capability_config,
             mode,
             capability_role,
             base_spec,

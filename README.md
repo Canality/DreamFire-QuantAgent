@@ -1,8 +1,8 @@
 # Dream Fire：基于 JiuwenSwarm 的 Agent 金融分析系统
 
-华为 openJiuwen Track 2 参赛项目。系统在官方 49 家上市公司范围内完成行情获取、多因子分析、Bull/Bear 多 Agent 审查、选股、配仓、20 日回测和逐公司报告生成。
+华为 openJiuwen Track 2 参赛项目。系统在官方 49 家上市公司范围内完成行情获取、多因子分析、Alpha/Risk & Evidence 多 Agent 审查、选股、配仓、20 日回测和逐公司报告生成。
 
-> 当前状态：行情量化、正式多 Agent 路径和行情型报告候选包已通过真实端到端验收；完整金融分析作品仍为 **PARTIAL**。最新证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)。
+> 当前状态：共享行情、公告 PIT 和量化 direct 路径已真实通过；最新 direct 为 49/49 行情、1,470 条公告和 49/49 披露。正式验证器也已能精确加载 `quant_team` 三角色，但最新 formal 被通用任务看板拖偏并在 0/8 阶段失败关闭，因此完整 E2E 仍为 **FAILED**。正式 Agent 仍残留 task-board、文件、browser 和 sys-operation 能力，capability ceiling 尚未验收。最新数量、证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)；下一阶段架构与验收路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
 
 ## 项目定位
 
@@ -18,8 +18,8 @@ Sina → Tencent → akshare → baostock → yfinance
 不可变行情快照 + 来源账本 + SHA-256
     │
     ├─ Coordinator：因子、选股、配仓、回测、报告
-    ├─ Bull Analyst：趋势/量价视角
-    └─ Bear Analyst：波动/回撤视角
+    ├─ Alpha Analyst：趋势、量价和候选发现
+    └─ Risk & Evidence Analyst：波动、回撤和证据冲突
     │
     ▼
 15只组合 + 49份公司报告 + 证据/资源日志
@@ -33,19 +33,20 @@ Sina → Tencent → akshare → baostock → yfinance
 | 行情数据 | 五源逐只补缺、逐 ticker 来源、49/49 fail-closed |
 | 时序安全 | 决策日前训练、首日开盘固定股数、20 日前向持有 |
 | 仓位安全 | 选股输入与配仓输入一致；单股 ≤10%、板块 ≤25%、现金 ≥5% |
-| 多 Agent | Coordinator/Bull/Bear 真实运行；8/8 RPC；专属工具权限审计 |
-| 报告 | 49 份公司报告、组合报告、证据 manifest、唯一行情快照 |
+| 多 Agent | 正式入口精确选择 Coordinator/Alpha/Risk & Evidence 三角色；历史有 8/8 路径证据，但最新 formal 被通用任务工具拖偏为 0/8，能力边界仍待修复 |
+| 报告 | direct 可生成 49 份公司报告、组合报告、行情快照和 49/49 公告披露；formal 尚未重新到达报告阶段，完整 E2E 失败 |
 | 资源 | 正式路径按角色记录 token、耗时、CPU、峰值工作集 |
 | 失败策略 | 数据不全、报告缺失、hash 错误、角色越权和重复失败均关闭 |
 
-最新一次正式路径耗时 79.8 秒，8/8 RPC 通过；候选组合权益 94.94%、现金 5.06%，历史 20 日演示收益 +3.2468%、最大回撤 2.8762%。这只是路径验收区间，不是比赛成绩预测。
+正式路径的具体 session、token、耗时、收益和回撤数字以 `VALIDATION.md` 绑定的 timestamped `output/` 产物为准。`output/validation_summary.json` 仍是可再生的动态摘要入口，但不是项目事实源；只有它绑定当前产物且独立 E2E audit 退出 0，才能写 `BUSINESS_PASSED`。8/8 本身只证明量化 Agent 路径可运行。这只是路径验收区间，不是比赛成绩预测。
 
 ## 策略状态
 
+- 官方评测期已确认为 2026-08-25 至 09-21，共 20 个交易日；8月25日开盘买入、9月21日收盘卖出，期间固定持股不调仓。提交截止为8月23日，因此8月24日行情不可用于决策。
 - 生产策略仍为六因子模型；历史 v2.0-v2.7 的 76.9-81.7 本地分数受前视偏差或回测错误污染，全部作废。
 - Walk-Forward IC 的原实验有 11 个开发窗口；Phase A/B 组合回测有 21 个窗口，两者不能混写。
-- Phase B T2（`momentum_20/volume_trend = 0.71/0.29`，配仓加入轻度得分倾斜）是开发集最强 challenger：相对生产配对收益差 +0.91pp，效用胜率 15/21。
-- T2 尚无真正样本外晋级证据，因此没有切换生产。
+- Phase B T2 在旧开发口径相对生产配对收益差约 +0.91pp、效用胜率 15/21；该实验未模拟提交与买入之间的8月24式单交易日 embargo，只能作为研究线索。最新 challenger 状态和晋级证据只看 `VALIDATION.md`。
+- production、T2 和统一基线必须按“决策后隔一交易日、再开盘买入并持有20交易日”重跑；完成前不切换生产。
 - 本地代理评分只用于比较方案；官方标准化公式和资源基准未公布，不能给出“官方预估总分”。
 
 ## 报告与 Agent 的真实边界
@@ -55,10 +56,10 @@ Sina → Tencent → akshare → baostock → yfinance
 - 49 家公司文件集合必须与官方契约完全一致；
 - 所有可用技术事实必须引用真实 EvidenceRef；
 - 候选包同时携带 prices、volumes、manifest 和可重算 hash；
-- Bull/Bear 观点来自角色专属 RPC，不由 Coordinator 冒充；
+- Alpha/Risk & Evidence 观点来自角色专属 RPC，不由 Coordinator 冒充；
 - 资源日志来自 openJiuwen 运行事件，不用估算值填 0。
 
-尚未完成的是“内容广度”：基本面、交易所公告、新闻、宏观与另类数据 Provider 仍未形成 point-in-time 证据链。当前包应称为“行情型候选包”，不是最终作品。
+公告 Provider 的 point-in-time 分页、终止诊断和归档已通过真实 49/49 smoke 与 direct；最新 direct 候选含 1,470 条公告事实。formal 尚未重新执行到报告阶段，基本面、新闻、宏观与另类数据也未形成当前可审计覆盖，因此仍不是 `FULL_REPORT_PASSED` 最终作品。
 
 ## 对比赛的竞争力
 
@@ -72,10 +73,10 @@ Sina → Tencent → akshare → baostock → yfinance
 
 短板：
 
-1. 正式运行 input token 约 94.5 万，资源效率可能显著失分。
+1. 最新 formal 在 22 秒内已消耗 140,181 input tokens（其中 101,248 cache tokens）和 14 次工具调用，却因任务看板噪声停在 0/8；资源效率与能力边界仍可能显著失分。
 2. alpha 尚未得到样本外证明；工程可信不等于收益领先。
 3. 报告仍偏技术面，完整金融分析深度不足。
-4. Agent 路径存在模型随机性，需要进一步缩短上下文并加强确定性编排。
+4. Agent 路径仍暴露通用任务看板、文件工具和 browser 能力；当前最小能力 profile 没有真正到达运行时 capability ceiling。
 5. 赛题规则仍有 49/50、现金和报告权重冲突，正式契约保持 PROVISIONAL。
 
 ## 快速复现
@@ -96,13 +97,43 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 
 完整端到端审计命令见 [VALIDATION.md](VALIDATION.md)。
 
+## 多模型开发协作
+
+Qwen、DeepSeek 和 Codex 不再通过一段超长聊天串行接力。每个任务使用 Git 管理的任务契约与本机最小交接工件；Qwen 负责低成本定位和受限小改，DeepSeek 只在中风险或本地实现失败时读取最小上下文，Codex 负责规划、裁决与最终验收。
+
+```powershell
+# 创建任务、查看任务状态
+python scripts/agent_task.py new TASK-ID --title "任务标题" --risk LOW
+python scripts/agent_task.py status TASK-ID
+
+# 自动按任务风险选择模型并启动独立角色会话
+.\scripts\agent-role.cmd TASK-ID scout
+.\scripts\agent-role.cmd TASK-ID builder
+.\scripts\agent-role.cmd TASK-ID critic
+
+# 在两个终端中独立启动；无需切换 CC Switch 或重启另一终端
+.\scripts\claude-qwen.cmd
+.\scripts\claude-deepseek.cmd
+```
+
+完整状态机、文件白名单、token 预算和升级规则见 [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md)。密钥和模型 Provider 配置位于用户目录的独立 profile，不进入仓库。
+
 ## 目录
 
 ```
 Track_2/
 ├── README.md
 ├── VALIDATION.md                    # 唯一运行事实源
+├── DEVELOPMENT_PLAN.md              # Git 管理的长期开发计划与验收契约
+├── AGENT_WORKFLOW.md                 # 多模型任务状态机、风险路由与交接规范
 ├── AGENTS.md / CLAUDE.md            # Agent 开发与验收约束
+├── coordination/                    # Git 管理的当前任务契约和模板
+├── scripts/agent_task.py            # 任务工件、基线和越界检查 CLI
+├── scripts/agent_role.py            # 按风险选择模型并启动 Scout/Builder/Critic
+├── scripts/claude-*.cmd             # 独立 Qwen / DeepSeek Claude Code 启动入口
+├── .agents/skills/local-code-scout/ # 本地只读代码定位 Skill
+├── .agents/skills/bounded-code-implementer/ # 白名单受限实现 Skill
+├── .agents/skills/diff-contract-reviewer/   # 新会话差异审查 Skill
 ├── .agents/skills/verify-quant-e2e/ # 发布前双路径验收 Skill
 ├── .claude/discussion.md            # 当前协作交接
 ├── jiuwenswarm/

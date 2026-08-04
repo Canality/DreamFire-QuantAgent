@@ -32,10 +32,10 @@ def test_parse_valid_bull_view():
         "evidence_ids": ["e1"],
         "summary": "Strong momentum",
     }
-    view, errors = parse_agent_view(data, "bull", _make_contract())
+    view, errors = parse_agent_view(data, "alpha", _make_contract())
     assert view is not None
     assert errors == []
-    assert view.role == "bull"
+    assert view.role == "alpha"
     assert view.verdict == "overweight"
     assert view.confidence == "high"
     assert "000001.SH" in view.candidate_tickers
@@ -80,8 +80,8 @@ def test_parse_bull_bear_pair():
     bear = {"verdict": "underweight", "confidence": "medium"}
     views, errors = parse_bull_bear_pair(bull, bear)
     assert len(views) == 2
-    assert views[0].role == "bull"
-    assert views[1].role == "bear"
+    assert views[0].role == "alpha"
+    assert views[1].role == "risk_evidence"
 
 
 def test_parse_bull_bear_pair_one_fails():

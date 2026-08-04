@@ -47,6 +47,7 @@ PREREGISTRATION = {
         "max_single_stock": 0.10,
         "max_single_sector": 0.25,
         "max_total_weight": 0.95,
+        "embargo": "one full trading day after decision before entry (via CompetitionWindowPolicy)",
     },
     "success_criteria": {
         "goal": (

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bounded Code Implementer"
+  short_description: "严格按任务白名单实现修改运行目标测试并输出可核验开发证据"
+  default_prompt: "Use $bounded-code-implementer to implement the active task strictly within its file and test contract."

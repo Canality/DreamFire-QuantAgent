@@ -1444,3 +1444,48 @@ def test_pop_workflow_handler() -> None:
 def test_get_workflow_handler_returns_none_for_unknown() -> None:
     tm = TeamManager()
     assert tm.get_workflow_handler("unknown_sess") is None
+
+
+@pytest.mark.asyncio
+async def test_get_swarm_enriched_team_spec_forwards_requested_team_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = TeamManager()
+    captured: dict[str, object] = {}
+    spec = SimpleNamespace(team_name="quant_team")
+
+    async def fake_ensure_postgresql(_config: dict) -> None:
+        return None
+
+    def fake_load_team_spec(
+        session_id: str,
+        *,
+        requested_model_name: str | None = None,
+        requested_team_name: str | None = None,
+    ) -> SimpleNamespace:
+        captured.update(
+            session_id=session_id,
+            requested_model_name=requested_model_name,
+            requested_team_name=requested_team_name,
+        )
+        return spec
+
+    monkeypatch.setattr(manager, "_ensure_postgresql_for_leader", fake_ensure_postgresql)
+    monkeypatch.setattr(manager, "_load_team_spec", fake_load_team_spec)
+    monkeypatch.setattr(
+        "jiuwenswarm.agents.swarm.enrich_team_spec_for_swarm",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = await manager.get_swarm_enriched_team_spec(
+        session_id="formal-session",
+        mode="team",
+        requested_team_name="quant_team",
+    )
+
+    assert result is spec
+    assert captured == {
+        "session_id": "formal-session",
+        "requested_model_name": None,
+        "requested_team_name": "quant_team",
+    }

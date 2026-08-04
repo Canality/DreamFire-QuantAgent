@@ -1,0 +1,4 @@
+interface:
+  display_name: "Diff Contract Reviewer"
+  short_description: "独立审查代码差异任务契约测试证据以及越界修改和回归风险"
+  default_prompt: "Use $diff-contract-reviewer to review the active task diff against its contract and test evidence."

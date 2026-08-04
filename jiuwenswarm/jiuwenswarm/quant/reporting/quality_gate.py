@@ -10,16 +10,20 @@ available_at <= decision_time.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Dict, List, Mapping, Set
-
-import re
 
 from jiuwenswarm.quant.reporting.models import (
     CompanyFactBundle,
     EvidenceRef,
     PortfolioSnapshot,
     ReportQualityResult,
+)
+from jiuwenswarm.quant.reporting.report_grade import (
+    GradeResult,
+    ReportGrade,
+    grade_submission,
 )
 from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract
 
@@ -46,6 +50,17 @@ def _evidence_has_valid_source(ref: EvidenceRef) -> bool:
     return bool(ref.source_type) and bool(ref.source_name)
 
 
+def _archive_exists(archive: object, evidence_id: str) -> bool:
+    """Check *evidence_id* resolves in the archive (lazy-import safe)."""
+    try:
+        exists_method = getattr(archive, "exists", None)
+        if exists_method is None:
+            return False
+        return bool(exists_method(evidence_id))
+    except Exception:
+        return False
+
+
 def validate_submission(
     contract: SubmissionContract,
     portfolio: PortfolioSnapshot,
@@ -54,12 +69,16 @@ def validate_submission(
     generated_at: datetime,
     *,
     evidence_manifest: Mapping[str, EvidenceRef] | None = None,
+    archive: object | None = None,  # EvidenceArchive | None (lazy import)
 ) -> ReportQualityResult:
     """Run all quality checks on a candidate submission.
 
-    evidence_manifest: evidence_id → EvidenceRef mapping.
-    If None, evidence existence checks are skipped with a warning,
-    but numbers without evidence are still flagged.
+    Args:
+        evidence_manifest: evidence_id → EvidenceRef mapping.
+            If None, evidence existence checks are skipped with a warning.
+        archive: Optional ``EvidenceArchive`` for content-level verification.
+            When provided, every evidence_id must resolve to an intact
+            archived file whose SHA-256 matches the manifest.
     """
     blockers: List[str] = []
     warnings: List[str] = []
@@ -149,7 +168,7 @@ def validate_submission(
 
     if no_agent_view_count == len(bundles):
         warnings.append(
-            "No company has Agent (Bull/Bear) views. Report quality will be degraded."
+            "No company has Agent (Alpha/Risk & Evidence) views. Report quality will be degraded."
         )
 
     # ---- 7. EvidenceRef validation (CRITICAL) ----
@@ -224,6 +243,57 @@ def validate_submission(
         blockers.append(f"Portfolio tickers not in 6-digit code format: {non_six_digit}")
 
     metrics["has_portfolio_report"] = 1  # validated by calling code
+
+    # ---- 9. Evidence archive verification (BLOCKER) ----
+    if archive is not None and evidence_manifest is not None:
+        unresolved: list[str] = []
+        all_evidence_ids: set[str] = set()
+        for bundle in bundles.values():
+            for fact in (
+                bundle.technical_facts + bundle.fundamental_facts
+                + bundle.event_facts + bundle.risk_facts
+            ):
+                all_evidence_ids.update(fact.evidence_ids)
+        for eid in sorted(all_evidence_ids):
+            ref = evidence_manifest.get(eid)
+            if (
+                ref is not None
+                and ref.source_type == "market_data"
+                and str(ref.source_url or "").startswith("data_snapshot/")
+            ):
+                # Market snapshots are installed and hash-verified in the
+                # candidate package's data_snapshot directory.
+                continue
+            if not _archive_exists(archive, eid):
+                unresolved.append(eid)
+        if unresolved:
+            blockers.append(
+                f"Evidence referenced by facts but not found in archive "
+                f"({len(unresolved)} ids): "
+                f"{unresolved[:10]}{'...' if len(unresolved) > 10 else ''}"
+            )
+        metrics["evidence_ids_total"] = len(all_evidence_ids)
+        metrics["evidence_ids_unresolved"] = len(unresolved)
+    elif archive is not None and evidence_manifest is None:
+        blockers.append(
+            "Archive provided but no evidence_manifest; "
+            "cannot verify that every fact's evidence is archived"
+        )
+
+    # ---- 10. Report grading ----
+    grade_result: GradeResult = grade_submission(bundles)
+    metrics["report_grade_technical"] = grade_result.n_technical
+    metrics["report_grade_disclosure"] = grade_result.n_disclosure
+    metrics["report_grade_fundamental"] = grade_result.n_fundamental
+    metrics["report_grade_news_risk"] = grade_result.n_news_or_risk
+    metrics["overall_grade"] = grade_result.grade
+
+    if grade_result.grade == ReportGrade.TECHNICAL_PASSED and grade_result.n_companies > 0:
+        warnings.append(
+            "Submission grade is TECHNICAL_PASSED — only market-data evidence "
+            "present. No fundamental, disclosure, or risk provider facts are "
+            "connected."
+        )
 
     passed = len(blockers) == 0
 

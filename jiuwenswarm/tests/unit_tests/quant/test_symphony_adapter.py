@@ -12,7 +12,7 @@ from jiuwenswarm.quant.reporting.symphony_adapter import (
 def test_static_plan_has_all_required_skills():
     plan = build_static_quant_plan()
     skill_names = {s.skill_name for s in plan.steps}
-    required = {"fetch_data", "compute_factors", "bull_view", "bear_view",
+    required = {"fetch_data", "compute_factors", "alpha_view", "risk_evidence_view",
                 "select_stocks", "allocate_positions", "run_backtest", "generate_report"}
     assert required.issubset(skill_names), f"Missing: {required - skill_names}"
 
@@ -65,10 +65,10 @@ def test_validate_plan_ordering_violation_blocked():
 def test_plan_step_dependencies():
     step = PlanStep(
         step_id="3",
-        skill_name="bull_view",
-        description="Bull analysis",
+        skill_name="alpha_view",
+        description="Alpha analysis",
         depends_on=["2"],
-        expected_outputs=["bull_recommendations"],
+        expected_outputs=["alpha_proposals"],
     )
     assert step.step_id == "3"
     assert "2" in step.depends_on

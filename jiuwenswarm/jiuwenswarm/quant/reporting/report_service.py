@@ -19,6 +19,7 @@ from jiuwenswarm.quant.reporting.models import (
 )
 from jiuwenswarm.quant.reporting.company_report import generate_company_report
 from jiuwenswarm.quant.reporting.package_builder import build_candidate_package
+from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
 from jiuwenswarm.quant.reporting.submission_contract import (
     SubmissionContract,
     get_contract,
@@ -109,6 +110,7 @@ class ReportService:
         output_dir: str,
         strategy_label: str = "production",
         evidence_manifest: Mapping[str, "EvidenceRef"] | None = None,
+        evidence_archive: EvidenceArchive | None = None,
     ) -> Tuple[bool, ReportQualityResult, str]:
         """Build the complete submission candidate package."""
         return build_candidate_package(
@@ -118,4 +120,5 @@ class ReportService:
             output_dir=output_dir,
             strategy_label=strategy_label,
             evidence_manifest=evidence_manifest,
+            evidence_archive=evidence_archive,
         )

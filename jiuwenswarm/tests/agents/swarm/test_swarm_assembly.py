@@ -28,11 +28,39 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
+from jiuwenswarm.agents.swarm import (
+    SwarmBuildContext,
+    enrich_team_spec_for_swarm,
+    register_swarm_providers,
+    registry,
+)
+from jiuwenswarm.agents.swarm.config_specs import (
+    build_member_capability_specs,
+    build_member_deep_agent_spec,
+    build_member_subagent_specs,
+)
+from jiuwenswarm.agents.swarm.providers import (
+    code_rails,
+    evolution_rails,
+    member_rails,
+    runtime_tools,
+    tools,
+)
+from jiuwenswarm.agents.swarm.providers.code_subagents import (
+    _PARENT_MODEL_EXTRAS_KEY,
+    SWARM_BROWSER_AGENT,
+    _browser_key,
+    build_swarm_browser_agent,
+)
+from jiuwenswarm.common.coding_memory_paths import (
+    resolve_project_coding_memory_dir,
+    resolve_project_coding_memory_workspace_path,
+)
+from jiuwenswarm.common.config import get_config
 from openjiuwen.agent_evolving.trajectory import InMemoryTrajectoryRegistry
+from openjiuwen.agent_teams.harness.manifest import get_catalog, resolve_factory
 from openjiuwen.agent_teams.rails.builtin_elements import SKILL_USE as CORE_SKILL_USE
 from openjiuwen.agent_teams.schema import deep_agent_spec as das
-from openjiuwen.agent_teams.harness.manifest import get_catalog, resolve_factory
 from openjiuwen.agent_teams.schema.blueprint import LeaderSpec, TeamAgentSpec
 from openjiuwen.agent_teams.schema.deep_agent_spec import (
     BuiltinToolSpec,
@@ -50,39 +78,9 @@ from openjiuwen.core.single_agent.rail.base import (
     AgentRail,
     ToolCallInputs,
 )
-from openjiuwen.harness.tools.worktree import WorktreeConfig
 from openjiuwen.harness.prompts.builder import SystemPromptBuilder
 from openjiuwen.harness.rails import SkillUseRail
-
-from jiuwenswarm.agents.swarm import (
-    SwarmBuildContext,
-    enrich_team_spec_for_swarm,
-    register_swarm_providers,
-)
-from jiuwenswarm.agents.swarm import registry
-from jiuwenswarm.agents.swarm.config_specs import (
-    build_member_capability_specs,
-    build_member_deep_agent_spec,
-    build_member_subagent_specs,
-)
-from jiuwenswarm.agents.swarm.providers import (
-    code_rails,
-    evolution_rails,
-    member_rails,
-    runtime_tools,
-    tools,
-)
-from jiuwenswarm.agents.swarm.providers.code_subagents import (
-    SWARM_BROWSER_AGENT,
-    _PARENT_MODEL_EXTRAS_KEY,
-    _browser_key,
-    build_swarm_browser_agent,
-)
-from jiuwenswarm.common.coding_memory_paths import (
-    resolve_project_coding_memory_dir,
-    resolve_project_coding_memory_workspace_path,
-)
-from jiuwenswarm.common.config import get_config
+from openjiuwen.harness.tools.worktree import WorktreeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -422,6 +420,31 @@ def test_build_member_capability_specs_tool_names(role: str) -> None:
     assert all(isinstance(spec, BuiltinToolSpec) for spec in tool_specs)
 
 
+@pytest.mark.parametrize("role", ["leader", "teammate"])
+def test_fixed_quant_capability_profile_is_minimal(role: str) -> None:
+    """The fixed pipeline exposes no competing planner or unrelated tools."""
+
+    config = {
+        "_fixed_quant_pipeline": True,
+        "agents": {"leader": {"skills": ["alpha"]}, "teammate": {}},
+        "symphony": {"skill_retrieval": {"enabled": True}},
+    }
+
+    rails_specs, tool_specs = build_member_capability_specs(config, "team", role)
+
+    assert {spec.type for spec in rails_specs} == {
+        registry.RUNTIME_PROMPT,
+        registry.RESPONSE_PROMPT,
+        registry.STREAM_EVENT,
+        registry.SECURITY,
+        registry.HEARTBEAT,
+        registry.CONTEXT_PROCESSOR,
+    }
+    assert {spec.type for spec in tool_specs} == {registry.QUANT_TOOLKIT}
+    assert registry.TASK_PLANNING not in {spec.type for spec in rails_specs}
+    assert registry.MEMBER_SKILL_TOOLKIT not in {spec.type for spec in rails_specs}
+
+
 def test_member_skill_toolkit_carries_selected_skills() -> None:
     """The skill-toolkit rail forwards the role's cleaned skill selection."""
     config = {
@@ -523,7 +546,7 @@ def test_code_skill_use_rail_kept_as_auto_list_when_retrieval_enabled(
     )
     monkeypatch.setattr(
         "jiuwenswarm.server.runtime.skill.load_execution_disabled_skills",
-        lambda: [],
+        list,
     )
 
     rail = code_rails.build_code_skill_use(
@@ -718,8 +741,8 @@ def test_enrich_team_spec_rewrites_named_teammate_templates() -> None:
     spec = TeamAgentSpec(
         agents={
             "leader": DeepAgentSpec(),
-            "bull_analyst": DeepAgentSpec(),
-            "bear_analyst": DeepAgentSpec(),
+            "alpha_analyst": DeepAgentSpec(),
+            "risk_evidence_analyst": DeepAgentSpec(),
         },
         team_name="quant_unit_team",
         leader=LeaderSpec(member_name="quant-leader"),
@@ -727,12 +750,44 @@ def test_enrich_team_spec_rewrites_named_teammate_templates() -> None:
 
     enrich_team_spec_for_swarm(spec, session_id="s", mode="team", channel_id="web")
 
-    for template_name in ("bull_analyst", "bear_analyst"):
+    for template_name in ("alpha_analyst", "risk_evidence_analyst"):
         member = spec.agents[template_name]
         rail_names = {rail.type for rail in (member.rails or [])}
         tool_names = {tool.type for tool in (member.tools or [])}
         assert registry.MEMBER_SKILL_EVOLUTION in rail_names
         assert registry.QUANT_TOOLKIT in tool_names
+
+
+def test_enrich_quant_team_selects_fixed_pipeline_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Quant enrichment replaces generic capabilities already on base specs."""
+
+    monkeypatch.setattr("jiuwenswarm.agents.swarm.assembly.get_config", dict)
+    noisy_base = {
+        "rails": [RailSpec(type=registry.TASK_PLANNING)],
+        "tools": [BuiltinToolSpec(type=registry.WEB_SEARCH)],
+    }
+    spec = TeamAgentSpec(
+        agents={
+            "leader": DeepAgentSpec(**noisy_base),
+            "alpha_analyst": DeepAgentSpec(**noisy_base),
+            "risk_evidence_analyst": DeepAgentSpec(**noisy_base),
+        },
+        team_name="quant_team_validation-session",
+        leader=LeaderSpec(member_name="quant-leader"),
+    )
+
+    enrich_team_spec_for_swarm(spec, session_id="s", mode="team", channel_id="web")
+
+    for member in spec.agents.values():
+        rail_names = {rail.type for rail in (member.rails or [])}
+        tool_names = {tool.type for tool in (member.tools or [])}
+        assert registry.TASK_PLANNING not in rail_names
+        assert registry.MEMBER_SKILL_TOOLKIT not in rail_names
+        assert tool_names == {registry.QUANT_TOOLKIT}
+        assert not (member.mcps or [])
+    assert spec.build_context.config["_fixed_quant_pipeline"] is True
 
 
 def test_enrich_team_spec_defaults_member_workspace_to_project_dir() -> None:
@@ -1145,7 +1200,7 @@ def test_team_skill_evolution_provider_passes_review_runtime(
         "_build_evolution_llm_from",
         lambda config: (object(), "model"),
     )
-    monkeypatch.setattr(evolution_rails, "load_execution_disabled_skills", lambda: [])
+    monkeypatch.setattr(evolution_rails, "load_execution_disabled_skills", list)
 
     ctx = SwarmBuildContext(
         language="cn",
@@ -1245,7 +1300,7 @@ def test_member_skill_evolution_provider_passes_review_runtime(
         "_build_evolution_llm_from",
         lambda config: (object(), "model"),
     )
-    monkeypatch.setattr(evolution_rails, "load_execution_disabled_skills", lambda: [])
+    monkeypatch.setattr(evolution_rails, "load_execution_disabled_skills", list)
 
     registry_obj = object()
     ctx = SwarmBuildContext(
@@ -1509,8 +1564,8 @@ def test_code_runtime_prompt_provider_carries_project_dir(tmp_path: Path) -> Non
         context=ctx,
     )
 
-    assert getattr(rail, "_project_dir") == str(project_dir)
-    assert getattr(rail, "_cwd") == str(project_dir)
+    assert rail._project_dir == str(project_dir)
+    assert rail._cwd == str(project_dir)
 
 
 def test_team_plan_approval_provider_builds_only_for_leader() -> None:
@@ -1745,7 +1800,7 @@ def test_code_coding_memory_provider_mounts_workspace_node(
     """The declarative coding-memory provider must also mount the workspace node."""
     register_swarm_providers()
 
-    import jiuwenswarm.server.runtime.agent_adapter.interface_code as interface_code
+    from jiuwenswarm.server.runtime.agent_adapter import interface_code
 
     project_dir = tmp_path / "project"
     workspace_root = tmp_path / "member-workspace"
@@ -1844,7 +1899,7 @@ def test_code_member_builds_declaratively_without_post_processing(
     )
     spec = build_member_deep_agent_spec(config, "code.team", "leader", base)
 
-    import jiuwenswarm.server.runtime.agent_adapter.interface_code as interface_code
+    from jiuwenswarm.server.runtime.agent_adapter import interface_code
 
     post_processing_calls: list[int] = []
     monkeypatch.setattr(
@@ -2211,6 +2266,7 @@ def test_browser_subagent_teammates_get_distinct_keys(
 ) -> None:
     """Two teammates in the same session never share a browser_key."""
     from unittest.mock import MagicMock
+
     from jiuwenswarm.agents.swarm.providers import code_subagents as _cs
 
     keys: list[str] = []

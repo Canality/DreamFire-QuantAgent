@@ -15,10 +15,15 @@ from jiuwenswarm.quant.factors import (
 from jiuwenswarm.quant.backtest_engine import BacktestEngine, BacktestResult
 from jiuwenswarm.quant.team_config import (
     COORDINATOR_PERSONA,
-    BULL_PERSONA,
-    BEAR_PERSONA,
+    ALPHA_ANALYST_PERSONA,
+    RISK_EVIDENCE_ANALYST_PERSONA,
     QUANT_TEAM_PREDEFINED_MEMBERS,
     load_persona,
+)
+from jiuwenswarm.quant.agent_decision import (
+    AgentProposal,
+    DecisionTrace,
+    DecisionAssembler,
 )
 
 __all__ = [
@@ -29,6 +34,7 @@ __all__ = [
     "MarketRegime",
     "MarketIndex",
     "RegimeFusion",
+    "FundamentalData",
     "FactorConfig",
     "PositionConfig",
     "StrategyResult",
@@ -36,4 +42,12 @@ __all__ = [
     "PositionSizer",
     "BacktestEngine",
     "BacktestResult",
+    "AgentProposal",
+    "DecisionTrace",
+    "DecisionAssembler",
+    "COORDINATOR_PERSONA",
+    "ALPHA_ANALYST_PERSONA",
+    "RISK_EVIDENCE_ANALYST_PERSONA",
+    "QUANT_TEAM_PREDEFINED_MEMBERS",
+    "load_persona",
 ]

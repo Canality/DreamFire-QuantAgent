@@ -133,13 +133,13 @@ class QuantToolkit:
             params["top_stocks"] = top_stocks
         return await self._call_rpc("quant.generate_report", params)
 
-    async def bull_view(self) -> dict[str, Any]:
-        """Extract bullish signals from momentum and price-volume alignment."""
-        return await self._call_rpc("quant.bull_view", {})
+    async def alpha_view(self) -> dict[str, Any]:
+        """Alpha Analyst: term-aligned trend and sector leadership signals."""
+        return await self._call_rpc("quant.alpha_view", {})
 
-    async def bear_view(self) -> dict[str, Any]:
-        """Extract bearish signals from drawdown, reversal, and price-volume divergence."""
-        return await self._call_rpc("quant.bear_view", {})
+    async def risk_evidence_view(self) -> dict[str, Any]:
+        """Risk & Evidence Analyst: tail risk, divergence, and evidence conflicts."""
+        return await self._call_rpc("quant.risk_evidence_view", {})
 
     # -- get_tools --
 
@@ -289,22 +289,23 @@ class QuantToolkit:
                 self.generate_report,
             ),
             make_tool(
-                "quant_bull_view",
-                "Extract bullish signals from factor data. Analyzes 20/60-day momentum "
-                "and price-volume alignment to identify stocks with "
-                "strong bullish characteristics. Returns scored list with specific signals "
-                "and recommended position range. Use for Bull Analyst perspective.",
+                "quant_alpha_view",
+                "Alpha Analyst: extract term-aligned trend (momentum_20/60) and volume-price "
+                "alignment signals. Returns scored candidates with specific factor evidence. "
+                "Use for Alpha Analyst perspective — identifies which stocks have strong, "
+                "healthy trends worth including.",
                 {"type": "object", "properties": {}},
-                self.bull_view,
+                self.alpha_view,
             ),
             make_tool(
-                "quant_bear_view",
-                "Extract bearish/warning signals from factor data. Analyzes large drawdowns, "
-                "short-term reversal, and price-volume divergence to identify risky "
-                "stocks. Returns scored list with specific warnings and recommended cash "
-                "reserve range. Use for Bear Analyst perspective.",
+                "quant_risk_evidence_view",
+                "Risk & Evidence Analyst: extract tail risk (max drawdown), short-term "
+                "reversal risk, and price-volume divergence signals. Returns scored risk "
+                "candidates with specific warnings. Use for Risk & Evidence Analyst "
+                "perspective — identifies which stocks have dangerous risk profiles "
+                "warranting exclusion or reduction.",
                 {"type": "object", "properties": {}},
-                self.bear_view,
+                self.risk_evidence_view,
             ),
         ]
 

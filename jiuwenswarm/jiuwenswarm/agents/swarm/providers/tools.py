@@ -508,7 +508,7 @@ def build_symphony_toolkit(params: dict[str, Any], ctx: SwarmBuildContext) -> li
 def _build_quant_tools(ctx: SwarmBuildContext) -> list[Any]:
     """Build role-scoped Quant tools.
 
-    The coordinator needs the complete pipeline. Bull and Bear analysts get
+    The coordinator needs the complete pipeline. Alpha and Risk & Evidence analysts get
     only their own cached-data view RPC so an LLM cannot cross role boundaries
     or accidentally rerun pipeline stages.
     """
@@ -517,8 +517,8 @@ def _build_quant_tools(ctx: SwarmBuildContext) -> list[Any]:
         tools = list(QuantToolkit().get_tools(get_config()))
         member = str(getattr(ctx, "member_name", "") or "").strip().lower().replace("-", "_")
         role_tool = {
-            "bull_analyst": "quant_bull_view",
-            "bear_analyst": "quant_bear_view",
+            "alpha_analyst": "quant_alpha_view",
+            "risk_evidence_analyst": "quant_risk_evidence_view",
         }.get(member)
         if role_tool:
             return [tool for tool in tools if tool.card.name == role_tool]
@@ -531,7 +531,7 @@ def _build_quant_tools(ctx: SwarmBuildContext) -> list[Any]:
 @harness_element(
     kind=ElementKind.TOOL,
     name=QUANT_TOOLKIT,
-    description="Quantitative finance tools: data fetch, multi-factor, backtesting, bull/bear analysis.",
+    description="Quantitative finance tools: data fetch, multi-factor, backtesting, alpha/risk-evidence analysis.",
 )
 def build_quant_toolkit(params: dict[str, Any], ctx: SwarmBuildContext) -> list[Any]:
     """Build quant tools for all team members (leader, Bull, Bear)."""

@@ -6,7 +6,7 @@ AnalysisPlaybookRouter selects analysis templates without changing strategy weig
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import ClassVar
 
 # ---- Schema 1: Regime Diagnosis (exactly what detect_with_detail returns) ----
@@ -84,9 +84,9 @@ class AnalysisPlaybook:
 _REGISTERED_PLAYBOOKS: tuple[AnalysisPlaybook, ...] = (
     AnalysisPlaybook(
         name="standard_investment_cycle",
-        description="Full 8-phase quant pipeline: fetch → factor → Bull/Bear → select → allocate → backtest → report",
+        description="Full 8-phase quant pipeline: fetch → factor → Alpha/Risk & Evidence → select → allocate → backtest → report",
         required_skills=(
-            "fetch_data", "compute_factors", "bull_view", "bear_view",
+            "fetch_data", "compute_factors", "alpha_view", "risk_evidence_view",
             "select_stocks", "allocate_positions", "run_backtest", "generate_report",
         ),
         output_fields=("portfolio", "weights", "backtest_metrics", "report"),
@@ -104,7 +104,7 @@ _REGISTERED_PLAYBOOKS: tuple[AnalysisPlaybook, ...] = (
         description="Challenger model showing recent decay → diagnose whether regime-specific or structural",
         required_skills=(
             "fetch_data", "compute_factors", "regime_analysis",
-            "decay_diagnosis", "bull_view", "bear_view", "generate_report",
+            "decay_diagnosis", "alpha_view", "risk_evidence_view", "generate_report",
         ),
         output_fields=("decay_verdict", "regime_breakdown", "recommendation"),
     ),

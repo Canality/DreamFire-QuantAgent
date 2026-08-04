@@ -15,6 +15,7 @@
 - 共享量化实现：`jiuwenswarm/jiuwenswarm/quant/`
 - 共享报告/证据实现：`jiuwenswarm/jiuwenswarm/quant/reporting/`
 - 当前运行事实只认根目录 `VALIDATION.md`。
+- 长期开发路线和各工作包验收标准只认根目录 `DEVELOPMENT_PLAN.md`。
 
 ## 证据等级
 
@@ -44,6 +45,8 @@
 
 `SubmissionContract` 当前为 `PROVISIONAL`。49/50、现金权重口径、报告对初赛的作用存在官方材料冲突。在获得可归档书面答复前：
 
+- 已确认提交截止为 2026-08-23，评测期为 2026-08-25 至 09-21，共 20 个交易日；首日开盘买入、末日收盘卖出，期间不可调仓；
+- 2026-08-24 是提交后、买入前的不可见交易日；历史评测必须模拟一个完整交易日 embargo；
 - 以官方 Excel 的 49 家作为本地运行范围；
 - 可以生成 `submission_candidate`；
 - 不得声称已经生成正式提交包；
@@ -52,11 +55,19 @@
 ## 文档和版本管理
 
 - 代码变化后先更新 `VALIDATION.md`，再更新 README 摘要。
+- `DEVELOPMENT_PLAN.md` 由 Git 管理，调整工作包或验收标准时必须更新版本号和变更记录。
 - `.claude/discussion.md` 只保留当前交接；历史状态留在 Git 和 archive。
 - `策略实验/` 是历史研究证据，不是当前生产状态源。
 - `output/`、参考项目、缓存、媒体和 zip 不提交。
 - 不自动 push、tag 或打包。只有用户明确授权后才执行对应外部动作。
 - 提交前运行 `git diff --check`、目标 ruff、141 项量化测试和双路径验收。
+
+## 多模型执行
+
+- 多模型协作只认 `AGENT_WORKFLOW.md` 的任务状态机、风险路由和停止规则。
+- 每项开发使用 `coordination/active/<TASK-ID>.md`；Scout、Builder、Critic 只读取任务包和最小上下文，不默认读取完整 discussion、历史日志或整个仓库。
+- Qwen 与 DeepSeek 必须使用独立配置目录和独立终端；启动入口为 `scripts/claude-qwen.cmd` 与 `scripts/claude-deepseek.cmd`，不依赖 CC Switch 的单一当前 Provider。
+- 本地模型只可在任务白名单内写入；涉及 HIGH 风险量化逻辑、越界改动或连续失败必须升级给 Codex/云端强模型。
 
 ## 当前优先级
 

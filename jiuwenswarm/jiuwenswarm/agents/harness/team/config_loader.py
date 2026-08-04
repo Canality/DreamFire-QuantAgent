@@ -22,14 +22,35 @@ _DEFAULT_TEAM_WORKSPACE = {"enabled": True}
 _DEFAULT_TRANSPORT = {"type": "inprocess"}
 
 
-def _select_first_modes_team(config_base: dict[str, Any]) -> dict[str, Any]:
+def _select_modes_team(
+    config_base: dict[str, Any],
+    *,
+    requested_team_name: str | None = None,
+) -> dict[str, Any]:
+    if requested_team_name is None:
+        requested = ""
+    elif not isinstance(requested_team_name, str) or not requested_team_name.strip():
+        raise ValueError("requested team name must be a non-empty string")
+    else:
+        requested = requested_team_name.strip()
     modes_raw = config_base.get("modes", {})
     if not isinstance(modes_raw, dict):
+        if requested:
+            raise ValueError(f"requested team '{requested}' was not found in modes.team")
         return {}
 
     teams_raw = modes_raw.get("team", {})
     if not isinstance(teams_raw, dict):
+        if requested:
+            raise ValueError(f"requested team '{requested}' was not found in modes.team")
         return {}
+
+    if requested:
+        team_raw = teams_raw.get(requested)
+        if not isinstance(team_raw, dict) or not team_raw:
+            raise ValueError(f"requested team '{requested}' was not found in modes.team")
+        logger.debug("[TeamConfigLoader] selected requested team: %s", requested)
+        return team_raw
 
     for team_name, team_raw in teams_raw.items():
         if isinstance(team_raw, dict):
@@ -40,7 +61,7 @@ def _select_first_modes_team(config_base: dict[str, Any]) -> dict[str, Any]:
 
 
 def _resolve_team_raw_for_storage(config_base: dict[str, Any]) -> dict[str, Any]:
-    selected = _select_first_modes_team(config_base)
+    selected = _select_modes_team(config_base)
     if selected:
         return selected
 
@@ -360,17 +381,21 @@ def load_team_spec_dict(
     config_base: dict[str, Any] | None = None,
     *,
     requested_model_name: str | None = None,
+    requested_team_name: str | None = None,
 ) -> dict[str, Any]:
     """Load team config and build a TeamAgentSpec-compatible dict.
 
-    When ``requested_model_name`` is provided (e.g. from the chat page model
-    selector), team members without an explicit ``modes.team.agents.*.model``
-    fall back to the matching entry in ``models.defaults`` instead of the
-    first list item.
+    ``requested_team_name`` selects an exact ``modes.team`` entry and fails
+    closed when it is absent. When it is omitted, the existing first-entry
+    behavior remains unchanged. ``requested_model_name`` selects the fallback
+    model for members without an explicit model.
     """
     if config_base is None:
         config_base = get_config()
-    team_raw = _select_first_modes_team(config_base)
+    team_raw = _select_modes_team(
+        config_base,
+        requested_team_name=requested_team_name,
+    )
 
     if not team_raw:
         logger.warning("[TeamConfigLoader] no modes.team config found, using defaults")

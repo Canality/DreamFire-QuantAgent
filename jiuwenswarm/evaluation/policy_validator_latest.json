@@ -20,8 +20,8 @@
       "step_sequence": [
         "fetch_data",
         "compute_factors",
-        "bull_view",
-        "bear_view",
+        "alpha_view",
+        "risk_evidence_view",
         "select_stocks",
         "allocate_positions",
         "run_backtest",
@@ -59,8 +59,8 @@
         "compute_factors",
         "regime_analysis",
         "decay_diagnosis",
-        "bull_view",
-        "bear_view",
+        "alpha_view",
+        "risk_evidence_view",
         "generate_report"
       ],
       "violations": [],

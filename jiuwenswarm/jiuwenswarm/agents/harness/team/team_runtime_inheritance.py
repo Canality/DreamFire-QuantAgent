@@ -140,8 +140,8 @@ TOOL_WHITELIST = frozenset({
     "quant_allocate_positions",
     "quant_run_backtest",
     "quant_generate_report",
-    "quant_bull_view",
-    "quant_bear_view",
+    "quant_alpha_view",
+    "quant_risk_evidence_view",
 })
 
 

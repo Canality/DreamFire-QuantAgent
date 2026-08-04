@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Code Scout"
+  short_description: "只读定位代码调用关系相关测试并生成受限上下文交接包"
+  default_prompt: "Use $local-code-scout to locate the relevant code and produce a bounded handoff without editing files."

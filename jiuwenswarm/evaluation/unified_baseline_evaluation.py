@@ -23,6 +23,7 @@ import pandas as pd
 import requests
 
 from jiuwenswarm.quant.backtest_engine import BacktestEngine
+from jiuwenswarm.quant.evaluation_protocol import CompetitionWindowPolicy
 from jiuwenswarm.quant.factors import FactorCalculator, PositionSizer
 from jiuwenswarm.quant.regime_fusion import RegimeFusion
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP
@@ -49,6 +50,7 @@ FACTOR_COLUMNS = (
 )
 EXPECTED_STOCKS = len(ALL_STOCKS)
 EXPECTED_SECTORS = len({SECTOR_MAP[ticker] for ticker in ALL_STOCKS})
+POLICY = CompetitionWindowPolicy()
 
 PREREGISTRATION = {
     "hypothesis": (
@@ -68,8 +70,9 @@ PREREGISTRATION = {
     },
     "window_policy": {
         "history": "expanding history ending at prior trading-day close",
-        "entry": "first forward trading-day open",
-        "exit": "20th forward trading-day close",
+        "embargo": "one full trading day whose data MUST NOT enter the decision",
+        "entry": "first forward trading-day open after embargo",
+        "exit": "20th forward trading-day close after entry",
         "portfolio": "buy once at entry; fixed shares; no daily rebalance",
         "overlap": 0,
         "historical_holdout": "none; all observed history is development data",
@@ -260,9 +263,13 @@ def load_snapshot(snapshot_dir: Path) -> dict[str, Any]:
 
 
 def build_schedule(n_days: int, min_history: int = MIN_HISTORY, horizon: int = HORIZON) -> list[int]:
-    starts = list(range(min_history, n_days - horizon + 1, horizon))
+    """Return non-overlapping window start indices (embargo-day positions)."""
+    starts = POLICY.adjust_schedule(n_days, min_history)
     if not starts:
-        raise ValueError(f"Insufficient data: {n_days} days for {min_history}+{horizon}")
+        raise ValueError(
+            f"Insufficient data: {n_days} days for "
+            f"{min_history}+{POLICY.total_forward_days} (min_history + embargo + holding)"
+        )
     return starts
 
 
@@ -337,8 +344,9 @@ def evaluate_strategy(
         if set(weights) != set(selected):
             raise RuntimeError(f"{strategy_name} window {idx}: selection/allocation mismatch")
 
-        test_closes = closes.iloc[start:start + HORIZON]
-        entry_open = opens.iloc[start]
+        window_dates = POLICY.get_window(index_close.index, start)
+        entry_open, test_closes = POLICY.slice_window(opens, closes, start)
+        POLICY.validate_embargo(len(history), start)
         if len(test_closes) != HORIZON:
             raise RuntimeError(f"{strategy_name} window {idx}: incomplete forward window")
         official = BacktestEngine(transaction_cost=0.0).run_open_to_close(
@@ -365,6 +373,9 @@ def evaluate_strategy(
         results.append({
             "idx": idx,
             "decision_date": str(decision_date.date()),
+            "embargo_date": str(window_dates.embargo_date.date()),
+            "entry_date": str(window_dates.entry_date.date()),
+            "exit_date": str(window_dates.exit_date.date()),
             "test_start": str(test_closes.index[0].date()),
             "test_end": str(test_closes.index[-1].date()),
             "regime": regime,
@@ -519,12 +530,18 @@ def main() -> int:
         "protocol": {
             "min_history": MIN_HISTORY,
             "horizon": HORIZON,
+            "embargo_trading_days": POLICY.embargo_trading_days,
+            "entry": POLICY.entry,
+            "exit": POLICY.exit,
             "n_windows": len(starts),
             "windows": [
                 {
                     "decision_date": str(index_close.index[start - 1].date()),
-                    "test_start": str(index_close.index[start].date()),
-                    "test_end": str(index_close.index[start + HORIZON - 1].date()),
+                    "embargo_date": str(index_close.index[start].date()),
+                    "entry_date": str(index_close.index[start + POLICY.embargo_trading_days].date()),
+                    "exit_date": str(index_close.index[start + POLICY.embargo_trading_days + HORIZON - 1].date()),
+                    "test_start": str(index_close.index[start + POLICY.embargo_trading_days].date()),
+                    "test_end": str(index_close.index[start + POLICY.embargo_trading_days + HORIZON - 1].date()),
                 }
                 for start in starts
             ],

@@ -87,6 +87,18 @@ _TEAM_STREAM_EXIT_GRACE_TIMEOUT_SEC = 1.5
 _observability_active: bool = False
 
 
+def build_session_scoped_team_name(team_name: str, session_id: str) -> str:
+    """Return the canonical runtime team name for a session."""
+    base_name = str(team_name or "").strip() or "team"
+    session_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(session_id or "").strip())
+    session_suffix = session_suffix.strip("._-")
+    if not session_suffix:
+        return base_name
+    if base_name.endswith(f"_{session_suffix}"):
+        return base_name
+    return f"{base_name}_{session_suffix}"
+
+
 def sync_team_observability() -> None:
     """Synchronize observability state with current config.
 
@@ -418,14 +430,7 @@ class TeamManager:
 
     @staticmethod
     def _build_session_scoped_team_name(team_name: str, session_id: str) -> str:
-        base_name = str(team_name or "").strip() or "team"
-        session_suffix = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(session_id or "").strip())
-        session_suffix = session_suffix.strip("._-")
-        if not session_suffix:
-            return base_name
-        if base_name.endswith(f"_{session_suffix}"):
-            return base_name
-        return f"{base_name}_{session_suffix}"
+        return build_session_scoped_team_name(team_name, session_id)
 
     @staticmethod
     def _apply_session_scoped_team_name(
@@ -443,6 +448,7 @@ class TeamManager:
         session_id: str,
         *,
         requested_model_name: str | None = None,
+        requested_team_name: str | None = None,
     ) -> TeamAgentSpec:
         config_base = get_config()
         # Keep dependency checks scoped to distributed mode to make the
@@ -469,6 +475,7 @@ class TeamManager:
         spec_dict = load_team_spec_dict(
             config_base=config_base,
             requested_model_name=requested_model_name,
+            requested_team_name=requested_team_name,
         )
         spec_dict = TeamManager._normalize_team_identity_fields(spec_dict)
         if TeamManager._is_distributed_mode(config_base):
@@ -529,6 +536,7 @@ class TeamManager:
         channel_id: str | None = None,
         request_metadata: dict[str, Any] | None = None,
         requested_model_name: str | None = None,
+        requested_team_name: str | None = None,
     ) -> TeamAgentSpec:
         """Build a team spec via provider-based assembly (no parent DeepAgent).
 
@@ -543,6 +551,8 @@ class TeamManager:
             request_id: Originating request id, if any.
             channel_id: Raw channel id from the request, if any.
             request_metadata: Request metadata mapping.
+            requested_team_name: Exact ``modes.team`` entry to load. When
+                omitted, retain the default first-team behavior.
 
         Returns:
             The enriched ``TeamAgentSpec`` ready to build (``build_context`` set;
@@ -555,6 +565,7 @@ class TeamManager:
         spec = self._load_team_spec(
             session_id,
             requested_model_name=requested_model_name,
+            requested_team_name=requested_team_name,
         )
         self._apply_session_scoped_team_name(spec, session_id=session_id)
         self.apply_team_plan_mode(spec, request_metadata=request_metadata)

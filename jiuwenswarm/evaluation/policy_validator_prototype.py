@@ -11,8 +11,8 @@ PolicyValidator enforces invariants before any plan executes.
 
 from __future__ import annotations
 
-import json, sys, time
-from dataclasses import dataclass, field
+import json
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -38,8 +38,8 @@ class PolicyValidator:
     REQUIRED_PHASES = [
         "fetch_data",      # must come first
         "compute_factors",  # must come second
-        "bull_view",        # must happen before select
-        "bear_view",        # must happen before select
+        "alpha_view",        # must happen before select
+        "risk_evidence_view",        # must happen before select
         "select_stocks",    # must happen after factors + views
         "allocate_positions",  # must happen after select
         "run_backtest",     # must happen after allocate
@@ -120,9 +120,9 @@ class PolicyValidator:
                         f"but '{dep}' comes after or at same position"
                     ))
 
-        # R6: bull_view and bear_view must not be called by Coordinator
+        # R6: alpha_view and risk_evidence_view must not be called by Coordinator
         for step in steps:
-            if step.get("skill") in ("bull_view", "bear_view"):
+            if step.get("skill") in ("alpha_view", "risk_evidence_view"):
                 caller = step.get("assigned_to", "")
                 if caller in ("coordinator", "leader", ""):
                     violations.append(PolicyViolation(
@@ -158,9 +158,9 @@ TASK_SPECS = {
             "steps": [
                 {"skill": "fetch_data",       "assigned_to": "coordinator", "depends_on": [],           "config": {"tickers": "ALL_STOCKS", "fail_if_lt": 49}},
                 {"skill": "compute_factors",  "assigned_to": "coordinator", "depends_on": ["fetch_data"], "config": {"strategy_id": "phase_b_t2_score_alloc"}},
-                {"skill": "bull_view",        "assigned_to": "bull_analyst","depends_on": ["compute_factors"], "config": {}},
-                {"skill": "bear_view",        "assigned_to": "bear_analyst","depends_on": ["compute_factors"], "config": {}},
-                {"skill": "select_stocks",    "assigned_to": "coordinator", "depends_on": ["bull_view", "bear_view"], "config": {"top_n": 15, "min_score": 0}},
+                {"skill": "alpha_view",        "assigned_to": "alpha_analyst","depends_on": ["compute_factors"], "config": {}},
+                {"skill": "risk_evidence_view","assigned_to": "risk_evidence_analyst","depends_on": ["compute_factors"], "config": {}},
+                {"skill": "select_stocks",    "assigned_to": "coordinator", "depends_on": ["alpha_view", "risk_evidence_view"], "config": {"top_n": 15, "min_score": 0}},
                 {"skill": "allocate_positions","assigned_to": "coordinator","depends_on": ["select_stocks"], "config": {"strategy_id": "phase_b_t2_score_alloc"}},
                 {"skill": "run_backtest",     "assigned_to": "coordinator", "depends_on": ["allocate_positions"], "config": {"strategy_id": "phase_b_t2_score_alloc"}},
                 {"skill": "generate_report",  "assigned_to": "coordinator", "depends_on": ["run_backtest"], "config": {"strategy_id": "phase_b_t2_score_alloc"}},
@@ -199,9 +199,9 @@ TASK_SPECS = {
                     "check": "recent_4_utility_wins",
                     "threshold": 3,
                 }},
-                {"skill": "bull_view",        "assigned_to": "bull_analyst","depends_on": ["decay_diagnosis"], "config": {}},
-                {"skill": "bear_view",        "assigned_to": "bear_analyst","depends_on": ["decay_diagnosis"], "config": {}},
-                {"skill": "generate_report",  "assigned_to": "coordinator", "depends_on": ["bull_view", "bear_view"], "config": {"include_diagnosis": True}},
+                {"skill": "alpha_view",        "assigned_to": "alpha_analyst","depends_on": ["decay_diagnosis"], "config": {}},
+                {"skill": "risk_evidence_view","assigned_to": "risk_evidence_analyst","depends_on": ["decay_diagnosis"], "config": {}},
+                {"skill": "generate_report",  "assigned_to": "coordinator", "depends_on": ["alpha_view", "risk_evidence_view"], "config": {"include_diagnosis": True}},
             ],
         },
     },
@@ -290,15 +290,15 @@ def main() -> int:
     print(f"{'='*70}")
 
     # Demonstrate PolicyValidator detects a real violation
-    print(f"\n[Demostration] Injecting violation: Coordinator calling bull_view...")
+    print("\n[Demostration] Injecting violation: Coordinator calling alpha_view...")
     bad_plan = {
         "task": "test_violation",
         "strategy_id": "production_six_factor",
         "steps": [
             {"skill": "fetch_data", "assigned_to": "coordinator", "depends_on": []},
             {"skill": "compute_factors", "assigned_to": "coordinator", "depends_on": ["fetch_data"]},
-            {"skill": "bull_view", "assigned_to": "coordinator", "depends_on": ["compute_factors"]},  # ← violation!
-            {"skill": "run_backtest", "assigned_to": "coordinator", "depends_on": ["bull_view"], "config": {}},  # ← no strategy_id
+            {"skill": "alpha_view", "assigned_to": "coordinator", "depends_on": ["compute_factors"]},  # ← violation!
+            {"skill": "run_backtest", "assigned_to": "coordinator", "depends_on": ["alpha_view"], "config": {}},  # ← no strategy_id
         ],
     }
     v = PolicyValidator().validate(bad_plan)

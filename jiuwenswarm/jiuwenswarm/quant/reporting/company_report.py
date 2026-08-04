@@ -47,7 +47,16 @@ def _render_metric_table(facts: tuple[MetricFact, ...], title: str) -> List[str]
 
 def _render_agent_view(view: AgentView) -> List[str]:
     lines: List[str] = []
-    role_label = "看多分析师 (Bull)" if view.role == "bull" else "风控分析师 (Bear)"
+    if view.role == "alpha":
+        role_label = "Alpha 趋势与机会分析师"
+    elif view.role == "risk_evidence":
+        role_label = "Risk & Evidence 风险与证据分析师"
+    elif view.role == "bull":
+        role_label = "看多分析师 (Bull) [旧角色]"
+    elif view.role == "bear":
+        role_label = "风控分析师 (Bear) [旧角色]"
+    else:
+        role_label = f"分析师 ({view.role})"
     lines.append(f"#### {role_label}")
     lines.append("")
     lines.append(f"- **判断**: {view.verdict}")
@@ -146,7 +155,10 @@ def generate_company_report(bundle: CompanyFactBundle) -> str:
     lines.append("- 技术因子基于历史价格和成交量计算，不构成未来收益保证。")
     if bundle.data_provider_status != "complete":
         lines.append(f"- 数据覆盖状态为 '{bundle.data_provider_status}'，部分分析可能不完整。")
-    lines.append("- 基本面、公告和新闻数据当前为占位状态（未接入实时数据源）。")
+    if bundle.event_facts:
+        lines.append("- 公告事实来自分析时点前可用的归档原文；基本面和新闻数据仍未接入。")
+    else:
+        lines.append("- 公告、基本面和新闻事实在当前分析时点不可用或尚未接入。")
     lines.append("")
 
     return "\n".join(lines)

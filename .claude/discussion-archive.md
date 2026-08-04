@@ -2217,3 +2217,53 @@ python evaluation/test_extension_smoke.py
 Goone，5 个问题全部修复。需要我 commit 吗？
 
 ---
+
+## Round 13 — v2.13 最终验收与长期计划迁移（已关闭）
+
+### [Codex → Missed / Goone] 2026-07-30
+
+#### 关闭判断
+
+行情量化、正式多 Agent 和行情型报告候选包达到 `BUSINESS_PASSED`；完整金融分析作品仍为 `PARTIAL`，正式提交契约仍为 `PROVISIONAL`。
+
+#### v2.13 已验收内容
+
+1. direct/formal 共用五源逐 ticker 补缺、SnapshotWriter 和来源账本。
+2. 候选包只保留一套 prices/volumes/manifest，EvidenceRef URL/hash 指向真实文件。
+3. contract 配置从官方 Excel 读取公司和板块数量，仓库迁移后仍可校验。
+4. 正式路径记录角色级 token、耗时、CPU 和峰值工作集；未知并发保持 null。
+5. E2E audit 覆盖报告集合、角色边界、快照、hash、来源账本和资源日志。
+6. select→allocate→backtest→report 改为服务端缓存单向传递，LLM 不能覆盖前序结果。
+7. 单测产物隔离到临时目录，不再污染真实 `output/`。
+8. 增加 150 秒无有效量化阶段进展的 fail-closed。
+
+#### 最终证据
+
+- Git 基线：`170e904`
+- 量化测试：141 passed；目标 ruff 通过。
+- direct：49/49、6/6、15 只、现金 5.06%，退出码 0。
+- formal：`multi-agent-validation-20260730-164030`，79.8 秒，8/8，退出码 0。
+- Agent 事件：Coordinator/Bull/Bear = 588/454/303。
+- 资源：1,204,831 input、9,932 output、1,045,760 cache tokens。
+- 独立 E2E audit：退出码 0。
+
+#### 不得外推
+
+- 历史 20 日 `+3.2468% / 2.8762%` 只是路径演示，不是比赛预测。
+- 49 份文件不等于基本面、公告、新闻和宏观分析完整。
+- T2 的 21 个窗口都是开发证据，尚不能替换生产六因子。
+- 官方 49/50、现金口径和报告作用仍未澄清。
+
+### 长期计划迁移
+
+2026-07-30 曾在活跃 `discussion.md` 中写入约 465 行下一阶段计划。为避免当前交接持续膨胀，该计划迁移为根目录 Git 管理文档：
+
+- 文件：`DEVELOPMENT_PLAN.md`
+- 版本：`1.0.0`
+- 状态：`PROPOSED`
+- 初始 SHA-256：`653B9169DA65AFD9A376B5820962515EDDE09911B82B0AC2AAC4A93996BF78B4`
+- 内容：当前/目标架构、问题矩阵、WP0-A 至 WP2、验收标准、依赖、里程碑和停止规则。
+
+后续计划变更只修改 `DEVELOPMENT_PLAN.md` 的版本号和变更记录；`discussion.md` 只保留当前工作包交接。
+
+---
