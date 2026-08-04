@@ -109,6 +109,7 @@ SESSION_ID = (
     "multi-agent-validation-"
     + datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d-%H%M%S")
 )
+os_env.environ["JIUWENSWARM_QUANT_RUN_ID"] = SESSION_ID
 SUBMISSION_CONTRACT = get_contract()
 EXPECTED_STOCKS = SUBMISSION_CONTRACT.n_companies
 EXPECTED_SECTORS = SUBMISSION_CONTRACT.n_sectors
@@ -177,7 +178,35 @@ def _phase_payload_valid(phase: str, payload: dict) -> bool:
             return False
         if cp.get("quality_passed") is not True:
             return False
-        return cp.get("n_reports") == EXPECTED_STOCKS
+        binding = cp.get("artifact_binding")
+        if not isinstance(binding, dict):
+            return False
+        candidate_path = Path(str(cp.get("path") or ""))
+        hash_fields = (
+            "snapshot_manifest_sha256",
+            "report_manifest_sha256",
+            "evidence_manifest_sha256",
+            "company_reports_tree_sha256",
+            "binding_sha256",
+            "candidate_binding_file_sha256",
+        )
+        return (
+            cp.get("n_reports") == EXPECTED_STOCKS
+            and cp.get("immutable") is True
+            and candidate_path.parent.name == "submission_candidates"
+            and candidate_path.name == cp.get("candidate_id")
+            and binding.get("schema") == "candidate_artifact_binding/v1"
+            and binding.get("candidate_id") == cp.get("candidate_id")
+            and binding.get("snapshot_id") == cp.get("snapshot_id")
+            and binding.get("report_count") == EXPECTED_STOCKS
+            and binding.get("announcement_facts") == cp.get("announcement_facts")
+            and binding.get("disclosure_reports") == cp.get("disclosure_reports")
+            and all(
+                isinstance(binding.get(field), str)
+                and len(binding[field]) == 64
+                for field in hash_fields
+            )
+        )
     return True
 
 
@@ -610,6 +639,14 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     # 5. Save results
     print("\n[5/5] Saving results...")
 
+    report_candidates = [
+        call.get("payload", {}).get("candidate_package")
+        for call in quant_rpc_calls
+        if call.get("method") == "quant.generate_report"
+        and _phase_payload_valid("report", call.get("payload", {}))
+    ]
+    formal_candidate = report_candidates[-1] if report_candidates else None
+
     summary = {
         "session_id": SESSION_ID,
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -638,6 +675,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             "progress_budget": progress_guard.as_dict(),
         },
         "quant_rpc_calls": quant_rpc_calls,
+        "candidate_package": formal_candidate,
         "issues": errors if errors else None,
     }
 
@@ -753,8 +791,17 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         },
     )
     resource_report.finalize()
-    candidate_path = OUTPUT_DIR / "submission_candidate"
-    if candidate_path.is_dir():
+    candidate_path = (
+        Path(str(formal_candidate.get("path"))).resolve()
+        if isinstance(formal_candidate, dict)
+        else None
+    )
+    candidate_root = (OUTPUT_DIR / "submission_candidates").resolve()
+    if (
+        candidate_path is not None
+        and candidate_path.is_dir()
+        and candidate_path.parent == candidate_root
+    ):
         resource_report.save_json(str(candidate_path / "resource_usage.json"))
         resource_report.save_markdown(str(candidate_path / "resource_usage.md"))
         summary["resource_usage"] = resource_report.to_dict()

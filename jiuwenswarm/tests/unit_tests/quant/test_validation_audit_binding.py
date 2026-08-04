@@ -17,6 +17,7 @@ from jiuwenswarm.quant.market_data_service import (
     diagnose_market_data,
 )
 from jiuwenswarm.quant.reporting.snapshot_writer import write_market_data_snapshot
+from jiuwenswarm.quant.reporting.candidate_binding import write_candidate_binding
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS
 
 SCRIPT = (
@@ -54,6 +55,44 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _candidate_fixture(tmp_path: Path, candidate_id: str = "direct-test") -> dict:
+    candidate = tmp_path / "submission_candidates" / candidate_id
+    (candidate / "company_reports").mkdir(parents=True)
+    (candidate / "data_snapshot").mkdir()
+    _write(
+        candidate / "report_manifest.json",
+        {
+            "candidate_id": candidate_id,
+            "quality_metrics": {"report_grade_disclosure": 1},
+        },
+    )
+    _write(
+        candidate / "evidence_manifest.json",
+        {
+            "evidence_refs": {
+                "snap-1": {"source_type": "market_data"},
+                "ann-1": {"source_type": "disclosure"},
+            }
+        },
+    )
+    _write(candidate / "portfolio_meta.json", {"as_of_time": "2025-01-01T16:00:00+08:00"})
+    _write(candidate / "Portfolio.json", {"600000": 0.1})
+    _write(candidate / "portfolio_report.md", "portfolio")
+    _write(candidate / "company_reports" / "600000.md", "report")
+    _write(candidate / "data_snapshot" / "snap-1_manifest.json", {"snapshot_id": "snap-1"})
+    binding = write_candidate_binding(candidate)
+    return {
+        "path": str(candidate.resolve()),
+        "candidate_id": candidate_id,
+        "immutable": True,
+        "snapshot_id": "snap-1",
+        "snapshot_manifest_sha256": binding["snapshot_manifest_sha256"],
+        "announcement_facts": 1,
+        "disclosure_reports": 1,
+        "artifact_binding": binding,
+    }
+
+
 def _fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     session_id = "multi-agent-validation-20260731-150000"
     artifact_id = "20260731-150000"
@@ -62,8 +101,22 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
     chunks = tmp_path / f"multi_agent_chunks_{artifact_id}.json"
     direct_log = tmp_path / "direct.log"
     multi_log = tmp_path / "multi.log"
-    _write(pipeline, {"snapshot_id": "snap-1"})
-    _write(summary, {"session_id": session_id})
+    direct_binding = {"binding_sha256": "a" * 64}
+    formal_binding = {"binding_sha256": "b" * 64}
+    _write(
+        pipeline,
+        {
+            "snapshot_id": "snap-1",
+            "candidate_package": {"artifact_binding": direct_binding},
+        },
+    )
+    _write(
+        summary,
+        {
+            "session_id": session_id,
+            "candidate_package": {"artifact_binding": formal_binding},
+        },
+    )
     _write(chunks, [])
     _write(direct_log, "direct")
     _write(multi_log, "formal")
@@ -80,6 +133,10 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, dict]:
         "direct_snapshot_id": "snap-1",
         "artifact_paths": {key: str(value.resolve()) for key, value in paths.items()},
         "artifact_sha256": {key: _digest(value) for key, value in paths.items()},
+        "candidate_bindings": {
+            "direct": direct_binding,
+            "formal": formal_binding,
+        },
     }
     return pipeline, summary, audit
 
@@ -101,6 +158,31 @@ def test_cross_snapshot_binding_fails(tmp_path: Path) -> None:
 
     assert valid is False
     assert reason == "direct snapshot mismatch"
+
+
+def test_direct_business_pass_requires_bound_audit() -> None:
+    portfolio = [
+        {
+            "ticker": f"{index:06d}.SH",
+            "weight": 0.05,
+            "sector": f"sector-{index % 6}",
+        }
+        for index in range(15)
+    ]
+    pipeline = {
+        "n_stocks_fetched": 49,
+        "n_sectors_covered": 6,
+        "n_stocks_selected": 15,
+        "portfolio": portfolio,
+        "backtest": {"total_return": 0.01},
+    }
+
+    assert MODULE._status_section(pipeline, None, None)[
+        "quant_core_and_market_data"
+    ] == "NOT_TESTED"
+    assert MODULE._status_section(pipeline, None, True)[
+        "quant_core_and_market_data"
+    ] == "BUSINESS_PASSED"
 
 
 def test_replaced_direct_result_fails_hash_binding(tmp_path: Path) -> None:
@@ -131,6 +213,62 @@ def test_missing_artifact_hash_fails(tmp_path: Path) -> None:
 
     assert valid is False
     assert reason == "audit artifact paths/hashes are incomplete"
+
+
+def test_bound_candidate_rejects_mutable_or_tampered_artifact(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    candidate = _candidate_fixture(tmp_path)
+    monkeypatch.setattr(
+        AUDIT_MODULE,
+        "audit_candidate_evidence",
+        lambda *_args, **_kwargs: None,
+    )
+    failures: list[str] = []
+    resolved = AUDIT_MODULE.audit_bound_candidate(
+        "direct",
+        candidate,
+        tmp_path,
+        failures,
+        expected_snapshot_id="snap-1",
+        expected_announcement_facts=1,
+        expected_disclosure_reports=1,
+        require_formal_resources=False,
+    )
+    assert resolved == Path(candidate["path"])
+    assert failures == []
+
+    Path(candidate["path"], "company_reports", "600000.md").write_text(
+        "later formal overwrite",
+        encoding="utf-8",
+    )
+    failures = []
+    AUDIT_MODULE.audit_bound_candidate(
+        "direct",
+        candidate,
+        tmp_path,
+        failures,
+        expected_snapshot_id="snap-1",
+        expected_announcement_facts=1,
+        expected_disclosure_reports=1,
+        require_formal_resources=False,
+    )
+    assert any("binding mismatch" in failure for failure in failures)
+
+    mutable = dict(candidate, path=str(tmp_path / "submission_candidate"))
+    failures = []
+    assert AUDIT_MODULE.audit_bound_candidate(
+        "direct",
+        mutable,
+        tmp_path,
+        failures,
+        expected_snapshot_id="snap-1",
+        require_formal_resources=False,
+    ) is None
+    assert failures == [
+        "direct: candidate path is not a direct child of submission_candidates"
+    ]
 
 
 def test_e2e_audit_accepts_and_verifies_nine_file_market_snapshot(tmp_path: Path) -> None:

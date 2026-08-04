@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Mapping, Tuple
@@ -21,34 +21,23 @@ from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
 from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract
 
 
-_MANAGED_PACKAGE_FILES = (
-    "Portfolio.json",
-    "portfolio_report.md",
-    "evidence_manifest.json",
-    "portfolio_meta.json",
-    "report_manifest.json",
-    # Optional files written by the direct path after the shared package.
-    # Removing them here prevents a later formal run from inheriting stale
-    # direct-run evidence.
-    "rails_result.json",
-    "resource_usage.json",
-    "resource_usage.md",
-    "reproducibility.md",
-    "framework_changes.md",
-)
-_MANAGED_PACKAGE_DIRS = ("company_reports", "data_snapshot", "evidence_archive")
+_CANDIDATE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
-def _clear_previous_candidate(package_path: str) -> None:
-    """Remove only files owned by the candidate-package workflow."""
-    for filename in _MANAGED_PACKAGE_FILES:
-        path = os.path.join(package_path, filename)
-        if os.path.isfile(path):
-            os.remove(path)
-    for dirname in _MANAGED_PACKAGE_DIRS:
-        managed_dir = os.path.join(package_path, dirname)
-        if os.path.isdir(managed_dir):
-            shutil.rmtree(managed_dir)
+def _candidate_path(output_dir: str, candidate_id: str) -> str:
+    """Allocate one create-once run directory below submission_candidates."""
+    if not _CANDIDATE_ID.fullmatch(candidate_id) or candidate_id in {".", ".."}:
+        raise ValueError("candidate_id must be a safe non-empty run identifier")
+    root = Path(output_dir) / "submission_candidates"
+    root.mkdir(parents=True, exist_ok=True)
+    package = root / candidate_id
+    try:
+        package.mkdir()
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"immutable candidate already exists: {package}"
+        ) from exc
+    return str(package)
 
 
 def _collect_evidence_refs(
@@ -151,6 +140,7 @@ def build_candidate_package(
     portfolio: PortfolioSnapshot,
     bundles: Mapping[str, CompanyFactBundle],
     output_dir: str,
+    candidate_id: str,
     strategy_label: str = "production",
     *,
     evidence_manifest: Mapping[str, EvidenceRef] | None = None,
@@ -158,16 +148,15 @@ def build_candidate_package(
 ) -> Tuple[bool, ReportQualityResult, str]:
     """Generate a complete candidate submission package.
 
-    Writes to output_dir/submission_candidate/ — never overwrites output/submission/.
+    Writes once to ``output_dir/submission_candidates/<candidate_id>/`` and
+    refuses to reuse that path. Historical candidates are never cleared.
 
     evidence_manifest: evidence_id → EvidenceRef mapping. If None, evidence
     consistency checks are limited (with warnings).
 
     Returns (package_ok, quality_result, package_path).
     """
-    package_path = os.path.join(output_dir, "submission_candidate")
-    os.makedirs(package_path, exist_ok=True)
-    _clear_previous_candidate(package_path)
+    package_path = _candidate_path(output_dir, candidate_id)
 
     company_reports_dir = os.path.join(package_path, "company_reports")
     os.makedirs(company_reports_dir, exist_ok=True)
@@ -263,6 +252,7 @@ def build_candidate_package(
     # ---- Report manifest ----
     manifest = {
         "package_path": package_path,
+        "candidate_id": candidate_id,
         "generated_at": generated_at.isoformat(),
         "contract_hash": contract.config_hash(),
         "contract_source_verified": contract.source_verified,

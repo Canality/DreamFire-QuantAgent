@@ -7,8 +7,8 @@
 | 对象 | 证据等级 | 结论 |
 |---|---|---|
 | 量化核心与行情证据链 | BUSINESS_PASSED | 最新 direct `2025-01-02 → 2025-05-21` 真实通过共享五源 Provider、因果切分和仓位约束；49/49、6/6、15 只，收益 `+0.7476%`、最大回撤 `1.6424%` |
-| JiuwenSwarm 多 Agent 路径 | BUSINESS_PASSED | 最新 session `multi-agent-validation-20260804-152646` 在 fixed quant capability ceiling 下完成 8/8；每阶段恰好请求/执行 1 次、0 cache hit、0 error，三角色真实参与且无角色 RPC 越权 |
-| 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct 与 formal 报告路径均携带 1,470 条、49/49 披露；独立 E2E audit 退出 0，报告等级仍为 `FINANCIAL_PARTIAL`，不得升级为完整金融分析 |
+| JiuwenSwarm 多 Agent 路径 | BUSINESS_PASSED | 最新 session `multi-agent-validation-20260804-172234` 在 fixed quant capability ceiling 下完成 8/8；每阶段恰好请求/执行 1 次、0 cache hit、0 error，三角色真实参与且无角色 RPC 越权 |
+| 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct 与 formal 分别绑定各自 create-once 候选包，均携带 1,470 条公告、49/49 披露；独立 E2E audit 重算两套文件树与 manifest 哈希后退出 0，报告等级仍为 `FINANCIAL_PARTIAL` |
 | 完整金融分析作品 | PARTIAL / FAILED | direct/formal 报告与公告披露已形成可审计覆盖，但基本面、新闻、宏观和另类数据仍缺失，不能宣称 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 最新答疑与静态文档仍有 3 项冲突，不能把候选包改名为正式提交包 |
 | 策略 alpha | RESEARCH_ONLY | competition-aligned 20 窗重跑中 T2 配对收益差 +0.8356pp、效用胜出 17/20；全部仍是已观察开发窗口。最新 A0/A1/A2 消融存在配仓缓存串线，不能作为 Agent 无增量证据 |
@@ -32,6 +32,19 @@
 因此 `SubmissionContract.can_proceed_formal()` 当前必须失败关闭。解除阻断需要主办方的可归档书面答复，不得由 Agent 自行猜测。
 
 ## 本轮真实验收
+
+### -12. Windows 两项 P1 修复与不可变候选绑定复验（2026-08-04 16:55–17:24）
+
+证据等级：公告全域健康门、不可变候选绑定和汇总晋级门均为 `PATH_PASSED`；fresh direct、formal 与独立绑定审计均为 `BUSINESS_PASSED`。本轮未开始 WP1-B/WP1-C，旧证据目录未被覆盖。
+
+- Windows 复核工件 `output/agent_handoffs/FORMAL-CAPABILITY-CEILING-0804/WINDOWS_CODEX_REVIEW.json` 的两个 P1 已分别修复。49-ticker 必选宇宙若首轮公告总数为 0，会用新的 Provider 对整个宇宙做一次有界健康重试；再次全空即失败关闭，direct 的时间戳结果保留两次尝试、49 家逐 ticker 终止原因、页数/请求数、解析失败和整体 terminal cause。单测覆盖首轮恢复、连续全空和 required-universe 精确性。
+- 候选输出从单一可变 `output/submission_candidate` 改为 create-once 的 `output/submission_candidates/<candidate-id>`。direct 结果与 formal summary 分别记录绝对路径、候选 ID、immutable 标志、snapshot ID/manifest hash、报告/证据 manifest hash、49 份公司报告树 hash，以及报告、公告、披露和 EvidenceRef 计数；重复 ID 失败关闭。
+- 独立 audit 分别解析 direct/formal 候选，拒绝 legacy 可变路径、同目录混用和任一 hash/计数漂移，并重新计算两套 `candidate_binding.json`。`generate_validation_summary.py` 只有在 audit `passed=true` 且当前 results/summary 的绑定精确匹配时，才允许量化核心、多 Agent 路径和报告候选三项进入 `BUSINESS_PASSED`。
+- 独立 Critic verdict 为 `ACCEPT`、无 P0/P1/P2；记录在 `output/agent_handoffs/WINDOWS-P1-REPAIR-0804/CRITIC_REVIEW.json`。聚焦回归 55 passed；changed-file Ruff、py_compile、diff-check、scope-check 均退出 0。
+- fresh direct：日志 `output/agent_handoffs/WINDOWS-P1-REPAIR-0804/validation/direct.log`，结果 `output/pipeline_results_20260804_172026.json`，退出 0；49/49、90 日、训练 70/前向 20 日、15 只、6 板块、现金 5.06%，收益 `+0.7476%`、最大回撤 `1.6424%`、Sharpe `1.107`；1,470 条公告覆盖 49/49，候选为 `direct-20260804_172026`。
+- fresh formal：日志 `output/agent_handoffs/WINDOWS-P1-REPAIR-0804/validation/formal.log`，session `multi-agent-validation-20260804-172234`，summary/chunks 为 `output/multi_agent_summary_20260804-172234.json` 与 `output/multi_agent_chunks_20260804-172234.json`；退出 0，8/8、每阶段 request/execution 各 1、0 cache hit、16 tool calls、0 error，三角色事件 1569/1011/644，专属 RPC 各 1 且无越权。候选为 `formal-multi-agent-validation-20260804-172234`。
+- `output/audit_result_multi-agent-validation-20260804-172234.json` 独立审计退出 0、`passed=true`、failures 为空。direct binding SHA-256 为 `f506e5f5f2123590a98728e7139fd3612041e07c90ba319aa1cf3e4588877e88`，formal 为 `a2db8f2b377f494adc65cc51fd95b66535e92c55001548c4f9a7c159a9650072`；两者路径、snapshot、manifest、报告树和计数均独立核验。
+- 历史 `output/submission_candidate` mtime 仍为 `2026-08-04 15:27:34 +0800`，未被本轮运行触碰；旧 direct/formal/audit 和既有 handoff 全部保留。当前裁决仍不改变完整金融分析 `PARTIAL` 与正式提交契约 `PROVISIONAL / BLOCKED`。
 
 ### -11. Fixed quant capability ceiling 与最新完整双路径复验（2026-08-04 13:35–15:28）
 

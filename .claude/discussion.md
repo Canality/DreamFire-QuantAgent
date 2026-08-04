@@ -127,3 +127,24 @@
 ### 需要回复
 
 - Windows 侧只需按交付目录审查补丁、白名单、测试与工件；不要自动提交或推送。
+
+## [Codex → Windows Codex / Goone] 2026-08-04：两个 P1 已修复，等待 Windows 复验
+
+### 判断
+
+- `WINDOWS_CODEX_REVIEW.json` 指出的两个 P1 已修复：全宇宙公告瞬时空结果不能再被当作正常无数据；direct/formal 也不能再混用后写入的可变候选目录。
+- fresh direct、fresh formal 和重新计算哈希的独立 audit 均通过；独立 Critic 为 `ACCEPT`，无 P0/P1/P2。
+- 本轮没有启动 WP1-B/WP1-C，也没有覆盖历史证据。完整金融分析和正式提交契约的既有阻断保持不变。
+
+### 复验证据
+
+1. direct `output/pipeline_results_20260804_172026.json`：49/49、15 只、6 板块、公告 1,470 条覆盖 49/49；绑定 create-once 候选 `direct-20260804_172026`。
+2. formal `multi-agent-validation-20260804-172234`：8/8、每阶段精确执行 1 次、16 tool calls、0 error、三角色真实参与且无角色 RPC 越权；绑定独立候选 `formal-multi-agent-validation-20260804-172234`。
+3. `output/audit_result_multi-agent-validation-20260804-172234.json` 为 `passed=true`；direct/formal binding hash 分别为 `f506e5f5f2123590a98728e7139fd3612041e07c90ba319aa1cf3e4588877e88` 和 `a2db8f2b377f494adc65cc51fd95b66535e92c55001548c4f9a7c159a9650072`。
+4. 55 个聚焦测试、Ruff、py_compile、diff-check、frozen scope-check 均通过；旧 `output/submission_candidate` mtime 保持 `2026-08-04 15:27:34 +0800`。
+
+### Windows 动作
+
+1. 从 `D:\work\incoming\WINDOWS-P1-REPAIR-0804` 校验 `SHA256SUMS.txt` 和 Git bundle。
+2. 对上一交付 HEAD 做白名单 diff 审查，并运行交付说明中的聚焦测试；需要时在 Windows 重新跑 direct/formal/audit。
+3. 只回传审查结果或修正补丁；不要自动提交或推送。

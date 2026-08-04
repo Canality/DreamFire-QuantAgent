@@ -7,16 +7,22 @@ import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
+
+import pytest
 
 from jiuwenswarm.quant.reporting.announcement_service import (
     AnnouncementService,
+    AnnouncementUniverseHealthError,
     ServiceResult,
     run_announcement_service,
 )
 from jiuwenswarm.quant.reporting.providers.announcement import (
+    AnnouncementDiagnostics,
     AnnouncementPage,
     AnnouncementProvider,
+    AnnouncementResult,
     AnnouncementTerminalCause,
 )
 from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
@@ -45,6 +51,42 @@ MOCK_ANNOUNCEMENTS = [
 ]
 
 MOCK_EMPTY: list = []
+
+
+def _empty_result() -> AnnouncementResult:
+    return AnnouncementResult(
+        status=ProviderStatus.AVAILABLE_NO_EVENT,
+        diagnostics=AnnouncementDiagnostics(
+            terminal_cause=AnnouncementTerminalCause.TRUE_NO_DATA,
+            pages_requested=1,
+            request_attempts=1,
+            total_hits=0,
+        ),
+    )
+
+
+class _StaticProvider:
+    def __init__(self, *, event_ticker: str | None = None):
+        self.event_ticker = event_ticker
+        self.calls: list[str] = []
+
+    async def fetch_rich(self, ticker: str, as_of_time: datetime):
+        self.calls.append(ticker)
+        if ticker != self.event_ticker:
+            return _empty_result()
+        fact = SimpleNamespace(evidence_ids=())
+        return AnnouncementResult(
+            facts=[fact],
+            status=ProviderStatus.COMPLETE,
+            diagnostics=AnnouncementDiagnostics(
+                terminal_cause=AnnouncementTerminalCause.EVENTS_FOUND,
+                pages_requested=1,
+                request_attempts=1,
+                raw_items=1,
+                eligible_items=1,
+                total_hits=1,
+            ),
+        )
 
 
 def _page(items: list, total_hits: int | None = None) -> AnnouncementPage:
@@ -199,3 +241,72 @@ class TestAnnouncementServiceFixture:
                 parsed = json.loads(content)
                 assert "art_code" in parsed
                 assert "title" in parsed
+
+    def test_required_universe_all_empty_retries_with_fresh_provider(self) -> None:
+        tickers = [f"{index:06d}.SH" for index in range(49)]
+        primary = _StaticProvider()
+        retry = _StaticProvider(event_ticker=tickers[0])
+        with tempfile.TemporaryDirectory() as tmp:
+            service = AnnouncementService(
+                primary,
+                EvidenceArchive(Path(tmp)),
+                retry_provider_factory=lambda: retry,
+            )
+            result = asyncio.run(
+                service.run(
+                    tickers,
+                    datetime(2026, 7, 30, 12, 0, tzinfo=UTC),
+                    required_universe=tickers,
+                )
+            )
+
+        assert result.total_facts == 1
+        assert primary.calls == tickers
+        assert retry.calls == tickers
+        assert result.universe_health["healthy"] is True
+        assert result.universe_health["recovered_after_retry"] is True
+        assert len(result.universe_health["attempts"]) == 2
+        assert result.universe_health["attempts"][0]["all_empty"] is True
+        assert result.universe_health["attempts"][1]["all_empty"] is False
+
+    def test_required_universe_repeated_all_empty_fails_closed(self) -> None:
+        tickers = [f"{index:06d}.SH" for index in range(49)]
+        with tempfile.TemporaryDirectory() as tmp:
+            service = AnnouncementService(
+                _StaticProvider(),
+                EvidenceArchive(Path(tmp)),
+                retry_provider_factory=_StaticProvider,
+            )
+            with pytest.raises(AnnouncementUniverseHealthError) as caught:
+                asyncio.run(
+                    service.run(
+                        tickers,
+                        datetime(2026, 7, 30, 12, 0, tzinfo=UTC),
+                        required_universe=tickers,
+                    )
+                )
+
+        diagnostics = caught.value.diagnostics
+        assert diagnostics["healthy"] is False
+        assert diagnostics["terminal_cause"] == "required_universe_all_empty"
+        assert len(diagnostics["attempts"]) == 2
+        assert all(attempt["terminal_cause_counts"] == {"true_no_data": 49}
+                   for attempt in diagnostics["attempts"])
+        assert len(diagnostics["attempts"][0]["diagnostics_by_ticker"]) == 49
+
+    def test_required_universe_must_match_exact_ticker_set(self) -> None:
+        required = [f"{index:06d}.SH" for index in range(49)]
+        with tempfile.TemporaryDirectory() as tmp:
+            service = AnnouncementService(
+                _StaticProvider(),
+                EvidenceArchive(Path(tmp)),
+                retry_provider_factory=_StaticProvider,
+            )
+            with pytest.raises(ValueError, match="required announcement universe"):
+                asyncio.run(
+                    service.run(
+                        required[:-1],
+                        datetime(2026, 7, 30, 12, 0, tzinfo=UTC),
+                        required_universe=required,
+                    )
+                )

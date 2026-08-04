@@ -174,8 +174,15 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
         isolated_write_market_data_snapshot,
     )
 
-    async def fake_announcement_run(self, tickers, as_of_time):
+    async def fake_announcement_run(
+        self,
+        tickers,
+        as_of_time,
+        *,
+        required_universe=None,
+    ):
         del self
+        assert required_universe == list(ALL_STOCKS)
         evidence_id = "ann-test-formal-propagation"
         raw = b'{"title":"fixture disclosure"}'
         first = tickers[0]
@@ -223,6 +230,12 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
                 )
                 for ticker in tickers
             },
+            universe_health={
+                "required": True,
+                "healthy": True,
+                "recovered_after_retry": False,
+                "attempts": [{"all_empty": False}],
+            },
         )
 
     monkeypatch.setattr(
@@ -253,14 +266,33 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
 
     def fake_build_package(
         self, *, portfolio, bundles, output_dir, strategy_label,
-        evidence_manifest, evidence_archive
+        candidate_id, evidence_manifest, evidence_archive
     ):
         del self, portfolio, output_dir, strategy_label, evidence_archive
         captured["bundles"] = bundles
         captured["evidence_manifest"] = evidence_manifest
+        captured["candidate_id"] = candidate_id
         return True, DummyQuality(), str(tmp_path)
 
     monkeypatch.setattr(ReportService, "build_package", fake_build_package)
+    monkeypatch.setenv("JIUWENSWARM_QUANT_RUN_ID", "test-formal-session")
+    monkeypatch.setattr(
+        reporting,
+        "write_candidate_binding",
+        lambda _path: {
+            "candidate_id": "formal-test-formal-session",
+            "report_count": 49,
+            "announcement_facts": 1,
+            "disclosure_reports": 1,
+            "evidence_count": 2,
+            "snapshot_id": "fixture-snapshot",
+            "snapshot_manifest_sha256": "a" * 64,
+            "report_manifest_sha256": "b" * 64,
+            "company_reports_tree_sha256": "c" * 64,
+            "binding_sha256": "d" * 64,
+            "candidate_binding_file_sha256": "e" * 64,
+        },
+    )
     report = asyncio.run(
         extension.generate_report(
             {
@@ -277,6 +309,9 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
     assert report["summary"]["regime"] == factors["regime"]
     assert report["candidate_package"]["quality_passed"] is True
     assert report["candidate_package"]["n_reports"] == 49
+    assert report["candidate_package"]["immutable"] is True
+    assert report["candidate_package"]["disclosure_reports"] == 1
+    assert captured["candidate_id"] == "formal-test-formal-session"
     assert len(captured["bundles"]) == 49
     assert all(bundle.technical_facts for bundle in captured["bundles"].values())
     assert any(bundle.agent_views for bundle in captured["bundles"].values())

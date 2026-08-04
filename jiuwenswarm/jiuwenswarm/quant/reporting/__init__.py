@@ -15,10 +15,15 @@ from jiuwenswarm.quant.reporting.agent_view_parser import (
 )
 from jiuwenswarm.quant.reporting.announcement_service import (
     AnnouncementService,
+    AnnouncementUniverseHealthError,
     ServiceResult,
     run_announcement_service,
 )
 from jiuwenswarm.quant.reporting.company_report import generate_company_report
+from jiuwenswarm.quant.reporting.candidate_binding import (
+    verify_candidate_binding,
+    write_candidate_binding,
+)
 from jiuwenswarm.quant.reporting.models import (
     AgentView,
     CompanyFactBundle,
@@ -71,6 +76,7 @@ from jiuwenswarm.quant.reporting.symphony_adapter import (
 __all__ = [
     "AgentView",
     "AnnouncementService",
+    "AnnouncementUniverseHealthError",
     "CompanyFactBundle",
     "EvidenceRef",
     "GradeResult",
@@ -107,8 +113,10 @@ __all__ = [
     "run_announcement_service",
     "validate_quant_plan",
     "validate_submission",
+    "verify_candidate_binding",
     "verify_market_data_snapshot",
     "verify_snapshot_artifacts",
     "write_data_snapshot",
+    "write_candidate_binding",
     "write_market_data_snapshot",
 ]

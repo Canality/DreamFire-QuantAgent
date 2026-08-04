@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -799,12 +800,14 @@ class QuantFinanceExtension(BaseExtension):
         try:
             from jiuwenswarm.quant.reporting import (
                 AnnouncementService,
+                AnnouncementUniverseHealthError,
                 EvidenceRef,
                 MetricFact,
                 ReportService,
                 install_market_data_snapshot_in_candidate,
                 parse_bull_bear_pair,
                 write_market_data_snapshot,
+                write_candidate_binding,
             )
             from jiuwenswarm.quant.reporting.providers.announcement import (
                 AnnouncementProvider,
@@ -892,10 +895,24 @@ class QuantFinanceExtension(BaseExtension):
             announcement_archive = EvidenceArchive(
                 output_root / "evidence_archive"
             )
-            announcement_result = await AnnouncementService(
-                AnnouncementProvider(),
-                announcement_archive,
-            ).run(list(ALL_STOCKS), decision_time)
+            try:
+                announcement_result = await AnnouncementService(
+                    AnnouncementProvider(),
+                    announcement_archive,
+                    retry_provider_factory=AnnouncementProvider,
+                ).run(
+                    list(ALL_STOCKS),
+                    decision_time,
+                    required_universe=list(ALL_STOCKS),
+                )
+            except AnnouncementUniverseHealthError as exc:
+                result["announcement_evidence"] = {
+                    "healthy": False,
+                    "total_facts": 0,
+                    "tickers_with_events": 0,
+                    "universe_health": exc.diagnostics,
+                }
+                raise
             evidence_manifest = {
                 snapshot.snapshot_id: ev_ref,
                 **announcement_result.manifest,
@@ -988,8 +1005,18 @@ class QuantFinanceExtension(BaseExtension):
             )
 
             output_dir = str(output_root)
+            formal_run_id = os.environ.get("JIUWENSWARM_QUANT_RUN_ID")
+            if not formal_run_id:
+                formal_run_id = (
+                    "standalone-"
+                    + datetime.now(ZoneInfo("Asia/Shanghai")).strftime(
+                        "%Y%m%d-%H%M%S"
+                    )
+                    + f"-{time.time_ns()}"
+                )
             pkg_ok, quality, pkg_path = service.build_package(
                 portfolio=ps, bundles=bundles, output_dir=output_dir,
+                candidate_id=f"formal-{formal_run_id}",
                 strategy_label="multi_agent",
                 evidence_manifest=evidence_manifest,
                 evidence_archive=announcement_archive,
@@ -1010,14 +1037,22 @@ class QuantFinanceExtension(BaseExtension):
             )
             if installed_url != ev_ref.source_url or installed_hash != ev_ref.content_sha256:
                 raise RuntimeError("installed snapshot does not match EvidenceRef")
+            candidate_binding = write_candidate_binding(pkg_path)
 
             result["candidate_package"] = {
-                "path": pkg_path, "quality_passed": pkg_ok,
-                "n_reports": len(bundles),
+                "path": str(Path(pkg_path).resolve()),
+                "candidate_id": candidate_binding["candidate_id"],
+                "immutable": True,
+                "quality_passed": pkg_ok,
+                "n_reports": candidate_binding["report_count"],
                 "snapshot_id": snapshot.snapshot_id,
+                "snapshot_manifest_sha256": installed_hash,
                 "announcement_facts": announcement_result.total_facts,
                 "announcement_tickers": announcement_result.tickers_with_events,
-                "evidence_count": len(evidence_manifest),
+                "disclosure_reports": candidate_binding["disclosure_reports"],
+                "evidence_count": candidate_binding["evidence_count"],
+                "announcement_health": announcement_result.universe_health,
+                "artifact_binding": candidate_binding,
                 "blockers": list(quality.blockers),
                 "warnings": list(quality.warnings),
             }

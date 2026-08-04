@@ -75,6 +75,19 @@ def _validate_audit_binding(
             return False, f"audit artifact is missing: {label}"
         if _sha256_file(path) != artifact_hashes[label]:
             return False, f"audit artifact hash mismatch: {label}"
+    direct_binding = (
+        (pipeline.get("candidate_package") or {}).get("artifact_binding")
+    )
+    formal_binding = (
+        (multi.get("candidate_package") or {}).get("artifact_binding")
+    )
+    audited_bindings = audit_data.get("candidate_bindings") or {}
+    if not isinstance(direct_binding, dict) or not isinstance(formal_binding, dict):
+        return False, "run candidate bindings are incomplete"
+    if audited_bindings.get("direct") != direct_binding:
+        return False, "direct candidate binding mismatch"
+    if audited_bindings.get("formal") != formal_binding:
+        return False, "formal candidate binding mismatch"
     return True, None
 
 
@@ -119,6 +132,7 @@ def _direct_section(pipeline: dict | None) -> dict | None:
         "cash_weight": round(1.0 - sum(h["weight"] for h in pipeline.get("portfolio", [])), 4),
         "sector_weights": pipeline.get("sector_weights"),
         "announcement_evidence": pipeline.get("announcement_evidence"),
+        "candidate_package": pipeline.get("candidate_package"),
         "total_return": bt.get("total_return"),
         "max_drawdown": bt.get("max_drawdown"),
         "backtest": {
@@ -142,10 +156,8 @@ def _formal_section(multi: dict | None) -> dict | None:
         if call.get("method") == "quant.generate_report"
         and call.get("payload", {}).get("success") is True
     ]
-    candidate_package = (
-        report_payloads[-1].get("candidate_package", {})
-        if report_payloads
-        else {}
+    candidate_package = multi.get("candidate_package") or (
+        report_payloads[-1].get("candidate_package", {}) if report_payloads else {}
     )
     return {
         "session_id": multi.get("session_id"),
@@ -167,6 +179,10 @@ def _formal_section(multi: dict | None) -> dict | None:
                 "announcement_tickers"
             ),
             "evidence_count": candidate_package.get("evidence_count"),
+            "path": candidate_package.get("path"),
+            "immutable": candidate_package.get("immutable"),
+            "disclosure_reports": candidate_package.get("disclosure_reports"),
+            "artifact_binding": candidate_package.get("artifact_binding"),
         },
         "multi_agent_working": multi.get("multi_agent_working"),
         "resource_usage": {
@@ -246,7 +262,11 @@ def _status_section(pipeline: dict | None, multi: dict | None, audit_passed: boo
                 and equity_weight <= 0.95 + 1e-9
                 and 1.0 - equity_weight >= 0.05 - 1e-9
                 and bt.get("total_return") is not None):
-            return "BUSINESS_PASSED"
+            if audit_passed is True:
+                return "BUSINESS_PASSED"
+            if audit_passed is False:
+                return "FAILED"
+            return "NOT_TESTED"
         return "FAILED"
 
     statuses = {

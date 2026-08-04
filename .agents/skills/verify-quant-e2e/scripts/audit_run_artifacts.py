@@ -20,6 +20,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "jiuwenswarm"))
 get_contract = importlib.import_module(
     "jiuwenswarm.quant.reporting.submission_contract"
 ).get_contract
+verify_candidate_binding = importlib.import_module(
+    "jiuwenswarm.quant.reporting.candidate_binding"
+).verify_candidate_binding
 
 SUBMISSION_CONTRACT = get_contract()
 EXPECTED_STOCKS = SUBMISSION_CONTRACT.n_companies
@@ -157,7 +160,12 @@ def audit_market_snapshot(
     return manifest, manifest_path
 
 
-def audit_candidate_evidence(candidate: Path, failures: list[str]) -> None:
+def audit_candidate_evidence(
+    candidate: Path,
+    failures: list[str],
+    *,
+    require_formal_resources: bool = True,
+) -> None:
     report_codes = {
         path.stem
         for path in (candidate / "company_reports").glob("*.md")
@@ -168,9 +176,11 @@ def audit_candidate_evidence(candidate: Path, failures: list[str]) -> None:
 
     resource_json = candidate / "resource_usage.json"
     resource_md = candidate / "resource_usage.md"
-    if not resource_json.is_file() or not resource_md.is_file():
+    if require_formal_resources and (
+        not resource_json.is_file() or not resource_md.is_file()
+    ):
         failures.append("candidate: formal resource usage JSON/Markdown is missing")
-    else:
+    elif require_formal_resources:
         try:
             resource = json.loads(load_text(resource_json))
             if float(resource.get("total_duration_seconds") or 0) <= 0:
@@ -268,6 +278,86 @@ def audit_candidate_evidence(candidate: Path, failures: list[str]) -> None:
         failures.append(f"candidate: snapshot evidence verification failed: {exc}")
 
 
+def audit_bound_candidate(
+    owner: str,
+    candidate_package: object,
+    output_root: Path,
+    failures: list[str],
+    *,
+    expected_snapshot_id: object,
+    expected_announcement_facts: object | None = None,
+    expected_disclosure_reports: object | None = None,
+    require_formal_resources: bool,
+) -> Path | None:
+    """Resolve and verify one immutable candidate referenced by a run artifact."""
+    local_failures: list[str] = []
+    if not isinstance(candidate_package, dict):
+        failures.append(f"{owner}: candidate package binding is missing")
+        return None
+    if candidate_package.get("immutable") is not True:
+        failures.append(f"{owner}: candidate package is not marked immutable")
+        return None
+
+    raw_path = candidate_package.get("path")
+    candidate_id = candidate_package.get("candidate_id")
+    binding = candidate_package.get("artifact_binding")
+    if not isinstance(raw_path, str) or not raw_path:
+        failures.append(f"{owner}: candidate path is missing")
+        return None
+    candidate = Path(raw_path).resolve()
+    immutable_root = (output_root.resolve() / "submission_candidates").resolve()
+    if candidate.parent != immutable_root:
+        failures.append(
+            f"{owner}: candidate path is not a direct child of submission_candidates"
+        )
+        return None
+    if candidate.name != candidate_id:
+        failures.append(f"{owner}: candidate id/path mismatch")
+        return None
+    if not candidate.is_dir():
+        failures.append(f"{owner}: bound candidate directory is missing")
+        return None
+    if not isinstance(binding, dict):
+        failures.append(f"{owner}: artifact binding is missing")
+        return None
+
+    binding_ok, binding_failures = verify_candidate_binding(candidate, binding)
+    local_failures.extend(binding_failures)
+    if binding_ok:
+        if binding.get("snapshot_id") != expected_snapshot_id:
+            local_failures.append("candidate snapshot id does not match run artifact")
+        if candidate_package.get("snapshot_id") != binding.get("snapshot_id"):
+            local_failures.append("candidate snapshot id does not match binding")
+        if candidate_package.get("snapshot_manifest_sha256") != binding.get(
+            "snapshot_manifest_sha256"
+        ):
+            local_failures.append("candidate snapshot hash does not match binding")
+        if candidate_package.get("announcement_facts") != binding.get(
+            "announcement_facts"
+        ):
+            local_failures.append("candidate announcement count does not match binding")
+        if candidate_package.get("disclosure_reports") != binding.get(
+            "disclosure_reports"
+        ):
+            local_failures.append("candidate disclosure count does not match binding")
+        if expected_announcement_facts is not None and binding.get(
+            "announcement_facts"
+        ) != expected_announcement_facts:
+            local_failures.append("run announcement count does not match candidate")
+        if expected_disclosure_reports is not None and binding.get(
+            "disclosure_reports"
+        ) != expected_disclosure_reports:
+            local_failures.append("run disclosure count does not match candidate")
+        audit_candidate_evidence(
+            candidate,
+            local_failures,
+            require_formal_resources=require_formal_resources,
+        )
+
+    failures.extend(f"{owner}: {item}" for item in local_failures)
+    return candidate
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--results", type=Path, required=True)
@@ -285,13 +375,49 @@ def main() -> int:
     direct_log = load_text(args.direct_log)
     multi_log = load_text(args.multi_log) if args.multi_log else ""
     multi_chunks = json.loads(load_text(args.multi_chunks))
-    audit_candidate_evidence(args.results.parent / "submission_candidate", failures)
     summary_path = _multi_summary_path(args.multi_chunks)
     multi_summary = (
         json.loads(load_text(summary_path))
         if summary_path is not None and summary_path.is_file()
         else {}
     )
+
+    direct_announcement = results.get("announcement_evidence") or {}
+    direct_candidate = audit_bound_candidate(
+        "direct",
+        results.get("candidate_package"),
+        args.results.parent,
+        failures,
+        expected_snapshot_id=results.get("snapshot_id"),
+        expected_announcement_facts=direct_announcement.get("total_facts"),
+        expected_disclosure_reports=direct_announcement.get("tickers_with_events"),
+        require_formal_resources=False,
+    )
+    formal_package = multi_summary.get("candidate_package")
+    formal_candidate = audit_bound_candidate(
+        "formal",
+        formal_package,
+        args.results.parent,
+        failures,
+        expected_snapshot_id=(
+            formal_package.get("snapshot_id")
+            if isinstance(formal_package, dict)
+            else None
+        ),
+        expected_announcement_facts=(
+            formal_package.get("announcement_facts")
+            if isinstance(formal_package, dict)
+            else None
+        ),
+        expected_disclosure_reports=(
+            formal_package.get("disclosure_reports")
+            if isinstance(formal_package, dict)
+            else None
+        ),
+        require_formal_resources=True,
+    )
+    if direct_candidate is not None and direct_candidate == formal_candidate:
+        failures.append("candidate binding: direct and formal reused the same directory")
 
     if "Done." not in direct_log or "Results saved to" not in direct_log:
         failures.append("direct: run did not complete and save a fresh result")
@@ -445,6 +571,8 @@ def main() -> int:
         direct_log_path=args.direct_log,
         multi_log_path=args.multi_log,
         multi_summary_path=summary_path,
+        direct_candidate_package=results.get("candidate_package"),
+        formal_candidate_package=formal_package,
     )
 
     if failures:
@@ -475,6 +603,8 @@ def _write_audit_json(
     direct_log_path: str,
     multi_log_path: str | None,
     multi_summary_path: Path | None,
+    direct_candidate_package: object,
+    formal_candidate_package: object,
 ) -> None:
     """Write audit_result_<session>.json for consumption by summary generator."""
     session_id = "unknown"
@@ -502,6 +632,18 @@ def _write_audit_json(
         "members": dict(member_counts),
         "role_rpc_counts": dict(role_rpc_counts),
         "tools_verified": list(REQUIRED_MULTI_TOOLS),
+        "candidate_bindings": {
+            "direct": (
+                direct_candidate_package.get("artifact_binding")
+                if isinstance(direct_candidate_package, dict)
+                else None
+            ),
+            "formal": (
+                formal_candidate_package.get("artifact_binding")
+                if isinstance(formal_candidate_package, dict)
+                else None
+            ),
+        },
     }
     artifact_paths = {
         "results": Path(results_path),

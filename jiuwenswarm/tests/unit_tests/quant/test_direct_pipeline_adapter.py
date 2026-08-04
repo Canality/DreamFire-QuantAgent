@@ -197,6 +197,32 @@ def test_direct_script_has_no_private_extension_fetch_dependency():
     assert "extensions/quant-finance/extension.py" not in source
 
 
+def test_direct_failure_payload_retains_both_terminal_cause_attempts():
+    module = _load_direct_module()
+    diagnostics = {
+        "healthy": False,
+        "terminal_cause": "required_universe_all_empty",
+        "attempts": [
+            {
+                "terminal_cause_counts": {"true_no_data": 49},
+                "diagnostics_by_ticker": {"600000.SH": {"total_hits": 0}},
+            },
+            {
+                "terminal_cause_counts": {"true_no_data": 49},
+                "diagnostics_by_ticker": {"600000.SH": {"total_hits": 0}},
+            },
+        ],
+    }
+    payload = module._announcement_failure_payload(
+        datetime(2025, 4, 18, 16, 0, tzinfo=ZoneInfo("Asia/Shanghai")),
+        diagnostics,
+    )
+
+    assert payload["healthy"] is False
+    assert payload["universe_health"] == diagnostics
+    assert len(payload["universe_health"]["attempts"]) == 2
+
+
 def test_direct_report_adapter_forwards_shared_announcement_evidence(
     monkeypatch,
     tmp_path,
@@ -252,6 +278,19 @@ def test_direct_report_adapter_forwards_shared_announcement_evidence(
         total_facts=1,
         tickers_with_events=1,
         statuses={ticker: ProviderStatus.COMPLETE for ticker in ALL_STOCKS},
+        terminal_cause_counts={"events_found": 49},
+        diagnostics_by_ticker={
+            ticker: SimpleNamespace(
+                to_dict=lambda: {"terminal_cause": "events_found"}
+            )
+            for ticker in ALL_STOCKS
+        },
+        universe_health={
+            "required": True,
+            "healthy": True,
+            "recovered_after_retry": False,
+            "attempts": [{"all_empty": False}],
+        },
     )
     captured = {"bundles": {}}
 
@@ -292,6 +331,7 @@ def test_direct_report_adapter_forwards_shared_announcement_evidence(
         def build_package(self, **kwargs):
             captured["manifest"] = kwargs["evidence_manifest"]
             captured["archive"] = kwargs["evidence_archive"]
+            captured["candidate_id"] = kwargs["candidate_id"]
             raise RuntimeError("runtime propagation captured")
 
     snapshot = SimpleNamespace(
@@ -320,7 +360,15 @@ def test_direct_report_adapter_forwards_shared_announcement_evidence(
     import jiuwenswarm.quant.reporting as reporting
 
     monkeypatch.setattr(reporting, "write_market_data_snapshot", lambda *_a, **_k: snapshot)
-    monkeypatch.setattr(reporting, "run_announcement_service", lambda *_a, **_k: announcement_result)
+    def fake_run_announcement_service(*_args, **kwargs):
+        captured["required_universe"] = kwargs["required_universe"]
+        return announcement_result
+
+    monkeypatch.setattr(
+        reporting,
+        "run_announcement_service",
+        fake_run_announcement_service,
+    )
     monkeypatch.setattr(reporting, "ReportService", FakeReportService)
 
     with pytest.raises(RuntimeError, match="runtime propagation captured"):
@@ -334,3 +382,5 @@ def test_direct_report_adapter_forwards_shared_announcement_evidence(
     assert captured["manifest"][event_ref.evidence_id] is event_ref
     assert captured["manifest"][snapshot.snapshot_id].evidence_id == snapshot.snapshot_id
     assert captured["archive"].root == fake_repo / "output" / "evidence_archive"
+    assert captured["required_universe"] == list(ALL_STOCKS)
+    assert str(captured["candidate_id"]).startswith("direct-")

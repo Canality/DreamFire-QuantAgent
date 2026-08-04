@@ -2,6 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from jiuwenswarm.quant.reporting.models import (
     CompanyFactBundle,
     EvidenceRef,
@@ -96,35 +98,40 @@ def test_exact_report_set_passes():
     assert result.passed
 
 
-def test_package_builder_removes_stale_files_from_previous_run(tmp_path):
+def test_package_builder_preserves_prior_run_and_rejects_candidate_reuse(tmp_path):
     c = _make_contract(3)
-    package_dir = tmp_path / "submission_candidate"
-    reports_dir = package_dir / "company_reports"
-    snapshots_dir = package_dir / "data_snapshot"
-    reports_dir.mkdir(parents=True)
-    snapshots_dir.mkdir(parents=True)
-    (package_dir / "rails_result.json").write_text("stale", encoding="utf-8")
-    (package_dir / "resource_usage.json").write_text("stale", encoding="utf-8")
-    (reports_dir / "999999.md").write_text("stale", encoding="utf-8")
-    (snapshots_dir / "stale_manifest.json").write_text("stale", encoding="utf-8")
+    historical = tmp_path / "submission_candidates" / "historical-run"
+    historical.mkdir(parents=True)
+    historical_file = historical / "evidence.json"
+    historical_file.write_text("historical", encoding="utf-8")
 
     bundles = {t: _make_bundle(t) for t in c.company_codes}
-    build_candidate_package(
+    _, _, package_path = build_candidate_package(
         contract=c,
         portfolio=_make_ps(c),
         bundles=bundles,
         output_dir=str(tmp_path),
+        candidate_id="direct-test-run",
         evidence_manifest={"e1": _make_evidence_ref("e1")},
     )
 
-    assert not (package_dir / "rails_result.json").exists()
-    assert not (package_dir / "resource_usage.json").exists()
-    assert not snapshots_dir.exists()
-    assert {path.name for path in reports_dir.glob("*.md")} == {
+    package_dir = tmp_path / "submission_candidates" / "direct-test-run"
+    assert package_path == str(package_dir)
+    assert historical_file.read_text(encoding="utf-8") == "historical"
+    assert {path.name for path in (package_dir / "company_reports").glob("*.md")} == {
         "000001.md",
         "000002.md",
         "000003.md",
     }
+    with pytest.raises(FileExistsError, match="immutable candidate already exists"):
+        build_candidate_package(
+            contract=c,
+            portfolio=_make_ps(c),
+            bundles=bundles,
+            output_dir=str(tmp_path),
+            candidate_id="direct-test-run",
+            evidence_manifest={"e1": _make_evidence_ref("e1")},
+        )
 
 
 def test_all_unavailable_blocked():

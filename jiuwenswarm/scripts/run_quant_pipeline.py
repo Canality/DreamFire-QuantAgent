@@ -89,6 +89,23 @@ def _decision_evidence_bundle(
     )
 
 
+def _announcement_failure_payload(
+    as_of_time: datetime,
+    diagnostics: dict[str, object],
+) -> dict[str, object]:
+    """Persist the complete fail-closed universe health outcome."""
+    return {
+        "as_of_time": as_of_time.isoformat(),
+        "healthy": False,
+        "total_facts": 0,
+        "tickers_with_events": 0,
+        "manifest_count": 0,
+        "terminal_cause_counts": {},
+        "diagnostics_by_ticker": {},
+        "universe_health": diagnostics,
+    }
+
+
 def fetch_data(
     tickers: list[str],
     start_date: str,
@@ -303,11 +320,13 @@ def main(argv: list[str] | None = None) -> None:
     t0 = time.time()
     try:
         from jiuwenswarm.quant.reporting import (
+            AnnouncementUniverseHealthError,
             EvidenceRef,
             MetricFact,
             ReportService,
             install_market_data_snapshot_in_candidate,
             run_announcement_service,
+            write_candidate_binding,
         )
         from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
         from jiuwenswarm.quant.reporting.resource_meter import (
@@ -331,11 +350,28 @@ def main(argv: list[str] | None = None) -> None:
                 content_sha256=snapshot.manifest_sha256,
             )
             archive_root = output_dir / "evidence_archive"
-            announcement_result = run_announcement_service(
-                list(ALL_STOCKS),
-                decision_time,
-                archive_root,
-            )
+            try:
+                announcement_result = run_announcement_service(
+                    list(ALL_STOCKS),
+                    decision_time,
+                    archive_root,
+                    required_universe=list(ALL_STOCKS),
+                )
+            except AnnouncementUniverseHealthError as exc:
+                results["announcement_evidence"] = _announcement_failure_payload(
+                    decision_time,
+                    exc.diagnostics,
+                )
+                for path in (timestamped_path, output_dir / "pipeline_results.json"):
+                    with open(path, "w", encoding="utf-8") as handle:
+                        json.dump(
+                            results,
+                            handle,
+                            ensure_ascii=False,
+                            indent=2,
+                            default=str,
+                        )
+                raise
             announcement_archive = EvidenceArchive(archive_root)
             evidence_manifest = {
                 snapshot_id: ev_ref,
@@ -343,6 +379,7 @@ def main(argv: list[str] | None = None) -> None:
             }
             results["announcement_evidence"] = {
                 "as_of_time": decision_time.isoformat(),
+                "healthy": True,
                 "total_facts": announcement_result.total_facts,
                 "tickers_with_events": announcement_result.tickers_with_events,
                 "manifest_count": len(announcement_result.manifest),
@@ -353,6 +390,13 @@ def main(argv: list[str] | None = None) -> None:
                     )
                     for status in set(announcement_result.statuses.values())
                 },
+                "terminal_cause_counts": announcement_result.terminal_cause_counts,
+                "diagnostics_by_ticker": {
+                    ticker: diagnostics.to_dict()
+                    for ticker, diagnostics
+                    in announcement_result.diagnostics_by_ticker.items()
+                },
+                "universe_health": announcement_result.universe_health,
             }
             for path in (timestamped_path, output_dir / "pipeline_results.json"):
                 with open(path, "w", encoding="utf-8") as handle:
@@ -394,6 +438,7 @@ def main(argv: list[str] | None = None) -> None:
             package_ok, quality, pkg_path = service.build_package(
                 portfolio=portfolio_snapshot, bundles=bundles,
                 output_dir=str(output_dir), strategy_label=args.strategy,
+                candidate_id=f"direct-{run_id}",
                 evidence_manifest=evidence_manifest,
                 evidence_archive=announcement_archive,
             )
@@ -408,12 +453,20 @@ def main(argv: list[str] | None = None) -> None:
             )
             if installed_url != ev_ref.source_url or installed_hash != ev_ref.content_sha256:
                 raise RuntimeError("installed snapshot does not match EvidenceRef")
+            candidate_binding = write_candidate_binding(pkg_path)
             results["candidate_package"] = {
-                "path": str(pkg_path),
+                "path": str(Path(pkg_path).resolve()),
+                "candidate_id": candidate_binding["candidate_id"],
+                "immutable": True,
                 "quality_passed": package_ok,
                 "snapshot_id": snapshot_id,
                 "snapshot_manifest_sha256": installed_hash,
-                "reports": len(bundles),
+                "reports": candidate_binding["report_count"],
+                "announcement_facts": candidate_binding["announcement_facts"],
+                "announcement_tickers": announcement_result.tickers_with_events,
+                "disclosure_reports": candidate_binding["disclosure_reports"],
+                "evidence_count": candidate_binding["evidence_count"],
+                "artifact_binding": candidate_binding,
                 "blockers": list(quality.blockers),
                 "warnings": list(quality.warnings),
             }
@@ -423,8 +476,9 @@ def main(argv: list[str] | None = None) -> None:
 
         # Resource report
         resource.finalize()
-        resource.save_json(str(output_dir / "submission_candidate" / "resource_usage.json"))
-        resource.save_markdown(str(output_dir / "submission_candidate" / "resource_usage.md"))
+        candidate_path = Path(pkg_path)
+        resource.save_json(str(candidate_path / "resource_usage.json"))
+        resource.save_markdown(str(candidate_path / "resource_usage.md"))
 
         # Reproducibility doc
         repro_md = f"""# 可复现说明
@@ -450,9 +504,9 @@ def main(argv: list[str] | None = None) -> None:
 ## 复现步骤
 1. 安装依赖: `pip install -r requirements.txt`
 2. 运行直跑: `python scripts/run_quant_pipeline.py`
-3. 产物: `output/submission_candidate/`
+3. 产物: `{candidate_path}`
 """
-        with open(str(output_dir / "submission_candidate" / "reproducibility.md"), "w", encoding="utf-8") as f:
+        with open(str(candidate_path / "reproducibility.md"), "w", encoding="utf-8") as f:
             f.write(repro_md)
 
         # Rails execution
@@ -484,7 +538,7 @@ def main(argv: list[str] | None = None) -> None:
                 "blockers": rr.blockers, "warnings": rr.warnings,
             })
         all_rails_passed = all(item["passed"] for item in rail_results)
-        with open(str(output_dir / "submission_candidate" / "rails_result.json"), "w", encoding="utf-8") as f:
+        with open(str(candidate_path / "rails_result.json"), "w", encoding="utf-8") as f:
             json.dump({"all_passed": all_rails_passed, "rails": rail_results}, f, indent=2, ensure_ascii=False)
         print(f"  Rails: {sum(1 for r in rail_results if r['passed'])}/{len(rail_results)} passed")
         if not all_rails_passed:
@@ -522,7 +576,7 @@ def main(argv: list[str] | None = None) -> None:
 - 直跑要求: 官方股票池全覆盖、全部板块、15只、Quality PASSED
 - 多Agent要求: 8/8 RPC, Alpha/Risk & Evidence 各自调用专属工具
 """
-        with open(str(output_dir / "submission_candidate" / "framework_changes.md"), "w", encoding="utf-8") as f:
+        with open(str(candidate_path / "framework_changes.md"), "w", encoding="utf-8") as f:
             f.write(framework_md)
 
         elapsed = time.time() - t0

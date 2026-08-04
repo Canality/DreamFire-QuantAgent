@@ -25,6 +25,40 @@ def _valid_fetch() -> dict:
     }
 
 
+def _valid_report() -> dict:
+    candidate_id = "formal-multi-agent-validation-test"
+    binding = {
+        "schema": "candidate_artifact_binding/v1",
+        "candidate_id": candidate_id,
+        "snapshot_id": "snapshot-1",
+        "report_count": MODULE.EXPECTED_STOCKS,
+        "announcement_facts": 1470,
+        "disclosure_reports": MODULE.EXPECTED_STOCKS,
+        "snapshot_manifest_sha256": "a" * 64,
+        "report_manifest_sha256": "b" * 64,
+        "evidence_manifest_sha256": "c" * 64,
+        "company_reports_tree_sha256": "d" * 64,
+        "binding_sha256": "e" * 64,
+        "candidate_binding_file_sha256": "f" * 64,
+    }
+    return {
+        "success": True,
+        "report": "report",
+        "summary": {"n_holdings": 15},
+        "candidate_package": {
+            "path": f"/tmp/output/submission_candidates/{candidate_id}",
+            "candidate_id": candidate_id,
+            "immutable": True,
+            "quality_passed": True,
+            "n_reports": MODULE.EXPECTED_STOCKS,
+            "snapshot_id": "snapshot-1",
+            "announcement_facts": 1470,
+            "disclosure_reports": MODULE.EXPECTED_STOCKS,
+            "artifact_binding": binding,
+        },
+    }
+
+
 def test_valid_single_rpc_marks_phase_complete() -> None:
     phases, issues = MODULE._validate_quant_rpc_calls(
         [{"method": "quant.fetch_data", "payload": _valid_fetch()}]
@@ -46,6 +80,18 @@ def test_later_success_cannot_hide_an_earlier_failed_rpc() -> None:
     assert issues == [
         "quant.fetch_data returned 1 unsuccessful or invalid result(s)"
     ]
+
+
+def test_report_phase_requires_immutable_candidate_binding() -> None:
+    assert MODULE._phase_payload_valid("report", _valid_report()) is True
+
+    mutable = _valid_report()
+    mutable["candidate_package"]["path"] = "/tmp/output/submission_candidate"
+    assert MODULE._phase_payload_valid("report", mutable) is False
+
+    unbound = _valid_report()
+    unbound["candidate_package"].pop("artifact_binding")
+    assert MODULE._phase_payload_valid("report", unbound) is False
 
 
 @pytest.mark.asyncio
