@@ -1130,7 +1130,7 @@ def test_enrich_team_spec_for_swarm_rewrites_spec_in_place() -> None:
 
 
 def test_enrich_team_spec_rewrites_named_teammate_templates() -> None:
-    """Bull/Bear template keys must receive teammate rails and quant tools."""
+    """Named Alpha/Risk templates receive teammate rails and quant tools."""
     spec = TeamAgentSpec(
         agents={
             "leader": DeepAgentSpec(),

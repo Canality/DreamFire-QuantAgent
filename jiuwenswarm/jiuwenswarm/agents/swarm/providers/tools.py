@@ -534,7 +534,7 @@ def _build_quant_tools(ctx: SwarmBuildContext) -> list[Any]:
     description="Quantitative finance tools: data fetch, multi-factor, backtesting, alpha/risk-evidence analysis.",
 )
 def build_quant_toolkit(params: dict[str, Any], ctx: SwarmBuildContext) -> list[Any]:
-    """Build quant tools for all team members (leader, Bull, Bear)."""
+    """Build least-privilege quant tools for Coordinator, Alpha, and Risk."""
     return _build_quant_tools(ctx)
 
 

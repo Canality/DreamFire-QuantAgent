@@ -144,7 +144,7 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
         MetricFact,
         ReportService,
         ServiceResult,
-        parse_bull_bear_pair,
+        parse_agent_view,
     )
     from jiuwenswarm.quant.reporting.providers.announcement import (
         AnnouncementDiagnostics,
@@ -244,8 +244,11 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
         fake_announcement_run,
     )
 
-    views, errors = parse_bull_bear_pair(alpha, risk)
-    assert errors == []
+    alpha_view, alpha_errors = parse_agent_view(alpha, "alpha")
+    risk_view, risk_errors = parse_agent_view(risk, "risk_evidence")
+    assert alpha_errors == []
+    assert risk_errors == []
+    views = [view for view in (alpha_view, risk_view) if view is not None]
     assert {view.role for view in views} == {"alpha", "risk_evidence"}
 
     selected = asyncio.run(
@@ -347,6 +350,62 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
         else set()
     )
     assert snapshots_after == snapshots_before
+
+
+def test_report_fails_closed_on_missing_or_corrupt_current_agent_view(monkeypatch):
+    module = _load_extension_module()
+    module._data_cache.clear()
+    prices, volumes = _market_data()
+    _install_fake_market_service(monkeypatch, module, prices, volumes)
+    extension = module.QuantFinanceExtension()
+
+    asyncio.run(
+        extension.fetch_data(
+            {"start_date": "2025-01-01", "end_date": "2025-06-01"}
+        )
+    )
+    factors = asyncio.run(extension.compute_factors({}))
+    alpha = asyncio.run(extension.alpha_view({}))
+    risk = asyncio.run(extension.risk_evidence_view({}))
+    selected = asyncio.run(
+        extension.select_stocks({"all_composite": factors["all_composite"]})
+    )
+    allocation = asyncio.run(
+        extension.allocate_positions({"tickers": selected["tickers"]})
+    )
+    asyncio.run(extension.run_backtest({"weights": allocation["weights"]}))
+
+    from jiuwenswarm.quant import reporting
+
+    monkeypatch.setattr(
+        reporting,
+        "write_market_data_snapshot",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("invalid views must fail before artifact writes")
+        ),
+    )
+    cached = module._get_cached_data()
+    assert cached is not None
+
+    cases = (
+        ("_alpha_result", None, "missing required cached alpha AgentView"),
+        ("_alpha_result", {}, "alpha: missing required field 'verdict'"),
+        ("_risk_result", None, "missing required cached risk_evidence AgentView"),
+        ("_risk_result", "not-json", "Malformed JSON from risk_evidence"),
+    )
+    for cache_key, corrupt_value, expected_error in cases:
+        cached["_alpha_result"] = alpha
+        cached["_risk_result"] = risk
+        if corrupt_value is None:
+            cached.pop(cache_key)
+        else:
+            cached[cache_key] = corrupt_value
+
+        report = asyncio.run(extension.generate_report({}))
+
+        assert report["success"] is False
+        assert report["detail"].startswith("candidate_package_error:")
+        assert expected_error in report["candidate_package"]["error"]
 
 
 def test_cached_pipeline_uses_exact_selection_and_forward_test(monkeypatch):

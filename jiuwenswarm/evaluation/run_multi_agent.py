@@ -595,7 +595,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     participation = _agent_participation(chunks_log)
     role_rpc_calls = _role_rpc_calls(chunks_log)
     role_rpc_violations = _role_rpc_violations(chunks_log)
-    # Exact role set: exactly 3 members, no stale Bull/Bear ghosts
+    # Exact role set: exactly three current members, no legacy-role ghosts.
     EXPECTED_ROLES = {"quant-leader", "alpha_analyst", "risk_evidence_analyst"}
     actual_roles = set(participation.keys())
     extra_roles = actual_roles - EXPECTED_ROLES
@@ -609,7 +609,10 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         and role_set_valid
     )
     if extra_roles:
-        errors.append(f"UNEXPECTED ROLES DETECTED: {sorted(extra_roles)} — config may contain stale Bull/Bear members")
+        errors.append(
+            f"UNEXPECTED ROLES DETECTED: {sorted(extra_roles)} — "
+            "config may contain legacy members"
+        )
     if missing_roles:
         errors.append(f"MISSING REQUIRED ROLES: {sorted(missing_roles)}")
     validation_passed = loop_complete and multi_agent_working

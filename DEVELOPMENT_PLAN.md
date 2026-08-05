@@ -2,10 +2,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 文档版本 | `1.7.0` |
+| 文档版本 | `1.8.0` |
 | 状态 | `ACTIVE` |
 | 创建日期 | 2026-07-30 |
-| 适用基线 | Git `170e904` 及其后续提交 |
+| 适用基线 | Git `2ecfea5` 及其后续提交 |
 | 计划负责人 | Missed / Goone |
 | 独立审查与验收 | Codex |
 | 运行事实源 | `VALIDATION.md` |
@@ -49,7 +49,7 @@
         ↓
 Quant Extension：8 个 RPC
         ↓
-Coordinator + Bull + Bear Team Skill
+Coordinator + Alpha + Risk & Evidence Team Skill
         ↓
 Reporting Bundle / Quality Gate / 候选包
         ↓
@@ -60,12 +60,12 @@ direct + formal + 独立 E2E audit
 
 - direct/formal 已共享行情、快照和主要量化实现。
 - 行情覆盖、时间切分、选股到配仓传递和最终仓位约束已经可靠。
-- 正式 JiuwenSwarm 路径真实完成 Coordinator/Bull/Bear 和 8/8 RPC。
+- 正式 JiuwenSwarm 路径真实完成 Coordinator/Alpha/Risk & Evidence 和 8/8 RPC。
 - 候选包具有 EvidenceRef、hash、来源账本和角色级资源数据。
 - 数据不足、角色越权、报告缺失和约束失败均能 fail-closed。
 - 生产策略和研究 challenger 已分离，旧污染评分不再作为生产证据。
 
-### 2.3 2026-07-30 基线快照
+### 2.3 2026-07-30 迁移前历史基线快照
 
 以下仅用于确定下一阶段起点，不随未来运行自动更新：
 
@@ -786,30 +786,23 @@ WP2 外部阻断解除并重新执行 `VALIDATION.md` 全部命令后才能进�
 
 ## 11. 立即执行入口
 
-用户已授权 Missed 和 Goone 按本文开始开发，不再等待第三个实现角色回复。
+截至 2026-08-05，WP1-B 嵌套评测边界已关闭，WP1-C 精确三个 challenger 均未通过预注册门槛；本轮 Alpha 搜索停止，生产策略保持 `production_six_factor`。活动旧角色兼容层按独立 HIGH 风险任务删除，市场 regime 和历史证据保留。
 
-### Missed 现在开始
+后续只允许按以下顺序建立互不重叠的任务：
 
-1. 先执行只读定位：解释最新真实双路径为何得到 49/49 行情、却只有 0/49 公告/披露证据；输出 Provider 注册、调用、缓存、归档、质量门和测试边界，不修改代码。
-2. 不接受“网络不可用”作为唯一根因；必须区分未调用、调用失败、真实无公告、时间窗过滤、解析失败和证据未接线。
-3. 定位结果进入有文件白名单的 WP0-C 修复任务；修复后必须通过 fixture、时间穿越/篡改负测、direct/formal 和独立 audit，才能恢复报告业务通过声明。
-4. `evaluation/agent_ablation.py` 保留为后续任务；公告 E2E 未恢复前不得用消融结果掩盖报告缺口，也不得切换生产组合。
+1. Windows 复验 `LEGACY-ROLE-CLEANUP-0805` 的 Git bundle、白名单、测试与 direct/formal/E2E 工件；不自动提交、推送或打 tag。
+2. 继续保持 T2、WP1-B 和 WP1-C 结果为 `RESEARCH_ONLY` / `DOES_NOT_QUALIFY`；没有新预注册任务和预算，不再调权、扫描阈值或增加候选。
+3. 报告维持 `FINANCIAL_PARTIAL`；fundamental 或 news-risk 必须作为新的 point-in-time Provider 工作包独立定位、实现和双路径验收。
+4. WP1-D 继续做正式路径重复运行、token/生命周期稳定性和确定性 replay，不改变角色数、RPC 数或生产策略。
+5. 主办方对 49/50、现金和报告权重给出可归档答复前，`SubmissionContract` 保持 `PROVISIONAL`，不得生成正式提交包。
 
-### Goone 现在开始
-
-1. 先执行只读定位：解释固定 quant profile 为何仍暴露并调用通用 task、file、browser 和 sys-operation 能力；不得修改 `.venv` 或依赖源码。
-2. 输出 openJiuwen 当前版本可支持的排除机制、项目层最小变更边界、负向验收和无法由项目层解决的上游限制。
-3. 定位结果进入有文件白名单的 WP1-D 修复任务；必须保持严格 8/8、每阶段只执行一次，并用同输入正式复跑比较 token、耗时和工具调用。
-4. WP1-A/B 研究可以在不触碰正式 Agent 组装和公告路径的前提下继续准备，但 WP1-B 通过前不得启动 WP1-C challenger 调权。
-
-Codex 在两个只读定位产物完成后冻结具体修复契约和文件白名单。当前不得把 `PATH_PASSED` 写成 Agent 架构或完整报告已经完成。
-
-两人都必须先运行相关局部测试；不得等待所有开发完成后才第一次验收。
+每项工作仍需先局部负向测试，再执行真实路径验收；任何 `PATH_PASSED`、研究统计或历史成功工件都不能替代当前提交的 `BUSINESS_PASSED` 证据。
 
 ## 12. 变更记录
 
 | 版本 | 日期 | 作者 | 变更 |
 |---|---|---|---|
+| 1.8.0 | 2026-08-05 | Codex | 同步 WP1-B/C 已验收但不晋级的结论，停止本轮 Alpha 搜索；将当前架构更正为 Coordinator/Alpha/Risk & Evidence；删除活动旧角色兼容层并新增 Windows 复验、Provider、WP1-D 和官方契约的顺序入口；保留迁移前基线与历史失败证据 |
 | 1.7.0 | 2026-08-04 | Codex | 用严格双路径和独立 audit 推翻过期的 WP0-C/WP1-D 完成假设：公告/披露仍为 0/49，formal 虽严格 8/8 但仍暴露通用能力且资源未下降；将立即执行入口改为两个只读定位任务，修复前禁止恢复业务通过声明 |
 | 1.6.0 | 2026-08-02 | Codex | 新增多模型角色化任务包、最小上下文、文件白名单与独立 Provider 配置验收；用工件交接替代长聊天和 CC Switch 单一全局 Provider，明确本地/云端风险路由 |
 | 1.5.0 | 2026-07-31 | Codex | 完成变参空转预算、统一阶段执行标记、完整 audit 绑定和公告双路径接线并通过真实 E2E；关闭 WP0-C，更新立即执行入口为 Missed 的 A0/A1/A2 + WP1-D、Goone 的 WP1-A/B |

@@ -2,10 +2,8 @@
 
 import json
 
-from jiuwenswarm.quant.reporting.agent_view_parser import (
-    parse_agent_view,
-    parse_bull_bear_pair,
-)
+import jiuwenswarm.quant.reporting as reporting
+from jiuwenswarm.quant.reporting.agent_view_parser import parse_agent_view
 from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract
 
 
@@ -23,7 +21,7 @@ def _make_contract() -> SubmissionContract:
     )
 
 
-def test_parse_valid_bull_view():
+def test_parse_valid_alpha_view():
     data = {
         "verdict": "overweight",
         "confidence": "high",
@@ -42,49 +40,48 @@ def test_parse_valid_bull_view():
 
 
 def test_parse_malformed_json():
-    view, errors = parse_agent_view("not json", "bull")
+    view, errors = parse_agent_view("not json", "alpha")
     assert view is None
     assert len(errors) > 0
     assert any("Malformed" in e for e in errors)
 
 
 def test_parse_missing_required_fields():
-    view, errors = parse_agent_view({}, "bear")
+    view, errors = parse_agent_view({}, "risk_evidence")
     assert view is None
     assert len(errors) > 0
 
 
 def test_parse_invalid_ticker():
     data = {"verdict": "neutral", "confidence": "medium", "candidate_tickers": ["bad_ticker"]}
-    view, errors = parse_agent_view(data, "bull", _make_contract())
+    view, errors = parse_agent_view(data, "alpha", _make_contract())
     assert len(errors) > 0
     assert any("malformed" in e.lower() for e in errors)
 
 
 def test_parse_unknown_ticker():
     data = {"verdict": "neutral", "confidence": "medium", "candidate_tickers": ["999999.SZ"]}
-    view, errors = parse_agent_view(data, "bull", _make_contract())
+    view, errors = parse_agent_view(data, "alpha", _make_contract())
     assert len(errors) > 0
     assert any("unknown" in e.lower() for e in errors)
 
 
 def test_parse_valid_from_json_string():
     raw = json.dumps({"verdict": "underweight", "confidence": "low"})
-    view, errors = parse_agent_view(raw, "bear")
+    view, errors = parse_agent_view(raw, "risk_evidence")
     assert view is not None
     assert view.verdict == "underweight"
 
 
-def test_parse_bull_bear_pair():
-    bull = {"verdict": "overweight", "confidence": "high"}
-    bear = {"verdict": "underweight", "confidence": "medium"}
-    views, errors = parse_bull_bear_pair(bull, bear)
-    assert len(views) == 2
-    assert views[0].role == "alpha"
-    assert views[1].role == "risk_evidence"
+def test_parse_rejects_retired_or_unknown_roles_before_payload_parsing():
+    for role in ("bull", "bear", "coordinator", "unknown"):
+        view, errors = parse_agent_view(
+            {"verdict": "neutral", "confidence": "medium"},
+            role,
+        )
+        assert view is None
+        assert errors == [f"Unsupported AgentView role: {role}"]
 
 
-def test_parse_bull_bear_pair_one_fails():
-    views, errors = parse_bull_bear_pair({"verdict": "ok"}, "bad string")
-    assert len(views) == 0  # bull missing confidence, bear malformed
-    assert len(errors) > 1
+def test_reporting_root_does_not_export_retired_pair_adapter():
+    assert not hasattr(reporting, "parse_bull_bear_pair")

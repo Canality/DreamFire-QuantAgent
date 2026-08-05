@@ -7,8 +7,8 @@
 ## 当前架构
 
 - 官方范围：`赛题文档/上市公司列表.xlsx`，当前实表 49 家、6 板块。
-- 正式团队：Coordinator + Bull Analyst + Bear Analyst。
-- 正式能力：8 个 Quant RPC（fetch/factors/bull/bear/select/allocate/backtest/report）。
+- 正式团队：Coordinator + Alpha Analyst + Risk & Evidence Analyst。
+- 正式能力：8 个 Quant RPC（fetch/factors/alpha/risk-evidence/select/allocate/backtest/report）。
 - 双入口：
   - 研发旁路：`jiuwenswarm/scripts/run_quant_pipeline.py`
   - 正式路径：`jiuwenswarm/evaluation/run_multi_agent.py`
@@ -35,7 +35,7 @@
 - 回测必须遵守决策时点因果，禁止用期末信息选股后回看同期。
 - 行情矩阵不得经过 LLM；Agent 只接收摘要和结构化结果。
 - LLM 对 scores、tickers、weights、portfolio、backtest 的回传一律视为不可信；select→allocate→backtest→report 必须读取服务端缓存的前序结果，Agent 只能触发阶段，不能改写已完成阶段。
-- 多 Agent 成功必须证明 8/8 RPC 输出有效，Bull/Bear 各自调用专属工具且无越权。
+- 多 Agent 成功必须证明 8/8 RPC 输出有效，Alpha 与 Risk & Evidence 各自调用专属工具且无越权。
 - 相同失败调用连续 3 次停止；150 秒无新增有效量化阶段失败关闭。
 - 报告集合必须精确匹配 contract；事实必须有真实 EvidenceRef；未知值写 unknown/partial，不填伪 0。
 - 正式候选必须包含唯一 prices/volumes/manifest、可重算 hash、逐 ticker 来源和真实资源日志。
@@ -72,6 +72,6 @@
 ## 当前优先级
 
 1. 降低正式 Agent token 与随机性，不牺牲 8/8 成功率。
-2. 接入真实 point-in-time 公告 Provider，并复用行情证据模式。
-3. 对 Phase B T2 做真正样本外验证；通过前不切生产。
+2. 完成真实 point-in-time 公告 Provider 的 Windows 正式路径复验。
+3. 保持 T2 和 WP1-C 三项 challenger 为研究证据；当前无候选获得生产晋级。
 4. 获取主办方对契约冲突的书面澄清。

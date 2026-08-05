@@ -45,29 +45,7 @@ class RegimeDiagnosis:
         return self.final == "range"
 
 
-# ---- Schema 2: Structured evidence for Bull/Bear recommendations ----
-
-
-@dataclass(frozen=True)
-class FactorEvidence:
-    """A single factor's contribution to a stock recommendation."""
-
-    factor_name: str    # e.g. "momentum_20"
-    value: float        # e.g. 0.153
-    interpretation: str  # e.g. "positive" | "negative" | "neutral"
-
-
-@dataclass
-class StockRecommendation:
-    """Structured Bull or Bear recommendation for one stock."""
-
-    ticker: str
-    score: float
-    evidences: list[FactorEvidence]  # which factors drove this score
-    rationale: str                   # 1-2 sentence reason
-
-
-# ---- Schema 3: Analysis Playbook Router ----
+# ---- Schema 2: Analysis Playbook Router ----
 
 
 @dataclass(frozen=True)

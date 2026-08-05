@@ -1,11 +1,11 @@
 ---
 id: WP1B-EVALUATION-0804
 title: Competition-aligned nested evaluation and strategy promotion
-status: REVIEWED
+status: CLOSED
 risk: HIGH
 owner: Codex
 created_at: 2026-08-04T17:40:19+08:00
-updated_at: 2026-08-04T18:20:16+08:00
+updated_at: 2026-08-05T09:35:21+08:00
 allowed_files:
   - .claude/discussion.md
   - VALIDATION.md
@@ -121,3 +121,5 @@ Implement the shared one-trading-day embargo, fixed-20-day nested evaluation, bo
 - 2026-08-04T18:10:30+08:00 `IMPLEMENTED`: Critic counterexamples closed with independently recomputed Git/config/snapshot/WP1-A report bindings, exact default-plan promotion gating and same-day 15:00 cutoff checks. 50 focused tests pass. Two reruns have identical nested hash and statistical qualification, but remain `RESEARCH_ONLY` because the worktree is dirty and snapshot is not WP1-A verified.
 - 2026-08-04T18:18:20+08:00 `IMPLEMENTED`: Final Critic counterexample closed: each hash-bound WP1-A report must also parse as JSON with semantic `VERIFIED` status. 57 focused/backtest tests pass; two post-fix reruns preserve the deterministic nested hash and `RESEARCH_ONLY` gate.
 - 2026-08-04T18:20:16+08:00 `REVIEWED`: Independent Critic ACCEPT: 57 focused/backtest tests, Ruff, diff-check, owned scope, deterministic run6/run7 and historical evidence hashes verified; no blocking finding.
+- 2026-08-05T09:35:21+08:00 `VERIFIED`: Planner verified the accepted Critic evidence and WP1-C's downstream binding; result remains RESEARCH_ONLY with no promotion.
+- 2026-08-05T09:35:21+08:00 `CLOSED`: Acceptance complete; the nested evaluation boundary is frozen and subsequent work must not reinterpret the research-only result.

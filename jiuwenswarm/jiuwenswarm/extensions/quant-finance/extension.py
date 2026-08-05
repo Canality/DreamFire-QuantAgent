@@ -3,7 +3,7 @@
 Registers 8 RPC handlers for the full quant investment pipeline:
   quant.fetch_data, quant.compute_factors, quant.select_stocks,
   quant.allocate_positions, quant.run_backtest, quant.generate_report,
-  quant.bull_view, quant.bear_view
+  quant.alpha_view, quant.risk_evidence_view
 
 Data flows through an in-memory cache: fetch_data stores results,
 subsequent tools read from cache. This avoids passing huge price
@@ -104,7 +104,7 @@ def _set_cached_data(data: dict) -> None:
 def _update_cached_data(**updates: Any) -> bool:
     """Atomically add derived artifacts to the current market-data cache.
 
-    Bull and Bear handlers may finish concurrently. Replacing the whole cache
+    Alpha and Risk & Evidence handlers may finish concurrently. Replacing the whole cache
     from a stale snapshot can therefore discard the other handler's result.
     Mutating the live cache under the shared lock preserves both results and
     avoids copying the large price/volume frames.
@@ -805,7 +805,7 @@ class QuantFinanceExtension(BaseExtension):
                 MetricFact,
                 ReportService,
                 install_market_data_snapshot_in_candidate,
-                parse_bull_bear_pair,
+                parse_agent_view,
                 write_market_data_snapshot,
                 write_candidate_binding,
             )
@@ -829,6 +829,28 @@ class QuantFinanceExtension(BaseExtension):
                 result["success"] = False
                 result["detail"] = "candidate_package_error: cache empty"
                 return result
+
+            # Formal reports require one valid view from each current analyst.
+            # Missing or corrupted cache entries are orchestration failures, not
+            # optional report warnings; reject them before writing any artifact.
+            parsed_views = []
+            for cache_key, role in (
+                ("_alpha_result", "alpha"),
+                ("_risk_result", "risk_evidence"),
+            ):
+                raw_view = cached.get(cache_key)
+                if raw_view is None:
+                    parse_errors = [f"missing required cached {role} AgentView"]
+                    parsed_view = None
+                else:
+                    parsed_view, parse_errors = parse_agent_view(raw_view, role)
+                if parsed_view is None or parse_errors:
+                    error = "; ".join(parse_errors) or f"invalid cached {role} AgentView"
+                    result["candidate_package"] = {"error": error}
+                    result["success"] = False
+                    result["detail"] = f"candidate_package_error: {error}"
+                    return result
+                parsed_views.append(parsed_view)
 
             train_prices, _train_vols, _test_prices = frames
             from jiuwenswarm.quant.market_data_service import (
@@ -967,35 +989,30 @@ class QuantFinanceExtension(BaseExtension):
                     data_provider_status="partial",
                 )
 
-            # Alpha/Risk & Evidence views from cached data
-            bull_raw = cached.get("_alpha_result") if cached else None
-            bear_raw = cached.get("_risk_result") if cached else None
-            if bull_raw or bear_raw:
-                views, _parse_errs = parse_bull_bear_pair(bull_raw, bear_raw)
-                if views:
-                    for parsed_view in views:
-                        view = replace(
-                            parsed_view,
-                            evidence_ids=(snapshot.snapshot_id,),
+            # Bind the already-validated current analyst views to this snapshot.
+            for parsed_view in parsed_views:
+                view = replace(
+                    parsed_view,
+                    evidence_ids=(snapshot.snapshot_id,),
+                )
+                for tk in view.candidate_tickers:
+                    if tk in bundles:
+                        existing = list(bundles[tk].agent_views)
+                        existing.append(view)
+                        bundles[tk] = service.build_company_bundle(
+                            ticker=tk, name=TICKER_NAME_MAP.get(tk, tk),
+                            sector=SECTOR_MAP.get(tk, "未知"),
+                            as_of_time=decision_time,
+                            portfolio_weight=weights_dict.get(tk, 0),
+                            selected=weights_dict.get(tk, 0) > 0,
+                            weight_zero_reason=(
+                                "" if weights_dict.get(tk, 0) > 0 else "Agent 未选中"
+                            ),
+                            technical_facts=bundles[tk].technical_facts,
+                            event_facts=bundles[tk].event_facts,
+                            agent_views=tuple(existing),
+                            data_provider_status="partial",
                         )
-                        for tk in view.candidate_tickers:
-                            if tk in bundles:
-                                existing = list(bundles[tk].agent_views)
-                                existing.append(view)
-                                bundles[tk] = service.build_company_bundle(
-                                    ticker=tk, name=TICKER_NAME_MAP.get(tk, tk),
-                                    sector=SECTOR_MAP.get(tk, "未知"),
-                                    as_of_time=decision_time,
-                                    portfolio_weight=weights_dict.get(tk, 0),
-                                    selected=weights_dict.get(tk, 0) > 0,
-                                    weight_zero_reason=(
-                                        "" if weights_dict.get(tk, 0) > 0 else "Agent 未选中"
-                                    ),
-                                    technical_facts=bundles[tk].technical_facts,
-                                    event_facts=bundles[tk].event_facts,
-                                    agent_views=tuple(existing),
-                                    data_provider_status="partial",
-                                )
 
             holdings = {t: w for t, w in weights_dict.items() if w > 0}
             ps = service.build_portfolio_snapshot(
@@ -1077,7 +1094,6 @@ class QuantFinanceExtension(BaseExtension):
         """Alpha Analyst: term-aligned trend and sector leadership signals.
 
         Uses trend-focused factors (momentum_20, momentum_60, volume_corr).
-        Same underlying logic as bull_view — new role name per WP0-B migration.
         """
         del request
         params = params or {}
@@ -1112,7 +1128,7 @@ class QuantFinanceExtension(BaseExtension):
 
             pct = _factor_percentiles(factors)
 
-            bullish = []
+            alpha_candidates = []
             for ticker in factors.index:
                 mom_20 = float(factors.loc[ticker, "momentum_20"])
                 mom_60 = float(factors.loc[ticker, "momentum_60"])
@@ -1143,7 +1159,7 @@ class QuantFinanceExtension(BaseExtension):
                     signals.append("量价齐升 — 动量+放量双信号叠加")
 
                 if score >= 4:
-                    bullish.append({
+                    alpha_candidates.append({
                         "ticker": ticker,
                         "name": _TICKER_NAME_MAP.get(ticker, ticker),
                         "alpha_score": score,
@@ -1155,7 +1171,7 @@ class QuantFinanceExtension(BaseExtension):
                         },
                     })
 
-            bullish.sort(key=lambda x: x["alpha_score"], reverse=True)
+            alpha_candidates.sort(key=lambda x: x["alpha_score"], reverse=True)
 
             alpha_result = {
                 "success": True,
@@ -1166,14 +1182,14 @@ class QuantFinanceExtension(BaseExtension):
                     "momentum_60_p70": round(pct["momentum_60_p70"], 4),
                     "volume_corr_p70": round(pct["volume_corr_p70"], 4),
                 },
-                "n_alpha": len(bullish),
-                "alpha_stocks": bullish[:12],
-                "verdict": "overweight" if bullish else "neutral",
-                "confidence": "high" if len(bullish) >= 8 else "medium",
-                "candidate_tickers": [item["ticker"] for item in bullish[:12]],
+                "n_alpha": len(alpha_candidates),
+                "alpha_stocks": alpha_candidates[:12],
+                "verdict": "overweight" if alpha_candidates else "neutral",
+                "confidence": "high" if len(alpha_candidates) >= 8 else "medium",
+                "candidate_tickers": [item["ticker"] for item in alpha_candidates[:12]],
                 "warnings": [],
                 "evidence_ids": ["e_extension_gen"],
-                "summary": f"{regime} regime; {len(bullish)} alpha candidates",
+                "summary": f"{regime} regime; {len(alpha_candidates)} alpha candidates",
             }
             committed = dict(alpha_result, cached=False, executed=True)
             if not _update_cached_data(_alpha_result=committed):
@@ -1182,7 +1198,7 @@ class QuantFinanceExtension(BaseExtension):
 
         return await asyncio.to_thread(_analyze)
 
-    # ---- quant.risk_evidence_view (replaces quant.bear_view) ----
+    # ---- quant.risk_evidence_view ----
 
     async def risk_evidence_view(
         self,
@@ -1192,7 +1208,6 @@ class QuantFinanceExtension(BaseExtension):
         """Risk & Evidence Analyst: tail risk, divergence, and evidence conflicts.
 
         Uses risk-focused factors (max_drawdown, reversal_5, volume_corr).
-        Same underlying logic as bear_view — new role name per WP0-B migration.
         """
         del request
         params = params or {}
@@ -1706,13 +1721,13 @@ def _build_fetch_error_message(errors: list) -> str:
 def _factor_percentiles(factors: pd.DataFrame) -> dict:
     """Compute percentile thresholds from cross-sectional factor distribution.
 
-    Returns dict of percentile values used by bull_view and bear_view scoring.
+    Returns percentile values used by Alpha and Risk & Evidence scoring.
     Percentiles adapt to current market conditions — e.g. in a raging bull
     market, the momentum thresholds will be higher because everyone is up.
 
-    Factor separation (direction 8):
-      - Bull: momentum_20, momentum_60, volume_corr (trend factors)
-      - Bear: max_drawdown, reversal_5, volume_corr (risk factors)
+    Factor separation:
+      - Alpha: momentum_20, momentum_60, volume_corr (trend factors)
+      - Risk & Evidence: max_drawdown, reversal_5, volume_corr (risk factors)
     """
     pct = {}
 
@@ -1722,12 +1737,12 @@ def _factor_percentiles(factors: pd.DataFrame) -> dict:
         sign = 1 if v >= 0 else -1
         return v - sign * abs(v) * 1e-6
 
-    # Bull trend factors: p80/p70 for momentum, p70 for volume correlation
+    # Alpha trend factors: p80/p70 for momentum, p70 for volume correlation
     pct["momentum_20_p80"] = _p(factors["momentum_20"], 80)
     pct["momentum_60_p70"] = _p(factors["momentum_60"], 70)
     pct["volume_corr_p70"] = _p(factors["volume_corr"], 70)
 
-    # Bear risk factors: p80/p90 for drawdown, p20 for reversal, p30 for volume corr
+    # Risk factors: p80/p90 for drawdown, p20 for reversal, p30 for volume corr
     pct["max_drawdown_p80"] = _p(factors["max_drawdown"], 80)
     pct["max_drawdown_p90"] = _p(factors["max_drawdown"], 90)
     pct["reversal_5_p20"] = _p(factors["reversal_5"], 20)
@@ -1800,7 +1815,7 @@ def _build_report_markdown(portfolio, backtest, regime, top_stocks):
         "",
         "### 3.1 多视角分析架构",
         "",
-        "选股由双 Agent 协作完成（Bull 看多视角 + Bear 风控视角），Coordinator 综合决策。",
+        "双 Agent 提供建议（Alpha 趋势与机会 + Risk & Evidence 风险与证据），Coordinator 触发确定性选股。",
         "",
         "### 3.2 选股约束",
         "",

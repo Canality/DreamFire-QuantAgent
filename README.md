@@ -2,7 +2,7 @@
 
 华为 openJiuwen Track 2 参赛项目。系统在官方 49 家上市公司范围内完成行情获取、多因子分析、Alpha/Risk & Evidence 多 Agent 审查、选股、配仓、20 日回测和逐公司报告生成。
 
-> 当前状态：共享行情、公告 PIT、量化 direct 与 fixed `quant_team` formal 均已真实通过；最新 direct 为 49/49 行情、1,470 条公告和 49/49 披露，最新 formal 为严格 8/8、三角色真实参与、无角色越权，绑定两者的独立 E2E audit 退出 0。fixed quant 运行时已收敛到角色自有 Quant RPC 与 `send_message`，但报告仍为 `FINANCIAL_PARTIAL`，正式提交契约仍受官方口径冲突阻断。最新数量、证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)；下一阶段架构与验收路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
+> 当前本地交付候选为 **v2.14**：共享行情、公告 PIT、量化 direct 与 fixed `quant_team` formal 均已真实通过；活动源码中的退役角色兼容层已删除，parser/model 对旧角色输入失败关闭。最新 direct 为 49/49 行情、1,470 条公告和 49/49 披露，最新 formal 为严格 8/8、三角色真实参与、无角色越权，绑定两者的独立 E2E audit 退出 0。历史证据和市场 regime 的 `bull`/`bear` 标签保留；报告仍为 `FINANCIAL_PARTIAL`，正式提交契约仍受官方口径冲突阻断。最新数量、证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)；下一阶段架构与验收路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
 
 ## 项目定位
 
@@ -45,8 +45,8 @@ Sina → Tencent → akshare → baostock → yfinance
 - 官方评测期已确认为 2026-08-25 至 09-21，共 20 个交易日；8月25日开盘买入、9月21日收盘卖出，期间固定持股不调仓。提交截止为8月23日，因此8月24日行情不可用于决策。
 - 生产策略仍为六因子模型；历史 v2.0-v2.7 的 76.9-81.7 本地分数受前视偏差或回测错误污染，全部作废。
 - Walk-Forward IC 的原实验有 11 个开发窗口；Phase A/B 组合回测有 21 个窗口，两者不能混写。
-- Phase B T2 在旧开发口径相对生产配对收益差约 +0.91pp、效用胜率 15/21；该实验未模拟提交与买入之间的8月24式单交易日 embargo，只能作为研究线索。最新 challenger 状态和晋级证据只看 `VALIDATION.md`。
-- production、T2 和统一基线必须按“决策后隔一交易日、再开盘买入并持有20交易日”重跑；完成前不切换生产。
+- WP1-B 已建立“决策后隔一交易日、再开盘买入并持有 20 交易日”的嵌套评测与晋级边界；T2 因证据条件不完整保持 `RESEARCH_ONLY`，没有切换 production。
+- WP1-C 预注册的趋势一致性、板块领导力和非对称尾部风险三个 challenger 均未通过内层/构造门；按停止规则不再调权或增加第四候选，生产策略继续为 `production_six_factor`。
 - 本地代理评分只用于比较方案；官方标准化公式和资源基准未公布，不能给出“官方预估总分”。
 
 ## 报告与 Agent 的真实边界
@@ -73,7 +73,7 @@ Sina → Tencent → akshare → baostock → yfinance
 
 短板：
 
-1. 最新 formal 已收敛为 95,569 input、6,510 output、61,952 cache tokens、12 次工具调用和 48 秒；相较历史通用团队路径显著下降，但官方资源基准未公布，仍不能断言资源分达标。
+1. 最新 formal 已保持精确 8 个业务阶段和 12 次工具调用；动态 token、耗时及角色拆分只引用 `VALIDATION.md` 的最新 timestamped 工件。官方资源基准未公布，仍不能断言资源分达标。
 2. alpha 尚未得到样本外证明；工程可信不等于收益领先。
 3. 报告仍偏技术面，完整金融分析深度不足。
 4. fixed quant capability ceiling 依赖锁定的 openJiuwen `0.1.15.post3` 接口与工具面；依赖升级会故意失败关闭，必须重新审查和双路径验收。

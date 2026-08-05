@@ -1,11 +1,11 @@
 ---
 id: WINDOWS-P1-REPAIR-0804
 title: Repair Windows P1 announcement health and immutable E2E binding
-status: VERIFIED
+status: CLOSED
 risk: HIGH
 owner: Codex
 created_at: 2026-08-04T16:55:18+08:00
-updated_at: 2026-08-04T17:28:12+08:00
+updated_at: 2026-08-05T09:36:43+08:00
 allowed_files:
   - .agents/skills/verify-quant-e2e/scripts/audit_run_artifacts.py
   - .claude/discussion.md
@@ -113,3 +113,4 @@ Fail closed on implausible universe-wide announcement emptiness and bind direct/
 - 2026-08-04T17:14:56+08:00 `IMPLEMENTED`: Both P1 repairs implemented. 55 focused tests passed; Ruff, py_compile, diff-check, and frozen scope-check passed. Awaiting independent Critic.
 - 2026-08-04T17:20:12+08:00 `REVIEWED`: Independent Critic ACCEPT: no P0/P1/P2 findings; 55 focused tests passed; both Windows P1 contracts and no-WP1-B/C scope verified.
 - 2026-08-04T17:28:12+08:00 `VERIFIED`: Planner accepted both P1 repairs: independent Critic ACCEPT; 55 focused tests, Ruff, py_compile, diff-check, and frozen scope-check pass; fresh direct/formal and recomputed immutable candidate-binding audit pass; historical evidence preserved and WP1-B/WP1-C untouched.
+- 2026-08-05T09:36:43+08:00 `CLOSED`: Windows-reviewed P1 repair is accepted and its delivery branch remains immutable; release the formal-path write scope.

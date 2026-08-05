@@ -17,8 +17,9 @@ trigger: proposing code changes, fixes, optimizations, refactors, or architectur
 
 <用一两句话解释被修改/删除/新增的机制是什么，让读者有一个基础概念。>
 
-- 比如："leader-only 限制是 `_build_quant_tools()` 函数里的一行 `if role != 'leader': return []`，
-  它导致框架在给 Bull/Bear 装配工具时，跳过全部 8 个量化工具，直接返回空列表。"
+- 比如："角色工具过滤是 `_build_quant_tools()` 按成员名保留专属 RPC 的逻辑；
+  它保证 Alpha 只能看到 `quant_alpha_view`，Risk & Evidence 只能看到
+  `quant_risk_evidence_view`。"
 
 ### 1. 改了之后的表现（重要性）
 
@@ -46,27 +47,27 @@ trigger: proposing code changes, fixes, optimizations, refactors, or architectur
 ## 示例
 
 ```
-## 为什么要去掉量化工具的 leader-only 限制
+## 为什么要收紧分析师的量化工具权限
 
-### 0. leader-only 限制本身是什么
+### 0. 角色工具过滤本身是什么
 
-`_build_quant_tools()` 是框架装配 Agent 工具时调用的函数。里面有一行
-`if getattr(ctx, "role", "") != "leader": return []`——只有 leader 角色能拿到
-8 个量化工具，Bull/Bear 等 teammate 角色拿到的都是空列表。
+`_build_quant_tools()` 是框架装配 Agent 工具时调用的函数。它根据成员名从固定
+8 个量化 RPC 中筛选权限：Coordinator 获得确定性流水线工具，Alpha 与
+Risk & Evidence 各自只获得一个视角工具。
 
 ### 1. 改了之后的表现（重要性）
 
-Bull 和 Bear 不再"空手"接任务：
-- 改之前：Bull/Bear 各有 13 个通用工具（bash、文件、网页搜索），收到 Coordinator
-  的分析请求后无法访问任何因子数据，只能浏览工作目录
-- 改之后：Bull/Bear 各获得全部 8 个量化工具，Bull 能调 quant_bull_view 做动量分析，
-  Bear 能调 quant_bear_view 做风控审查，输出基于真实数据的分析报告
+两位分析师能访问真实因子，同时不能越过职责边界：
+
+- 改之前：任意 teammate 可能继承全部 8 个量化工具，可以绕过 Coordinator
+  直接触发选股、配仓、回测或报告。
+- 改之后：Alpha 只获得 `quant_alpha_view`，Risk & Evidence 只获得
+  `quant_risk_evidence_view`；正式流水线仍由 Coordinator 独占 6 个确定性阶段。
 
 ### 2. 不改会怎样（必要性）
 
-- 场景：Coordinator 获取数据 → 计算因子 → 广播"请 Bull/Bear 分析"
-- 后果：Bull 和 Bear 没有量化工具，无法访问因子数据。它们只能基于 Coordinator
-  消息中的文字描述做"分析"，输出的是 LLM 幻觉而非数据驱动判断。Coordinator
-  基于空洞报告做最终决策——多 Agent 架构变成形式主义，多消耗 2/3 token 但决策
-  质量反而不如单 Agent
+- 场景：Coordinator 完成因子计算后并行委派两个分析师。
+- 后果：若没有角色工具过滤，分析师既可能读不到专属因子，也可能自行调用
+  `quant_select_stocks` 或 `quant_allocate_positions`。这会让消息参数覆盖服务端缓存，
+  破坏角色归属和确定性数据流，使形式上的 8/8 RPC 不能证明正式路径有效。
 ```

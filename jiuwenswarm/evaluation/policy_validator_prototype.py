@@ -128,7 +128,7 @@ class PolicyValidator:
                     violations.append(PolicyViolation(
                         Severity.BLOCKER,
                         "R6: agent-role-isolation",
-                        f"{step.get('skill')} must be called by Bull/Bear agent, "
+                        f"{step.get('skill')} must be called by its assigned analyst, "
                         f"not by {caller or 'unassigned'}"
                     ))
 
@@ -151,7 +151,7 @@ class PolicyValidator:
 
 TASK_SPECS = {
     "normal_investment_analysis": {
-        "description": "Standard 20-day investment cycle: fetch → factor → Bull/Bear → select → allocate → backtest → report",
+        "description": "Standard 20-day investment cycle: fetch → factor → Alpha/Risk & Evidence → select → allocate → backtest → report",
         "plan": {
             "task": "normal_investment_analysis",
             "strategy_id": "phase_b_t2_score_alloc",
@@ -267,7 +267,7 @@ def main() -> int:
             "R3: coverage-fail-closed (<49 stocks → abort)",
             "R4: frozen-strategy-id (backtest must reference registered StrategySpec)",
             "R5: dependency-order (no step depends on later step)",
-            "R6: agent-role-isolation (Bull/Bear skills called by Bull/Bear, not Coordinator)",
+            "R6: agent-role-isolation (analyst views called by their assigned analyst, not Coordinator)",
         ],
         "results": all_results,
         "summary": {

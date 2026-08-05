@@ -2,13 +2,14 @@
 
 > 本文件是项目可运行状态的唯一事实源。README、Agent 指令和讨论文档只能引用这里，不得复制长期状态。
 
-## 结论（2026-08-04）
+## 结论（2026-08-05）
 
 | 对象 | 证据等级 | 结论 |
 |---|---|---|
 | 量化核心与行情证据链 | BUSINESS_PASSED | 最新 direct `2025-01-02 → 2025-05-21` 真实通过共享五源 Provider、因果切分和仓位约束；49/49、6/6、15 只，收益 `+0.7476%`、最大回撤 `1.6424%` |
-| JiuwenSwarm 多 Agent 路径 | BUSINESS_PASSED | 最新 session `multi-agent-validation-20260804-172234` 在 fixed quant capability ceiling 下完成 8/8；每阶段恰好请求/执行 1 次、0 cache hit、0 error，三角色真实参与且无角色 RPC 越权 |
-| 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct 与 formal 分别绑定各自 create-once 候选包，均携带 1,470 条公告、49/49 披露；独立 E2E audit 重算两套文件树与 manifest 哈希后退出 0，报告等级仍为 `FINANCIAL_PARTIAL` |
+| JiuwenSwarm 多 Agent 路径 | BUSINESS_PASSED | 最新 session `multi-agent-validation-20260805-100147` 在 fixed quant capability ceiling 下完成 8/8；每阶段恰好请求/执行 1 次、0 cache hit、0 error，三角色真实参与且无角色 RPC 越权 |
+| 公告增强型报告候选包 | DIRECT_PASSED / FORMAL_PASSED | 最新 direct `direct-20260805_100118` 与 formal `formal-multi-agent-validation-20260805-100147` 分别绑定 create-once 候选包，均携带 1,470 条公告、49/49 披露；独立 E2E audit 重算两套文件树与 manifest 哈希后退出 0，报告等级仍为 `FINANCIAL_PARTIAL` |
+| 活动旧角色兼容层 | PATH_PASSED | 活动 runtime、persona、parser、model、renderer、prompt 与当前文档只接受 Coordinator/Alpha/Risk & Evidence；旧角色输入失败关闭，市场 regime 标签与历史证据保留 |
 | 完整金融分析作品 | PARTIAL / FAILED | direct/formal 报告与公告披露已形成可审计覆盖，但基本面、新闻、宏观和另类数据仍缺失，不能宣称 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 最新答疑与静态文档仍有 3 项冲突，不能把候选包改名为正式提交包 |
 | 策略 alpha | RESEARCH_ONLY | WP1-B 冻结 T2 后，WP1-C 的趋势、板块领导力和非对称尾部风险三个预注册方向全部未通过内层/构造门；按停止规则终止本轮 Alpha 搜索，继续保留 T2 为 competition-aligned 最强冻结基线，不晋级或切 production |
@@ -19,7 +20,9 @@
 | 正式团队精确选择 | PATH_PASSED | `FORMAL-TEAM-SELECT-0804` 为 TeamManager 增加显式 team selector；真实 formal 构建 `quant-leader` 和两个预定义分析师，不再误选通用 `jiuwen_team` |
 | Agent 资源与能力瘦身 | PATH_PASSED | fixed quant 运行时仅保留角色自有 Quant RPC 与 `send_message`；leader 为 9-tool、两名 analyst 各为 2-tool，无 task-board、文件、shell、browser、skill、subagent 或通用 team-management 工具；最新 formal 为 12 次业务/消息调用 |
 
-以上结论适用于当前未提交工作树（HEAD `170e904`）。`output/` 是本机验收产物，不进入 Git。
+以上结论适用于分支 `codex/mac-LEGACY-ROLE-CLEANUP-0805`、父提交
+`2ecfea5` 的当前任务工作树；最终本地提交 hash 写入交付包。`output/`
+是本机验收产物，不进入 Git。
 
 ## 官方事实裁决
 
@@ -34,6 +37,57 @@
 因此 `SubmissionContract.can_proceed_formal()` 当前必须失败关闭。解除阻断需要主办方的可归档书面答复，不得由 Agent 自行猜测。
 
 ## 本轮真实验收
+
+### -15. 活动旧角色兼容删除与 v2.14 本地候选（2026-08-05 09:34–09:52）
+
+证据等级：活动角色清理为 `PATH_PASSED`；fresh direct、formal 与独立
+E2E audit 为 `BUSINESS_PASSED`。完整金融报告继续为 `FINANCIAL_PARTIAL`，
+正式提交契约继续为 `PROVISIONAL / BLOCKED`，生产策略仍为
+`production_six_factor`。
+
+- 独立只读 Scout 以 `0.98` confidence 定位到：正式 RPC/roster 已是
+  Alpha/Risk，但活动 persona、pair parser/export、`AgentView` 兼容、报告
+  renderer、Coordinator prompt 和当前文档仍保留退役角色入口。任务
+  `LEGACY-ROLE-CLEANUP-0805` 在父提交 `2ecfea5` 上冻结精确白名单后实施。
+- 已删除 `BULL_PERSONA`、`BEAR_PERSONA`、旧短 persona/alias、
+  `parse_bull_bear_pair` 及其导出、旧 `AgentView`/renderer 分支，以及仅由
+  旧测试引用的 `FactorEvidence`、`StockRecommendation`。parser 和 model
+  现在只接受 `alpha` / `risk_evidence`，其他角色失败关闭；正式报告仍分别
+  解析两名当前 analyst 的输出。独立 Critic 发现的 P1 已修复：任一当前
+  analyst 缓存缺失、字段损坏或 JSON 非法，都会在写工件前以
+  `candidate_package_error` 失败关闭；4 个缓存污染负测均通过。
+- Coordinator prompt 已按当前三角色、精确八阶段、49/6 契约、服务端缓存、
+  advisory proposal 和 fail-closed 边界重写。市场状态枚举
+  `bull` / `bear` / `range`、迁移前运行记录、研究工件和历史交付包均保留，
+  没有把市场语义误删成角色代码。
+- 聚焦角色/报告/Extension 回归最终 `61 passed`，仓位约束 `6 passed`；changed-file
+  Ruff 通过。量化目录全量为 `422 passed, 1 skipped, 9 failed`；9 项都因
+  当前交接基线缺少白名单外资源镜像
+  `jiuwenswarm/jiuwenswarm/resources/agent/workspace/skills/quant-investment/SKILL.md`
+  而 `FileNotFoundError`，未越界伪修复。日志为
+  `output/agent_handoffs/LEGACY-ROLE-CLEANUP-0805/quant_suite.log`。
+- P1 后 fresh direct 日志为
+  `output/agent_handoffs/LEGACY-ROLE-CLEANUP-0805/direct_validation_post_p1.log`，结果
+  `output/pipeline_results_20260805_100118.json`，退出 0：49/49、6/6、
+  90 日（训练 70/前向 20）、15 只、现金 5.06%，收益 `+0.7476%`、最大
+  回撤 `1.6424%`、Sharpe `1.107`；1,470 条公告覆盖 49/49。候选
+  `direct-20260805_100118` 绑定 SHA-256 为
+  `4e4ff29c8269d5e9a43e96a5fabd05c89ce10d1a8742c2c624c878db59f2fac1`。
+- P1 后 fresh formal 日志为
+  `output/agent_handoffs/LEGACY-ROLE-CLEANUP-0805/formal_validation_post_p1.log`，session
+  `multi-agent-validation-20260805-100147`，summary/chunks 为
+  `output/multi_agent_summary_20260805-100147.json` 与
+  `output/multi_agent_chunks_20260805-100147.json`。退出 0、耗时 48.6 秒、
+  8/8、各阶段 request/execution 各 1、0 cache hit、12 tool calls、0 error；
+  三角色事件 895/340/348，专属 RPC 各 1 且无越权。资源为 97,209 input、
+  6,356 output、65,280 cache tokens。formal 候选绑定 SHA-256 为
+  `50d49ce963809c72cfda73f53ec7ac0cd0e419fdb4d6c16a487781f45dc529a4`。
+- `output/agent_handoffs/LEGACY-ROLE-CLEANUP-0805/e2e_audit_post_p1.log` 退出 0，
+  `output/audit_result_multi-agent-validation-20260805-100147.json` 为
+  `passed=true`、failures 为空；独立重算两套候选绑定，确认 15 只、6 板块、
+  总仓位 94.94%、精确八工具与当前角色归属。独立 Critic 最终 verdict 为
+  `ACCEPT`，P0/P1/P2/P3 开放项均为 0；review SHA-256 为
+  `e04e34ddebf462d10d219fb1bd3162cabe48f53dd84f7a468c8b1c2f103eabfd`。
 
 ### -14. WP1-C 三机制 Challenger Round 与停止裁决（2026-08-04 18:22–18:51）
 
@@ -337,7 +391,10 @@
 - Git：`170e904` 上的未提交 Missed/Goone 工作树。
 - 量化单测：`229 passed`，退出码 0。
 - ruff（Missed 所有文件）：`All checks passed`，退出码 0。
-- 旧代码删除：`bull_analyst.md`、`bear_analyst.md` 已物理删除；旧 bull_view/bear_view RPC handler 已删除；Extension 恰好 8 个 RPC handler；`config.yaml`/`providers/tools.py`/`team_runtime_inheritance.py`/`test_swarm_assembly.py`/`policy_validator` 全部迁至新角色。
+- 当时已物理删除 `bull_analyst.md`、`bear_analyst.md` 和旧角色 RPC handler，
+  Extension 收敛为 8 个 RPC；后续只读 Scout 发现 persona/parser/report 的
+  活动兼容层仍未删除，已由 2026-08-05 的 -15 节任务补齐。此处只保留
+  当时可核验的迁移历史，不再概括为全部旧代码已清理。
 - direct：`scripts/run_quant_pipeline.py` 退出码 0，49/49、6/6、15 只、现金 5.06%；产物 `output/pipeline_results_20260730_184428.json`。
 - formal：session `multi-agent-validation-20260730-184818`，退出码 0，耗时 97.7 秒。8/8 RPC。3 成员：`quant-leader`(1505) + `alpha_analyst`(554) + `risk_evidence_analyst`(545)。专属 RPC 各 1 次、0 越权。
 - formal 资源：input `875,743`（比基线 `1,204,831` 降 27.3%）、output `12,597`、cache `723,840`、tool calls `23`。
@@ -417,7 +474,7 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 
 ## 已知问题与竞争风险
 
-1. **资源成本仍需基准化**：最新 capability-ceiling formal 已降至 95,569 input、6,510 output、61,952 cache tokens 和 12 tool calls，显著低于历史通用团队路径；官方基准尚未公布，仍不能折算分数或宣称资源分已达标。
+1. **资源成本仍需基准化**：最新 formal 为 97,209 input、6,356 output、65,280 cache tokens 和 12 tool calls，显著低于历史通用团队路径；官方基准尚未公布，仍不能折算分数或宣称资源分已达标。
 2. **Agent 路径有随机性**：本轮曾出现 Agent 在正确配仓后擅自删掉一只股票并二次配仓。正式验收正确失败；Extension 现已把选股、配仓、回测、报告的输入锁定为服务端缓存的前序结果，LLM 只能触发、不能改写。150 秒阶段无进展和 8/8 后显式 runtime teardown 也已加入，但减少 prompt/上下文膨胀仍是 P0。
 3. **报告广度不足**：当前 49 份报告主要来自技术面和市场行情，`data_provider_status` 仍为 partial；不能宣称已经完成基本面、公告、新闻或宏观分析。
 4. **报告深度不均**：49 家均有技术面与公告披露报告，但只有被 Alpha/Risk 覆盖的候选包含角色观点；fundamental/news-risk grade 仍为 0。

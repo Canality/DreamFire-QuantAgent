@@ -51,12 +51,8 @@ def _render_agent_view(view: AgentView) -> List[str]:
         role_label = "Alpha 趋势与机会分析师"
     elif view.role == "risk_evidence":
         role_label = "Risk & Evidence 风险与证据分析师"
-    elif view.role == "bull":
-        role_label = "看多分析师 (Bull) [旧角色]"
-    elif view.role == "bear":
-        role_label = "风控分析师 (Bear) [旧角色]"
     else:
-        role_label = f"分析师 ({view.role})"
+        raise ValueError(f"unsupported AgentView role: {view.role}")
     lines.append(f"#### {role_label}")
     lines.append("")
     lines.append(f"- **判断**: {view.verdict}")

@@ -3,8 +3,6 @@
 from jiuwenswarm.quant.agent_structured_output import (
     RegimeDiagnosis,
     AnalysisPlaybookRouter,
-    FactorEvidence,
-    StockRecommendation,
     validate_router_determinism,
     validate_regime_diagnosis_roundtrip,
 )
@@ -93,44 +91,3 @@ class TestAnalysisPlaybookRouter:
 
     def test_determinism_property(self):
         validate_router_determinism()
-
-
-class TestFactorEvidence:
-    def test_create_evidence(self):
-        ev = FactorEvidence(factor_name="momentum_20", value=0.153, interpretation="positive")
-        assert ev.factor_name == "momentum_20"
-        assert ev.value == 0.153
-        assert ev.interpretation == "positive"
-
-    def test_negative_evidence(self):
-        ev = FactorEvidence(factor_name="max_drawdown", value=-0.082, interpretation="negative")
-        assert ev.interpretation == "negative"
-
-
-class TestStockRecommendation:
-    def test_bull_recommendation(self):
-        rec = StockRecommendation(
-            ticker="600519.SH",
-            score=0.85,
-            evidences=[
-                FactorEvidence("momentum_20", 0.12, "positive"),
-                FactorEvidence("volume_corr", 0.45, "positive"),
-            ],
-            rationale="Strong momentum with healthy volume confirmation",
-        )
-        assert rec.ticker == "600519.SH"
-        assert len(rec.evidences) == 2
-        assert rec.score == 0.85
-
-    def test_bear_warning(self):
-        rec = StockRecommendation(
-            ticker="601398.SH",
-            score=-0.30,
-            evidences=[
-                FactorEvidence("max_drawdown", -0.15, "negative"),
-                FactorEvidence("volume_corr", -0.22, "negative"),
-            ],
-            rationale="High drawdown with volume-price divergence — veto",
-        )
-        assert len(rec.evidences) == 2
-        assert rec.score < 0

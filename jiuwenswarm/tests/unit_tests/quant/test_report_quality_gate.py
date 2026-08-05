@@ -51,7 +51,7 @@ def _make_bundle(ticker: str, weight: float = 0.0, selected: bool = False,
         if with_valid_tech else ()
     )
     views = (
-        (AgentView(role="bull", verdict="neutral", confidence="medium",
+        (AgentView(role="alpha", verdict="neutral", confidence="medium",
                    candidate_tickers=(ticker,), warnings=(), evidence_ids=("e1",),
                    unknown_fields=(), summary="OK"),)
         if with_views else ()

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+import pytest
 
 from jiuwenswarm.quant.reporting.models import (
     AgentView,
@@ -54,9 +55,9 @@ def test_metric_fact_unavailable():
     assert f.value is None
 
 
-def test_agent_view_bull():
+def test_agent_view_alpha():
     view = AgentView(
-        role="bull",
+        role="alpha",
         verdict="overweight",
         confidence="high",
         candidate_tickers=("000333.SZ", "000651.SZ"),
@@ -65,13 +66,13 @@ def test_agent_view_bull():
         unknown_fields=(),
         summary="Strong momentum signal.",
     )
-    assert view.role == "bull"
+    assert view.role == "alpha"
     assert view.verdict == "overweight"
 
 
-def test_agent_view_bear_with_unknown():
+def test_agent_view_risk_evidence_with_unknown():
     view = AgentView(
-        role="bear",
+        role="risk_evidence",
         verdict="underweight",
         confidence="low",
         candidate_tickers=(),
@@ -80,8 +81,22 @@ def test_agent_view_bear_with_unknown():
         unknown_fields=("vol_ratio_percentile", "sector_momentum_persistence"),
         summary="",
     )
-    assert view.role == "bear"
+    assert view.role == "risk_evidence"
     assert len(view.unknown_fields) == 2
+
+
+@pytest.mark.parametrize("role", ["bull", "bear", "coordinator", "unknown"])
+def test_agent_view_rejects_retired_or_unknown_roles(role):
+    with pytest.raises(ValueError, match="unsupported AgentView role"):
+        AgentView(
+            role=role,
+            verdict="neutral",
+            confidence="medium",
+            candidate_tickers=(),
+            warnings=(),
+            evidence_ids=(),
+            unknown_fields=(),
+        )
 
 
 def test_company_fact_bundle_zero_weight():

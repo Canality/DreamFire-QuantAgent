@@ -26,7 +26,7 @@
 
 - 身份：集成工程师和正式路径负责人。
 - 唯一写入 Extension、direct/formal 入口、Team/config/toolkit、角色 Prompt 和 E2E audit。
-- 负责 Bull/Bear → Alpha/Risk & Evidence 的原子迁移、旧路径删除和资源稳定性。
+- 负责维护 Coordinator/Alpha/Risk & Evidence 正式路径、清除迁移残留和保障资源稳定性。
 - 不自行实现 Provider、改变 Provider 状态语义或修改研究因子。
 - 对 Codex 或 Goone 的架构建议负有主动反证责任：发现正式路径不可实现、重复实现、资源回退或验收口径矛盾时，必须在动手前提出质疑，不能为了服从计划而静默实现。
 - 质疑必须附调用点、失败测试、资源数据或最小反例，并给出一个不越过文件边界的替代方案。
@@ -116,8 +116,8 @@
 ```
 quant-investment Team Skill
 ├── Coordinator：fetch → factors → select → allocate → backtest → report
-├── Bull Analyst：quant_bull_view
-└── Bear Analyst：quant_bear_view
+├── Alpha Analyst：quant_alpha_view
+└── Risk & Evidence Analyst：quant_risk_evidence_view
 ```
 
 - 五源逐只补缺：Sina → Tencent → akshare → baostock → yfinance。
@@ -153,9 +153,8 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 
 ## 当前工作重点
 
-1. 官方评测期为 2026-08-25 至 09-21；现有历史窗口缺少提交后、买入前的一交易日 embargo，production/T2 必须先按新口径重跑。
-2. 正式路径 input token 约 120.5 万：用摘要、按需检索和更短系统提示降本。
-3. 一次复跑曾停在 4/8：保留 150 秒无进展 fail-closed，并提高确定性编排。
-4. 报告仍偏行情/技术面：下一 Provider 优先做交易所公告，必须 point-in-time、原文归档、URL/hash、双路径接入。
-5. T2 仍是开发候选；行业中性只作诊断，策略研究以官方20日累计收益和最大回撤为目标。
-6. 49/50、现金口径、报告权重需要主办方书面澄清。
+1. 官方评测期为 2026-08-25 至 09-21；WP1-B 已实现一交易日 embargo、20 日固定持股和嵌套外层边界，但当前历史快照仍为 `RESEARCH_ONLY`。
+2. WP1-C 的趋势一致性、板块领导力和尾部风险三项冻结 challenger 均未通过预注册门槛；停止继续扫描公式，生产仍为 `production_six_factor`。
+3. 保留 150 秒无进展和连续失败 3 次的 fail-closed，并继续降低正式路径 token 与随机性。
+4. 公告 Provider 已有 point-in-time 实现与工件，仍需 Windows 正式双路径复验后才能提高报告证据等级。
+5. 49/50、现金口径、报告权重需要主办方书面澄清。

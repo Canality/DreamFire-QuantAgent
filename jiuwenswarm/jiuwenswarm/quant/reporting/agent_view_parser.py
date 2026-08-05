@@ -2,10 +2,6 @@
 
 Fail-closed: malformed JSON, unknown tickers, or missing required fields
 all produce validation errors rather than silently passing bad data.
-
-Historical parse_bull_bear_pair() is retained as deprecated adapter;
-new code should use parse_agent_view() directly with role="alpha" or
-role="risk_evidence".
 """
 
 from __future__ import annotations
@@ -23,17 +19,20 @@ def parse_agent_view(
     role: str,
     contract: SubmissionContract | None = None,
 ) -> Tuple[AgentView | None, List[str]]:
-    """Parse a Bull or Bear RPC output into a validated AgentView.
+    """Parse a current analyst RPC output into a validated AgentView.
 
     Args:
         raw_output: Raw JSON string or dict from the RPC.
-        role: "bull" or "bear".
+        role: Exactly "alpha" or "risk_evidence".
         contract: Optional contract for ticker validation.
 
     Returns:
         (AgentView or None, list of errors). If errors, AgentView is None.
     """
     errors: List[str] = []
+
+    if role not in {"alpha", "risk_evidence"}:
+        return None, [f"Unsupported AgentView role: {role}"]
 
     # Parse JSON
     if isinstance(raw_output, str):
@@ -126,35 +125,3 @@ def parse_agent_view(
         unknown_fields=tuple(unknown_fields),
         summary=summary,
     ), []
-
-
-def parse_bull_bear_pair(
-    bull_output: str | dict | None,
-    bear_output: str | dict | None,
-    contract: SubmissionContract | None = None,
-) -> Tuple[List[AgentView], List[str]]:
-    """Parse both Alpha and Risk & Evidence outputs. Returns (views, errors).
-
-    Historical name retained for compatibility; parses with new role names.
-    If one side fails, the other may still succeed.
-    """
-    views: List[AgentView] = []
-    all_errors: List[str] = []
-
-    if bull_output:
-        view, errors = parse_agent_view(bull_output, "alpha", contract)
-        if view:
-            views.append(view)
-        all_errors.extend(errors)
-    else:
-        all_errors.append("alpha_output is None")
-
-    if bear_output:
-        view, errors = parse_agent_view(bear_output, "risk_evidence", contract)
-        if view:
-            views.append(view)
-        all_errors.extend(errors)
-    else:
-        all_errors.append("risk_evidence_output is None")
-
-    return views, all_errors

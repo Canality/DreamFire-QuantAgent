@@ -9,10 +9,7 @@ R5: resource_meter — real resource measurement (no estimation)
 R6: submission runner (see evaluation/)
 """
 
-from jiuwenswarm.quant.reporting.agent_view_parser import (
-    parse_agent_view,
-    parse_bull_bear_pair,
-)
+from jiuwenswarm.quant.reporting.agent_view_parser import parse_agent_view
 from jiuwenswarm.quant.reporting.announcement_service import (
     AnnouncementService,
     AnnouncementUniverseHealthError,
@@ -109,7 +106,6 @@ __all__ = [
     "load_snapshot_artifacts",
     "new_resource_report",
     "parse_agent_view",
-    "parse_bull_bear_pair",
     "run_announcement_service",
     "validate_quant_plan",
     "validate_submission",

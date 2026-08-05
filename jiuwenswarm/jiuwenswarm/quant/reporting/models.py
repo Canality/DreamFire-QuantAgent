@@ -17,7 +17,7 @@ class EvidenceRef:
 
     evidence_id: str
     source_type: str       # "market_data" | "financial_statement" | "disclosure" | "news" | "agent_view"
-    source_name: str        # e.g. "Sina Finance", "CSI 300", "Bull Analyst"
+    source_name: str        # e.g. "Sina Finance", "CSI 300", "Alpha Analyst"
     source_url: str | None
     period_end: datetime | None          # the data period end
     published_at: datetime | None         # when it was published
@@ -39,13 +39,9 @@ class MetricFact:
 
 @dataclass(frozen=True)
 class AgentView:
-    """Structured output from an Alpha or Risk & Evidence analyst.
+    """Structured output from an Alpha or Risk & Evidence analyst."""
 
-    Historical "bull"/"bear" roles are deprecated but still accepted
-    for backward compatibility with archived data.
-    """
-
-    role: str                         # "bull" | "bear" | "alpha" | "risk_evidence"
+    role: str                         # "alpha" | "risk_evidence"
     verdict: str                      # "overweight" | "neutral" | "underweight"
     confidence: str                   # "high" | "medium" | "low"
     candidate_tickers: Tuple[str, ...]
@@ -53,6 +49,10 @@ class AgentView:
     evidence_ids: Tuple[str, ...]
     unknown_fields: Tuple[str, ...]   # fields that were requested but unavailable
     summary: str = ""                 # optional human-readable text
+
+    def __post_init__(self) -> None:
+        if self.role not in {"alpha", "risk_evidence"}:
+            raise ValueError(f"unsupported AgentView role: {self.role}")
 
 
 @dataclass(frozen=True)

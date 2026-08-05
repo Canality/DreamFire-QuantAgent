@@ -22,6 +22,33 @@ RESOURCE_SKILL = (
 )
 README = PROJECT_ROOT / "README.md"
 
+ACTIVE_IDENTITY_FILES = (
+    PROJECT_ROOT / "AGENTS.md",
+    PROJECT_ROOT / "CLAUDE.md",
+    PROJECT_ROOT / ".claude" / "skills" / "explain-change.md",
+    PROJECT_ROOT / "jiuwenswarm" / "evaluation" / "policy_validator_prototype.py",
+    PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "quant" / "team_config.py",
+    PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "quant" / "roles" / "coordinator.md",
+    PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "quant" / "reporting" / "agent_view_parser.py",
+    PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "quant" / "reporting" / "__init__.py",
+    PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "quant" / "reporting" / "company_report.py",
+    PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "extensions" / "quant-finance" / "extension.py",
+)
+
+RETIRED_IDENTITY_MARKERS = (
+    "parse_bull_bear_pair",
+    "BULL_PERSONA",
+    "BEAR_PERSONA",
+    "bull_analyst",
+    "bear_analyst",
+    "quant_bull_view",
+    "quant_bear_view",
+    "quant.bull_view",
+    "quant.bear_view",
+    "Bull Analyst",
+    "Bear Analyst",
+)
+
 
 def _skill_body(path: Path) -> str:
     """Return SKILL.md content after the YAML frontmatter."""
@@ -31,6 +58,35 @@ def _skill_body(path: Path) -> str:
     if len(parts) >= 3:
         return parts[2]
     return text
+
+
+def test_active_paths_have_no_retired_agent_identity_compatibility():
+    """Current runtime/docs expose only Alpha and Risk & Evidence identities."""
+    for path in ACTIVE_IDENTITY_FILES:
+        text = path.read_text(encoding="utf-8")
+        found = [marker for marker in RETIRED_IDENTITY_MARKERS if marker in text]
+        assert not found, f"{path.relative_to(PROJECT_ROOT)} retains {found}"
+
+    roles_dir = PROJECT_ROOT / "jiuwenswarm" / "jiuwenswarm" / "quant" / "roles"
+    assert not (roles_dir / "bull_analyst.md").exists()
+    assert not (roles_dir / "bear_analyst.md").exists()
+
+
+def test_market_regime_vocabulary_remains_supported():
+    """Role cleanup must not remove the quantitative market-state vocabulary."""
+    from jiuwenswarm.quant.agent_structured_output import RegimeDiagnosis
+
+    diagnosis = RegimeDiagnosis(
+        final="bull",
+        technical="bear",
+        index="range",
+        consensus=False,
+    )
+    assert (diagnosis.final, diagnosis.technical, diagnosis.index) == (
+        "bull",
+        "bear",
+        "range",
+    )
 
 
 # ---- SKILL.md hardcoded-value tests ----

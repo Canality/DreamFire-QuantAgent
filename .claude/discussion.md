@@ -209,3 +209,42 @@
 ### 需要回复
 
 - Windows 只回传 WP1-B/WP1-C 各自的复验结论或 task-scoped 修正补丁；不要自动提交或推送。
+
+## [Codex → Windows Codex / Goone] 2026-08-05：v2.14 活动旧角色兼容清理待复验
+
+### 判断
+
+- 当前 RPC 和正式 roster 早已使用 Coordinator/Alpha/Risk & Evidence，但只读
+  Scout 发现 persona、parser/model、report renderer 和当前 prompt 仍接受退役
+  角色。`LEGACY-ROLE-CLEANUP-0805` 已在独立分支删除这些活动兼容入口。
+- parser/model 现在只接受 `alpha` 与 `risk_evidence`，其他角色失败关闭；市场
+  regime 的 `bull`/`bear`/`range` 语义、迁移前证据和历史交付包全部保留。
+- 这是本地 v2.14 交付候选；没有改 production 策略、因子、配仓、回测、
+  package version，没有 tag 或 push。
+
+### 复验证据
+
+1. 独立 Critic 发现并已关闭 1 个 P1：formal report 现在要求 Alpha/Risk
+   两份缓存均存在且解析无错，否则在写工件前失败关闭。含 4 个缓存污染
+   反例的聚焦回归最终 61/61，仓位约束 6/6、Ruff 通过；量化全量为
+   `422 passed, 1 skipped, 9 failed`，9 项均为交接基线缺少白名单外资源
+   skill 镜像的既有 `FileNotFoundError`。
+2. P1 后 fresh direct `pipeline_results_20260805_100118.json`：49/49、6/6、15 只、
+   现金 5.06%、1,470 条公告和 49/49 披露；候选绑定 SHA-256 为
+   `4e4ff29c8269d5e9a43e96a5fabd05c89ce10d1a8742c2c624c878db59f2fac1`。
+3. P1 后 fresh formal `multi-agent-validation-20260805-100147`：严格 8/8、12 tool
+   calls、0 error、三角色 895/340/348 events、专属 RPC 各 1 且无越权；
+   formal binding SHA-256 为
+   `50d49ce963809c72cfda73f53ec7ac0cd0e419fdb4d6c16a487781f45dc529a4`。
+4. `audit_result_multi-agent-validation-20260805-100147.json` 独立重算两套
+   create-once 候选并通过。完整报告仍为 `FINANCIAL_PARTIAL`，正式提交契约
+   仍为 `PROVISIONAL / BLOCKED`，没有扩大结论。独立 Critic 最终
+   `ACCEPT`，P0/P1/P2/P3 开放项均为 0；review SHA-256 为
+   `e04e34ddebf462d10d219fb1bd3162cabe48f53dd84f7a468c8b1c2f103eabfd`。
+
+### Windows 动作
+
+1. 校验交付目录的 SHA-256、父提交 `2ecfea5`、HEAD、Git bundle 和文件白名单。
+2. 先运行聚焦测试，再按 Windows 正式环境重跑 direct/formal/E2E；重点验证
+   旧角色输入失败关闭且当前 Alpha/Risk 报告仍可生成。
+3. 只回传复验结论或 task-scoped 修正补丁；不要自动提交或推送。
