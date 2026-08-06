@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 from jiuwenswarm.quant.backtest_engine import BacktestEngine
+from jiuwenswarm.quant.agent_decision import select_portfolio
 from jiuwenswarm.quant.factors import FactorCalculator, PositionSizer
 from jiuwenswarm.quant.market_data_provider import fetch_market_data_bundle
 from jiuwenswarm.quant.market_data_service import (
@@ -133,12 +134,11 @@ def fetch_data(
 
 
 def select_stocks(scores: pd.DataFrame, top_n: int = 15) -> list[str]:
-    """Select exactly top_n positive-score stocks."""
-    selected = [
-        ticker for ticker in scores.index
-        if float(scores.loc[ticker, "composite"]) > 0
-    ][:top_n]
-    return selected
+    """Use the same server-owned deterministic policy as the formal path."""
+    if top_n != 15:
+        raise ValueError("official selection policy fixes top_n at 15")
+    selected = select_portfolio(scores["composite"].to_dict())
+    return [item.ticker for item in selected]
 
 
 def _validate_weights(weights: dict[str, float]) -> dict[str, float]:
@@ -329,6 +329,9 @@ def main(argv: list[str] | None = None) -> None:
             write_candidate_binding,
         )
         from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
+        from jiuwenswarm.quant.reporting.announcement_service import (
+            announcement_snapshot_projection,
+        )
         from jiuwenswarm.quant.reporting.resource_meter import (
             ResourceMeter,
             new_resource_report,
@@ -377,27 +380,9 @@ def main(argv: list[str] | None = None) -> None:
                 snapshot_id: ev_ref,
                 **announcement_result.manifest,
             }
-            results["announcement_evidence"] = {
-                "as_of_time": decision_time.isoformat(),
-                "healthy": True,
-                "total_facts": announcement_result.total_facts,
-                "tickers_with_events": announcement_result.tickers_with_events,
-                "manifest_count": len(announcement_result.manifest),
-                "status_counts": {
-                    status.value: sum(
-                        item == status
-                        for item in announcement_result.statuses.values()
-                    )
-                    for status in set(announcement_result.statuses.values())
-                },
-                "terminal_cause_counts": announcement_result.terminal_cause_counts,
-                "diagnostics_by_ticker": {
-                    ticker: diagnostics.to_dict()
-                    for ticker, diagnostics
-                    in announcement_result.diagnostics_by_ticker.items()
-                },
-                "universe_health": announcement_result.universe_health,
-            }
+            results["announcement_evidence"] = (
+                announcement_snapshot_projection(announcement_result)
+            )
             for path in (timestamped_path, output_dir / "pipeline_results.json"):
                 with open(path, "w", encoding="utf-8") as handle:
                     json.dump(results, handle, ensure_ascii=False, indent=2, default=str)
@@ -426,7 +411,7 @@ def main(argv: list[str] | None = None) -> None:
                     event_facts=tuple(
                         announcement_result.facts_by_ticker.get(ticker, ())
                     ),
-                    data_provider_status="partial",
+                    data_provider_status=announcement_result.status_value(ticker),
                 )
 
             portfolio_snapshot = service.build_portfolio_snapshot(

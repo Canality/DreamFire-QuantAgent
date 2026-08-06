@@ -16,7 +16,22 @@ from jiuwenswarm.quant.market_data_service import (
     ProviderEvidence,
     diagnose_market_data,
 )
+from jiuwenswarm.quant.agent_decision import select_portfolio
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS
+
+
+def test_direct_selection_delegates_to_shared_official_policy():
+    module = _load_direct_module()
+    scores = pd.DataFrame(
+        {"composite": [1.0 - (index % 7) / 10 for index in range(len(ALL_STOCKS))]},
+        index=list(reversed(ALL_STOCKS)),
+    )
+    expected = [
+        item.ticker for item in select_portfolio(scores["composite"].to_dict())
+    ]
+    assert module.select_stocks(scores) == expected
+    with pytest.raises(ValueError, match="fixes top_n"):
+        module.select_stocks(scores, top_n=10)
 
 
 def _load_direct_module():
@@ -291,6 +306,12 @@ def test_direct_report_adapter_forwards_shared_announcement_evidence(
             "recovered_after_retry": False,
             "attempts": [{"all_empty": False}],
         },
+        mode="LIVE_ACCEPTED",
+        receipt_id="announcement-receipt-direct-fixture",
+        snapshot_sha256="c" * 64,
+        as_of_time=bundle.as_of_time,
+        _sealed=True,
+        status_value=lambda ticker: ProviderStatus.COMPLETE.value,
     )
     captured = {"bundles": {}}
 
@@ -384,3 +405,4 @@ def test_direct_report_adapter_forwards_shared_announcement_evidence(
     assert captured["archive"].root == fake_repo / "output" / "evidence_archive"
     assert captured["required_universe"] == list(ALL_STOCKS)
     assert str(captured["candidate_id"]).startswith("direct-")
+    assert captured["bundles"][selected[0]]["data_provider_status"] == "complete"

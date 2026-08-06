@@ -185,6 +185,67 @@ def test_direct_business_pass_requires_bound_audit() -> None:
     ] == "BUSINESS_PASSED"
 
 
+def test_readme_projection_detects_any_dynamic_field_drift() -> None:
+    summary = MODULE._build_summary(None, None, None, "no bound run")
+    readme = (
+        "prefix\n"
+        + MODULE.render_readme_summary_block(summary)
+        + "\nsuffix\n"
+    )
+    assert MODULE.readme_summary_matches(readme, summary)
+
+    drifted = json.loads(json.dumps(summary))
+    drifted["status"]["multi_agent_path"] = "BUSINESS_PASSED"
+    assert not MODULE.readme_summary_matches(readme, drifted)
+
+
+def test_checked_in_readme_matches_absent_local_run_evidence() -> None:
+    readme_path = Path(__file__).resolve().parents[4] / "README.md"
+    readme = readme_path.read_text(encoding="utf-8")
+    assert MODULE.readme_summary_matches(readme, None)
+
+
+def test_unaudited_artifacts_cannot_render_business_passed() -> None:
+    portfolio = [
+        {
+            "ticker": f"{index:06d}.SH",
+            "weight": 0.05,
+            "sector": f"sector-{index % 6}",
+        }
+        for index in range(15)
+    ]
+    pipeline = {
+        "n_stocks_fetched": 49,
+        "n_sectors_covered": 6,
+        "n_stocks_selected": 15,
+        "portfolio": portfolio,
+        "backtest": {"total_return": 0.01},
+    }
+    multi = {
+        "session_id": "multi-agent-validation-unbound",
+        "validation_passed": True,
+        "quant_phases": {str(index): True for index in range(8)},
+        "resource_usage": {"total_input_tokens": 123},
+    }
+    summary = MODULE._build_summary(pipeline, multi, None, "audit missing")
+
+    assert summary["status"]["quant_core_and_market_data"] == "NOT_TESTED"
+    assert summary["status"]["multi_agent_path"] == "NOT_TESTED"
+    assert summary["status"]["report_candidate"] == "NOT_TESTED"
+    assert "BUSINESS_PASSED" not in MODULE.render_readme_summary_block(summary)
+
+
+def test_readme_projection_rejects_missing_or_duplicate_markers() -> None:
+    summary = MODULE._build_summary(None, None, None)
+    assert not MODULE.readme_summary_matches("no markers", summary)
+    duplicated = (
+        MODULE.render_readme_summary_block(summary)
+        + "\n"
+        + MODULE.render_readme_summary_block(summary)
+    )
+    assert not MODULE.readme_summary_matches(duplicated, summary)
+
+
 def test_replaced_direct_result_fails_hash_binding(tmp_path: Path) -> None:
     pipeline, summary, audit = _fixture(tmp_path)
     _write(pipeline, {"snapshot_id": "snap-1", "changed": True})

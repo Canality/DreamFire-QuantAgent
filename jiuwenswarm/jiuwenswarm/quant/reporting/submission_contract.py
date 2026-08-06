@@ -18,10 +18,17 @@ import math
 import numbers
 import os
 import re
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping, Tuple
+
+from jiuwenswarm.quant.reporting.contest_universe_archive import (
+    CONTEST_UNIVERSE_REL_PATH,
+    CONTEST_UNIVERSE_SHA256,
+    inspect_contest_universe_archive,
+)
 
 
 # ---- constants ----
@@ -47,12 +54,10 @@ _VALID_REPORT_EXTENSIONS = frozenset({".md", ".txt", ".pdf"})
 # Ticker format: exactly 6 digits, ".SH" or ".SZ"
 _TICKER_PATTERN = re.compile(r"^\d{6}\.(SH|SZ)$")
 
-# Official Excel file: relative path from project root
-_OFFICIAL_EXCEL_REL_PATH = "赛题文档/上市公司列表.xlsx"
-# SHA-256 verified 2026-07-29 against the actual file on disk
-_OFFICIAL_EXCEL_SHA256 = (
-    "C021D69B5C3BF3EA0C4626811DF5ED9A02CD4C67E1068AD2F0CE35D759210617"
-)
+# Backward-compatible private aliases.  The archive module owns the audited
+# path/hash and, unlike a byte-only check, validates the workbook semantics.
+_OFFICIAL_EXCEL_REL_PATH = CONTEST_UNIVERSE_REL_PATH
+_OFFICIAL_EXCEL_SHA256 = CONTEST_UNIVERSE_SHA256
 
 # Canonical source identity: the ONLY (path, hash) pair accepted for formal submission
 _CANONICAL_SOURCE = (_OFFICIAL_EXCEL_REL_PATH, _OFFICIAL_EXCEL_SHA256)
@@ -110,20 +115,52 @@ def _verify_file_matches_hash(path: str, expected_sha256: str) -> Tuple[bool, st
 
 
 def _is_official_path(source_file: str) -> bool:
-    """True only when source_file resolves to the exact canonical absolute path.
+    """True only for the canonical relative or exact canonical absolute path.
 
-    Uses os.path.realpath to normalize and compare — rejects look-alike
-    paths like C:/attacker/赛题文档/上市公司列表.xlsx.
+    ``realpath`` comparison is intentionally insufficient: an arbitrary
+    caller-owned symlink could otherwise resolve to the official file while
+    leaving a non-canonical path in the audit trail.  Link, junction and Windows
+    reparse-point components are rejected before the lexical identity check.
     """
-    canonical_abs = os.path.realpath(_resolve_official_excel_path())
-    try:
-        source_path = Path(source_file)
-        if not source_path.is_absolute():
-            source_path = _resolve_project_root() / source_path
-        resolved = os.path.realpath(source_path)
-    except (ValueError, OSError):
+
+    def _is_link_or_reparse(path: Path) -> bool:
+        try:
+            if path.is_symlink():
+                return True
+            is_junction = getattr(path, "is_junction", None)
+            if is_junction is not None and is_junction():
+                return True
+            attributes = getattr(path.lstat(), "st_file_attributes", 0)
+            reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            return bool(reparse_flag and attributes & reparse_flag)
+        except OSError:
+            return False
+
+    def _has_link_component(path: Path) -> bool:
+        current = Path(path.anchor)
+        for part in path.parts[1:]:
+            current = current / part
+            if _is_link_or_reparse(current):
+                return True
         return False
-    return resolved == canonical_abs
+
+    try:
+        raw_source = os.fspath(source_file)
+        source_path = Path(raw_source)
+        if source_path.is_absolute():
+            canonical_path = Path(_resolve_official_excel_path())
+            if source_path != canonical_path:
+                return False
+            candidate = source_path
+        else:
+            if raw_source != _OFFICIAL_EXCEL_REL_PATH:
+                return False
+            candidate = _resolve_project_root() / source_path
+        if _has_link_component(candidate):
+            return False
+    except (TypeError, ValueError, OSError):
+        return False
+    return True
 
 
 def _is_canonical_source(source_file: str, source_sha256: str) -> bool:
@@ -288,20 +325,36 @@ class SubmissionContract:
 
         # --- source_file validation ---
         # Three cases:
-        # 1. Official path + canonical hash → verify file, mark source_verified
+        # 1. Official path + canonical hash → verify bytes AND exact workbook
+        #    semantics against this contract, then mark source_verified
         # 2. Official path + WRONG hash → reject (look-alike attack)
         # 3. Non-official path (test/dev) → allow, source_verified stays False
         verified = False
         if _is_canonical_source(self.source_file, self.source_sha256):
-            # Path + hash both match canonical → verify file on disk
-            ok, _reason = _verify_file_matches_hash(
-                _resolve_official_excel_path(), self.source_sha256
-            )
-            verified = ok
-            if not ok:
+            audit = inspect_contest_universe_archive()
+            if not audit.verified:
                 issues.append(
-                    f"Canonical source file hash mismatch: {_reason}"
+                    "Canonical contest workbook audit failed: "
+                    + "; ".join(audit.issues)
                 )
+            else:
+                semantic_issues: list[str] = []
+                if tuple(sorted(self.company_codes)) != audit.company_codes:
+                    semantic_issues.append("company_codes")
+                if dict(self.company_names) != audit.company_names:
+                    semantic_issues.append("company_names")
+                if dict(self.sectors) != audit.sectors:
+                    semantic_issues.append("sectors")
+                if tuple(self.sector_names) != audit.group_names:
+                    semantic_issues.append("sector_names")
+                if semantic_issues:
+                    issues.append(
+                        "Canonical source semantic mismatch: contract fields "
+                        f"{semantic_issues} do not exactly match the audited "
+                        "49-name/six-group workbook"
+                    )
+                else:
+                    verified = True
         elif _is_official_path(self.source_file):
             # Path resolves to official file but hash doesn't match canonical
             issues.append(

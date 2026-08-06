@@ -7,7 +7,6 @@ import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +15,8 @@ from jiuwenswarm.quant.reporting.announcement_service import (
     AnnouncementService,
     AnnouncementUniverseHealthError,
     ServiceResult,
+    announcement_snapshot_projection,
+    replay_announcement_service,
     run_announcement_service,
 )
 from jiuwenswarm.quant.reporting.providers.announcement import (
@@ -27,6 +28,7 @@ from jiuwenswarm.quant.reporting.providers.announcement import (
 )
 from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
 from jiuwenswarm.quant.reporting.providers.status import ProviderStatus
+from jiuwenswarm.quant.reporting.models import MetricFact
 
 UTC = timezone.utc
 
@@ -74,10 +76,34 @@ class _StaticProvider:
         self.calls.append(ticker)
         if ticker != self.event_ticker:
             return _empty_result()
-        fact = SimpleNamespace(evidence_ids=())
+        code = ticker.split(".")[0]
+        announcement = {
+            "art_code": f"AN-{code}",
+            "codes": [{"stock_code": code}],
+            "notice_date": "2026-07-29",
+            "title": "fresh retry event",
+        }
+        raw = json.dumps(announcement, sort_keys=True, ensure_ascii=False)
+        evidence_id = AnnouncementProvider._make_evidence_id(code, announcement)
+        provider = AnnouncementProvider()
+        ref = provider._build_evidence_ref(
+            ticker,
+            announcement,
+            evidence_id,
+            as_of_time,
+        )
+        fact = MetricFact(
+            name="exchange_announcement",
+            value="fresh retry event",
+            unit=None,
+            status="available",
+            evidence_ids=(evidence_id,),
+        )
         return AnnouncementResult(
             facts=[fact],
             status=ProviderStatus.COMPLETE,
+            raw_payloads={evidence_id: raw},
+            evidence_refs=[ref],
             diagnostics=AnnouncementDiagnostics(
                 terminal_cause=AnnouncementTerminalCause.EVENTS_FOUND,
                 pages_requested=1,
@@ -94,6 +120,13 @@ def _page(items: list, total_hits: int | None = None) -> AnnouncementPage:
         items=items,
         total_hits=len(items) if total_hits is None else total_hits,
     )
+
+
+def _owned_page(code: str, *_args) -> AnnouncementPage:
+    items = json.loads(json.dumps(MOCK_ANNOUNCEMENTS))
+    for item in items:
+        item["codes"] = [{"stock_code": code}]
+    return _page(items)
 
 
 def _make_patch_target():
@@ -183,7 +216,7 @@ class TestAnnouncementServiceFixture:
             svc = AnnouncementService(provider, archive)
             now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
 
-            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+            with patch(_make_patch_target(), side_effect=_owned_page):
                 result = asyncio.run(
                     svc.run(["600000.SH", "000001.SZ"], now),
                 )
@@ -241,6 +274,222 @@ class TestAnnouncementServiceFixture:
                 parsed = json.loads(content)
                 assert "art_code" in parsed
                 assert "title" in parsed
+
+    def test_receipt_replays_same_snapshot_without_network(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_root = Path(tmp)
+            archive = EvidenceArchive(archive_root)
+            service = AnnouncementService(AnnouncementProvider(), archive)
+            now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+            tickers = ["600000.SH", "000001.SZ"]
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                live = asyncio.run(service.run(tickers, now))
+
+            with patch(_make_patch_target(), side_effect=AssertionError("network used")):
+                replay = replay_announcement_service(
+                    archive_root,
+                    live.receipt_id,
+                    expected_tickers=tickers,
+                    expected_as_of_time=now,
+                )
+
+            assert live.mode == "LIVE_ACCEPTED"
+            assert replay.mode == "OFFLINE_REPLAY"
+            assert replay.snapshot_sha256 == live.snapshot_sha256
+            assert replay.statuses == live.statuses
+            assert replay.facts_by_ticker == live.facts_by_ticker
+            assert announcement_snapshot_projection(replay)["receipt_id"] == live.receipt_id
+
+    def test_replay_fails_closed_on_missing_tampered_future_or_mismatch(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_root = Path(tmp)
+            archive = EvidenceArchive(archive_root)
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                live = asyncio.run(
+                    AnnouncementService(AnnouncementProvider(), archive).run(
+                        ["600000.SH"], now
+                    )
+                )
+            assert live.receipt_id is not None
+            with pytest.raises(ValueError, match="universe mismatch"):
+                replay_announcement_service(
+                    archive_root,
+                    live.receipt_id,
+                    expected_tickers=["000001.SZ"],
+                )
+            with pytest.raises(ValueError, match="as_of_time mismatch"):
+                replay_announcement_service(
+                    archive_root,
+                    live.receipt_id,
+                    expected_as_of_time=datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
+                )
+
+            evidence_id = next(iter(live.manifest))
+            evidence_path = archive_root / evidence_id[:2] / f"{evidence_id}.json"
+            evidence_path.write_text("{}", encoding="utf-8")
+            with pytest.raises(ValueError, match="missing or tampered"):
+                replay_announcement_service(archive_root, live.receipt_id)
+
+        future = datetime(2026, 7, 26, 12, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_root = Path(tmp)
+            archive = EvidenceArchive(archive_root)
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                empty_live = asyncio.run(
+                    AnnouncementService(AnnouncementProvider(), archive).run(
+                        ["600000.SH"], future
+                    )
+                )
+            assert empty_live.statuses["600000.SH"] == ProviderStatus.AVAILABLE_NO_EVENT
+            assert replay_announcement_service(
+                archive_root, empty_live.receipt_id
+            ).facts_by_ticker["600000.SH"] == ()
+
+    def test_archived_fact_rejects_future_availability(self) -> None:
+        provider = AnnouncementProvider()
+        announcement = MOCK_ANNOUNCEMENTS[0]
+        raw = json.dumps(announcement, sort_keys=True, ensure_ascii=False)
+        evidence_id = provider._make_evidence_id("600000", announcement)
+        ref = provider._build_evidence_ref(
+            "600000.SH",
+            announcement,
+            evidence_id,
+            datetime(2026, 7, 28, 12, 0, tzinfo=UTC),
+        )
+        with pytest.raises(ValueError, match="future evidence"):
+            provider.replay_archived_fact(
+                "600000.SH",
+                raw,
+                ref,
+                datetime(2026, 7, 26, 12, 0, tzinfo=UTC),
+            )
+
+    def test_cross_ticker_payload_never_becomes_a_fact(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_root = Path(tmp)
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                live = asyncio.run(
+                    AnnouncementService(
+                        AnnouncementProvider(), EvidenceArchive(archive_root)
+                    ).run(["000001.SZ"], now)
+                )
+            assert live.facts_by_ticker["000001.SZ"] == ()
+            assert live.statuses["000001.SZ"] == ProviderStatus.UNAVAILABLE
+            replay = replay_announcement_service(archive_root, live.receipt_id)
+            assert replay.facts_by_ticker["000001.SZ"] == ()
+            assert replay.statuses["000001.SZ"] == ProviderStatus.UNAVAILABLE
+
+    def test_accepted_result_is_deeply_immutable(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                result = asyncio.run(
+                    AnnouncementService(
+                        AnnouncementProvider(), EvidenceArchive(Path(tmp))
+                    ).run(["600000.SH"], now)
+                )
+            before = announcement_snapshot_projection(result)
+            with pytest.raises(TypeError):
+                result.statuses["600000.SH"] = ProviderStatus.UNAVAILABLE
+            with pytest.raises(TypeError):
+                result.facts_by_ticker["600000.SH"] = ()
+            with pytest.raises(TypeError):
+                result.universe_health["healthy"] = False
+            with pytest.raises(TypeError):
+                result.universe_health["attempts"][0]["all_empty"] = True
+            with pytest.raises(AttributeError):
+                result.requested_tickers = ("000001.SZ",)
+            assert announcement_snapshot_projection(result) == before
+
+    def test_zero_request_no_event_is_rejected(self) -> None:
+        class _ZeroCallProvider:
+            async def fetch_rich(self, _ticker: str, _as_of_time: datetime):
+                return AnnouncementResult(
+                    status=ProviderStatus.AVAILABLE_NO_EVENT,
+                    diagnostics=AnnouncementDiagnostics(
+                        terminal_cause=AnnouncementTerminalCause.TRUE_NO_DATA
+                    ),
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with pytest.raises(ValueError, match="no successful provider attempt"):
+                asyncio.run(
+                    AnnouncementService(
+                        _ZeroCallProvider(), EvidenceArchive(Path(tmp))
+                    ).run(
+                        ["600000.SH"],
+                        datetime(2026, 7, 30, 12, 0, tzinfo=UTC),
+                    )
+                )
+
+    def test_missing_receipt_cannot_be_accepted_by_idempotent_rerun(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_root = Path(tmp)
+            service = AnnouncementService(
+                AnnouncementProvider(), EvidenceArchive(archive_root)
+            )
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                first = asyncio.run(service.run(["600000.SH"], now))
+            receipt_path = (
+                archive_root / first.receipt_id[:2] / f"{first.receipt_id}.json"
+            )
+            receipt_path.unlink()
+            second_service = AnnouncementService(
+                AnnouncementProvider(), EvidenceArchive(archive_root)
+            )
+            with patch(_make_patch_target(), return_value=_page(MOCK_ANNOUNCEMENTS)):
+                with pytest.raises(ValueError, match="missing or corrupted"):
+                    asyncio.run(second_service.run(["600000.SH"], now))
+
+    def test_live_fact_must_equal_archived_payload_reconstruction(self) -> None:
+        now = datetime(2026, 7, 30, 12, 0, tzinfo=UTC)
+
+        class _ForgedFactProvider:
+            async def fetch_rich(self, ticker: str, as_of_time: datetime):
+                announcement = {
+                    "art_code": "AN-CANONICAL",
+                    "codes": [{"stock_code": "600000"}],
+                    "notice_date": "2026-07-29",
+                    "title": "archived canonical title",
+                }
+                raw = json.dumps(announcement, sort_keys=True, ensure_ascii=False)
+                evidence_id = AnnouncementProvider._make_evidence_id(
+                    "600000", announcement
+                )
+                ref = AnnouncementProvider()._build_evidence_ref(
+                    ticker, announcement, evidence_id, as_of_time
+                )
+                return AnnouncementResult(
+                    facts=[MetricFact(
+                        name="exchange_announcement",
+                        value="LIVE FORGED TITLE",
+                        unit=None,
+                        status="available",
+                        evidence_ids=(evidence_id,),
+                    )],
+                    status=ProviderStatus.COMPLETE,
+                    raw_payloads={evidence_id: raw},
+                    evidence_refs=[ref],
+                    diagnostics=AnnouncementDiagnostics(
+                        terminal_cause=AnnouncementTerminalCause.EVENTS_FOUND,
+                        pages_requested=1,
+                        request_attempts=1,
+                        raw_items=1,
+                        eligible_items=1,
+                        total_hits=1,
+                    ),
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with pytest.raises(ValueError, match="differs from archived payload"):
+                asyncio.run(
+                    AnnouncementService(
+                        _ForgedFactProvider(), EvidenceArchive(Path(tmp))
+                    ).run(["600000.SH"], now)
+                )
 
     def test_required_universe_all_empty_retries_with_fresh_provider(self) -> None:
         tickers = [f"{index:06d}.SH" for index in range(49)]

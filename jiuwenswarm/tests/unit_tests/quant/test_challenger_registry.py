@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
 
+import jiuwenswarm.quant.challenger_registry as registry_module
 from jiuwenswarm.quant.challenger_mechanisms import CHALLENGER_IDS
 from jiuwenswarm.quant.challenger_registry import (
     ACCEPTED_WP1B_EVALUATION_HASH,
     ACCEPTED_WP1B_REVIEW_SHA256,
     BASE_STRATEGY_ID,
     FROZEN_REGISTRY_HASH,
+    WP1B_REVIEW_EVIDENCE_RELATIVE_PATH,
     build_registry,
     canonical_hash,
     validate_registry,
@@ -19,9 +23,7 @@ from jiuwenswarm.quant.challenger_registry import (
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 TASK_PATH = REPO_ROOT / "coordination/active/WP1B-EVALUATION-0804.md"
-REVIEW_PATH = (
-    REPO_ROOT / "output/agent_handoffs/WP1B-EVALUATION-0804/review.json"
-)
+REVIEW_PATH = REPO_ROOT / WP1B_REVIEW_EVIDENCE_RELATIVE_PATH
 
 
 def _registry():
@@ -87,4 +89,51 @@ def test_review_hash_mismatch_fails_closed(tmp_path: Path) -> None:
     review = tmp_path / "review.json"
     review.write_text(REVIEW_PATH.read_text(encoding="utf-8") + " ", encoding="utf-8")
     with pytest.raises(ValueError, match="review SHA-256"):
+        build_registry(task_path=TASK_PATH, review_path=review)
+
+
+def test_missing_tracked_review_fails_closed(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="review artifact is missing"):
+        build_registry(task_path=TASK_PATH, review_path=tmp_path / "missing.json")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("task_id", "WRONG-TASK"),
+        ("verdict", "REJECT"),
+        ("blocking_findings_count", 1),
+    ],
+)
+def test_semantic_repin_cannot_replace_accepted_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+) -> None:
+    payload = json.loads(REVIEW_PATH.read_text(encoding="utf-8"))
+    payload[field] = value
+    review = tmp_path / "review.json"
+    review.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    digest = hashlib.sha256(review.read_bytes()).hexdigest()
+    monkeypatch.setattr(registry_module, "ACCEPTED_WP1B_REVIEW_SHA256", digest)
+
+    with pytest.raises(ValueError, match="not an unblocked ACCEPT"):
+        build_registry(task_path=TASK_PATH, review_path=review)
+
+
+def test_semantic_repin_cannot_remove_evaluation_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = REVIEW_PATH.read_text(encoding="utf-8")
+    review = tmp_path / "review.json"
+    review.write_text(
+        original.replace(ACCEPTED_WP1B_EVALUATION_HASH, "0" * 64),
+        encoding="utf-8",
+    )
+    digest = hashlib.sha256(review.read_bytes()).hexdigest()
+    monkeypatch.setattr(registry_module, "ACCEPTED_WP1B_REVIEW_SHA256", digest)
+
+    with pytest.raises(ValueError, match="does not bind"):
         build_registry(task_path=TASK_PATH, review_path=review)

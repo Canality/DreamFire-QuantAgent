@@ -6,6 +6,7 @@ Reference: DEVELOPMENT_PLAN.md WP0-A acceptance criteria.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -21,6 +22,19 @@ RESOURCE_SKILL = (
     / "agent" / "workspace" / "skills" / "quant-investment" / "SKILL.md"
 )
 README = PROJECT_ROOT / "README.md"
+SUMMARY_SCRIPT = (
+    PROJECT_ROOT / "jiuwenswarm" / "scripts" / "generate_validation_summary.py"
+)
+AGENT_IDENTITY = PROJECT_ROOT / "AGENTS.md"
+CLAUDE_IDENTITY = PROJECT_ROOT / "CLAUDE.md"
+AGENT_WORKFLOW = PROJECT_ROOT / "AGENT_WORKFLOW.md"
+DEVELOPMENT_PLAN = PROJECT_ROOT / "DEVELOPMENT_PLAN.md"
+VALIDATION = PROJECT_ROOT / "VALIDATION.md"
+DISCUSSION = PROJECT_ROOT / ".claude" / "discussion.md"
+HISTORY_INDEX = PROJECT_ROOT / "history" / "README.md"
+HISTORY_V213 = PROJECT_ROOT / "history" / "v2.13_2026-07-30.md"
+HISTORY_V214 = PROJECT_ROOT / "history" / "v2.14_2026-08-05.md"
+HISTORY_V215 = PROJECT_ROOT / "history" / "v2.15_2026-08-06.md"
 
 ACTIVE_IDENTITY_FILES = (
     PROJECT_ROOT / "AGENTS.md",
@@ -48,6 +62,96 @@ RETIRED_IDENTITY_MARKERS = (
     "Bull Analyst",
     "Bear Analyst",
 )
+
+
+def test_agent_identity_makes_frozen_contracts_challengeable_not_optional():
+    """Frozen rules may be challenged, but only explicit migration can unfreeze."""
+    identity = AGENT_IDENTITY.read_text(encoding="utf-8")
+    normalized_identity = re.sub(r"\s+", "", identity)
+
+    required_semantics = (
+        "默认执行契约和安全边界",
+        "不是不可质疑的永久真理",
+        "证据或可复现反例",
+        "范围受限的替代方案",
+        "质疑待决期间继续执行现行契约",
+        "不得把质疑当成授权",
+        "产品意图、外部权限或权威来源、重大安全/证据边界",
+        "新的版本化任务或契约",
+        "迁移与回退、负向测试和验收结果",
+    )
+    for statement in required_semantics:
+        assert re.sub(r"\s+", "", statement) in normalized_identity
+
+    forbidden_shortcuts = (
+        "Agent 可自行解除冻结",
+        "有疑议可以先实现",
+        "任何疑议都必须询问用户",
+        "冻结规则仅供参考",
+    )
+    for shortcut in forbidden_shortcuts:
+        assert re.sub(r"\s+", "", shortcut) not in normalized_identity
+
+
+def test_active_development_governance_has_exactly_two_peer_roles():
+    """Codex and Claude are the only active development collaborators."""
+    active_paths = (
+        AGENT_IDENTITY,
+        CLAUDE_IDENTITY,
+        AGENT_WORKFLOW,
+        DEVELOPMENT_PLAN,
+        README,
+        PROJECT_ROOT / ".agents" / "skills" / "local-code-scout" / "SKILL.md",
+        PROJECT_ROOT / ".agents" / "skills" / "bounded-code-implementer" / "SKILL.md",
+        PROJECT_ROOT / ".agents" / "skills" / "diff-contract-reviewer" / "SKILL.md",
+        PROJECT_ROOT / "scripts" / "agent_task.py",
+    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in active_paths)
+
+    for retired_identity in ("Missed", "Goone", "Qwen", "DeepSeek"):
+        assert retired_identity not in combined
+    for retired_launcher in (
+        "scripts/agent_role.py",
+        "scripts/agent-role.cmd",
+        "scripts/claude-qwen",
+        "scripts/claude-deepseek",
+    ):
+        assert retired_launcher not in combined
+
+    agents = AGENT_IDENTITY.read_text(encoding="utf-8")
+    claude = CLAUDE_IDENTITY.read_text(encoding="utf-8")
+    workflow = AGENT_WORKFLOW.read_text(encoding="utf-8")
+    assert "Codex（计划与验收）" in agents
+    assert "Claude（执行与开发）" in agents
+    assert "平等协作者" in agents and "不是一般意义上的上下级" in agents
+    assert "定位、实现、审查是一个任务的阶段" in agents
+    assert "Coordinator、AlphaAnalyst、Risk&EvidenceAnalyst" in re.sub(
+        r"\s+", "", agents
+    )
+    assert "Claude 不自行写 `VERIFIED/CLOSED`" in claude
+    assert "双方最多各两次证据交换" in claude
+    assert "ACCEPT" in workflow and "MODIFY" in workflow
+    assert "REJECT" in workflow and "用户升级" in workflow
+    assert "无争议工作继续" in workflow
+    task_cli = (PROJECT_ROOT / "scripts" / "agent_task.py").read_text(
+        encoding="utf-8"
+    )
+    assert "Codex/Claude workflow" in task_cli
+    assert "Write scope approved by Codex." in task_cli
+    assert "multi-model workflow" not in task_cli
+    assert "Write scope approved by Planner." not in task_cli
+
+    for retired_file in (
+        PROJECT_ROOT / "scripts" / "agent-role.cmd",
+        PROJECT_ROOT / "scripts" / "agent_role.py",
+        PROJECT_ROOT / "scripts" / "claude-deepseek.cmd",
+        PROJECT_ROOT / "scripts" / "claude-deepseek.ps1",
+        PROJECT_ROOT / "scripts" / "claude-profile.ps1",
+        PROJECT_ROOT / "scripts" / "claude-qwen.cmd",
+        PROJECT_ROOT / "scripts" / "claude-qwen.ps1",
+        PROJECT_ROOT / "scripts" / "claude_profile.py",
+    ):
+        assert not retired_file.exists(), f"retired launcher remains: {retired_file}"
 
 
 def _skill_body(path: Path) -> str:
@@ -87,6 +191,157 @@ def test_market_regime_vocabulary_remains_supported():
         "bear",
         "range",
     )
+
+
+def test_version_history_archive_contract():
+    """Version history is complete, append-only, and separate from current truth."""
+    for path in (HISTORY_INDEX, HISTORY_V213, HISTORY_V214, HISTORY_V215):
+        assert path.is_file(), f"missing version-history file: {path}"
+
+    history_files = sorted(HISTORY_INDEX.parent.glob("v*.md"))
+    assert [path.name for path in history_files] == [
+        "v2.13_2026-07-30.md",
+        "v2.14_2026-08-05.md",
+        "v2.15_2026-08-06.md",
+    ]
+    assert all(
+        re.fullmatch(r"v\d+\.\d+_\d{4}-\d{2}-\d{2}\.md", path.name)
+        for path in history_files
+    )
+
+    index = HISTORY_INDEX.read_text(encoding="utf-8")
+    assert "append-only" in index
+    assert "不是当前事实源" in index
+    assert "170e9043e788f1d8e69ea16a6c390204ddc490ed" in index
+    assert "89322cdff88ccd3172055fe870efbf5d45676ff6" in index
+    assert "f205967b11065b36fc1ef6d7898c2cf79dea0872" in index
+
+    v213 = HISTORY_V213.read_text(encoding="utf-8")
+    for heading in ("### 0.", "### 1.", "### 2.", "### 3.", "### 4."):
+        assert heading in v213
+    assert "1,204,831" in v213
+    assert "PROVISIONAL / BLOCKED" in v213
+
+    v214 = HISTORY_V214.read_text(encoding="utf-8")
+    for section in range(1, 16):
+        assert f"### -{section}." in v214
+    assert "multi-agent-validation-20260805-100147" in v214
+    assert "DOES_NOT_QUALIFY" in v214
+    assert "双入口已接线，完整 E2E 仍失败" in v214
+    assert "WP1-B/C 验收完成，停止本轮 Alpha 搜索" in v214
+
+    v215 = HISTORY_V215.read_text(encoding="utf-8")
+    for marker in (
+        "89322cdff88ccd3172055fe870efbf5d45676ff6..f205967b11065b36fc1ef6d7898c2cf79dea0872",
+        "610 passed, 1 skipped",
+        "WP1-D 正式稳定性",
+        "两方开发协作",
+        "Mac candidate",
+        "没有 fresh direct/formal/model/network 运行",
+        "production_six_factor",
+    ):
+        assert marker in v215
+
+    current_validation = VALIDATION.read_text(encoding="utf-8")
+    assert not re.search(r"^### (?:-\d+|[0-4])\.", current_validation, re.MULTILINE)
+    for marker in (
+        "multi-agent-validation-20260805-100147",
+        "4e4ff29c8269d5e9a43e96a5fabd05c89ce10d1a8742c2c624c878db59f2fac1",
+        "50d49ce963809c72cfda73f53ec7ac0cd0e419fdb4d6c16a487781f45dc529a4",
+            "610 passed, 1 skipped",
+            "f205967b11065b36fc1ef6d7898c2cf79dea0872",
+            "FINANCIAL_PARTIAL",
+        "PROVISIONAL / BLOCKED",
+    ):
+        assert marker in current_validation
+
+    current_discussion = DISCUSSION.read_text(encoding="utf-8")
+    assert "双入口已接线，完整 E2E 仍失败" not in current_discussion
+    assert "v2.15 Mac 候选交接复验" in current_discussion
+    assert "v2.14 活动旧角色兼容清理待复验" not in current_discussion
+    ordered_v215_commits = (
+        "4a3d812",
+        "43559a4",
+        "9c16155",
+        "66e711c",
+        "6f54a70",
+        "e690455",
+        "5fb0ec6",
+        "dd38f34",
+        "3586ce0",
+        "775666f",
+        "8d00f54",
+        "5391cbb",
+        "921fe88",
+        "eb81ce5",
+        "0a32068",
+        "287f5e8",
+        "cf6017d",
+        "2a04f49",
+        "44acb51",
+        "6b6482e",
+        "f205967",
+    )
+    commit_chain = current_discussion.split(
+        "本轮需要按父子依赖顺序复验的提交：", maxsplit=1
+    )[1].split("此前已复制到 Windows：", maxsplit=1)[0]
+    commit_offsets = [commit_chain.index(commit) for commit in ordered_v215_commits]
+    assert commit_offsets == sorted(commit_offsets)
+    assert "TRACK2-V215-HANDOFF-0806" in current_discussion
+
+    for identity_file in (
+        PROJECT_ROOT / "AGENTS.md",
+        PROJECT_ROOT / "AGENT_WORKFLOW.md",
+        PROJECT_ROOT / "CLAUDE.md",
+    ):
+        identity = identity_file.read_text(encoding="utf-8")
+        assert "history/" in identity
+        assert "append-only" in identity
+
+    readme = README.read_text(encoding="utf-8")
+    claude = (PROJECT_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    plan = (PROJECT_ROOT / "DEVELOPMENT_PLAN.md").read_text(encoding="utf-8")
+    for current_command_doc in (readme, claude):
+        assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'" not in current_command_doc
+        assert "Remove-Item Env:PYTEST_DISABLE_PLUGIN_AUTOLOAD" in current_command_doc
+    assert "公告已形成 1,470 条、49/49" in plan
+    assert "最新已接受 formal 为 97,209 input token / 12 tool calls" in plan
+
+
+def test_version_history_canonical_snapshots_are_complete():
+    """Archived source snapshots retain their byte-level canonical contents."""
+
+    def marked_snapshot(path: Path, name: str) -> bytes:
+        text = path.read_text(encoding="utf-8")
+        begin = f"<!-- BEGIN {name} -->"
+        end = f"<!-- END {name} -->"
+        assert text.count(begin) == text.count(end) == 1
+        body = text.split(begin, 1)[1].split(end, 1)[0]
+        return (body.strip("\n") + "\n").encode()
+
+    expected = {
+        (HISTORY_V213, "V2.13_VALIDATION_SNAPSHOT"):
+            "b91dae9d9897fb54883a121a91ca05955b0dc408fc39e017371ac5816d07bfe3",
+        (HISTORY_V214, "V2.14_VALIDATION_SNAPSHOT"):
+            "b4d013f8df390397ed2ef033e88ec5c9d46d31af104d2f716100173db414d963",
+        (HISTORY_V214, "V2.14_CLOSED_DISCUSSION_SNAPSHOT"):
+            "2d29c0cdfa004b9c4800db658b3d8adcba33152e93bbaa6f7b475df0e6f0e540",
+    }
+    for (path, name), digest in expected.items():
+        assert hashlib.sha256(marked_snapshot(path, name)).hexdigest() == digest
+
+
+def test_version_history_markdown_links_resolve():
+    """Every checked-in history Markdown link resolves inside the repository."""
+    link_pattern = re.compile(r"\[[^\]]+\]\(([^)]+\.md)\)")
+    for source in (README, VALIDATION, HISTORY_INDEX):
+        text = source.read_text(encoding="utf-8")
+        for target in link_pattern.findall(text):
+            if target.startswith(("http://", "https://")):
+                continue
+            resolved = (source.parent / target).resolve()
+            assert resolved.is_relative_to(PROJECT_ROOT)
+            assert resolved.is_file(), f"broken Markdown link in {source}: {target}"
 
 
 # ---- SKILL.md hardcoded-value tests ----
@@ -216,6 +471,57 @@ def test_readme_references_validation_md():
     assert "VALIDATION.md" in text, (
         "README must reference VALIDATION.md as the authoritative run-state source."
     )
+
+
+def test_readme_has_one_machine_owned_dynamic_summary_block():
+    """Per-run values belong to one generated block, initially fail-closed."""
+
+    text = README.read_text(encoding="utf-8")
+    assert text.count("<!-- BEGIN GENERATED VALIDATION SUMMARY -->") == 1
+    assert text.count("<!-- END GENERATED VALIDATION SUMMARY -->") == 1
+    block = text.split("<!-- BEGIN GENERATED VALIDATION SUMMARY -->", 1)[1]
+    block = block.split("<!-- END GENERATED VALIDATION SUMMARY -->", 1)[0]
+    for field in (
+        "direct_status",
+        "formal_status",
+        "report_status",
+        "formal_session",
+        "formal_input_tokens",
+        "audit_passed",
+    ):
+        assert f"`{field}`" in block
+    assert block.count("`NOT_GENERATED`") == 6
+    assert "--readme update" in block
+
+
+def test_readme_outside_generated_block_has_no_run_derived_claims():
+    """Latest-run counts and verdicts must not bypass the generated checker."""
+
+    text = README.read_text(encoding="utf-8")
+    before, rest = text.split("<!-- BEGIN GENERATED VALIDATION SUMMARY -->", 1)
+    _, after = rest.split("<!-- END GENERATED VALIDATION SUMMARY -->", 1)
+    prose = before + after
+    forbidden = (
+        "49/49",
+        "1,470",
+        "8/8",
+        "1/1",
+        "12 次工具调用",
+        "最新 direct",
+        "最新 formal",
+        "最新候选",
+        "audit 退出 0",
+    )
+    for marker in forbidden:
+        assert marker not in prose
+
+
+def test_summary_generator_never_writes_validation_fact_source():
+    """The generator may write output JSON/README, never VALIDATION.md."""
+
+    source = SUMMARY_SCRIPT.read_text(encoding="utf-8")
+    assert 'project_root / "VALIDATION.md"' not in source
+    assert "VALIDATION.write" not in source
 
 
 def test_readme_no_stale_performance():

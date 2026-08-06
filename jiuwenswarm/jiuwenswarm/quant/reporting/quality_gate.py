@@ -10,6 +10,7 @@ available_at <= decision_time.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime
 from typing import Dict, List, Mapping, Set
@@ -17,6 +18,7 @@ from typing import Dict, List, Mapping, Set
 from jiuwenswarm.quant.reporting.models import (
     CompanyFactBundle,
     EvidenceRef,
+    FundamentalReportCore,
     PortfolioSnapshot,
     ReportQualityResult,
 )
@@ -24,6 +26,8 @@ from jiuwenswarm.quant.reporting.report_grade import (
     GradeResult,
     ReportGrade,
     grade_submission,
+    has_qualified_fundamental,
+    is_qualified_fundamental_core,
 )
 from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract
 
@@ -50,15 +54,32 @@ def _evidence_has_valid_source(ref: EvidenceRef) -> bool:
     return bool(ref.source_type) and bool(ref.source_name)
 
 
-def _archive_exists(archive: object, evidence_id: str) -> bool:
-    """Check *evidence_id* resolves in the archive (lazy-import safe)."""
+def _archive_entry_status(
+    archive: object,
+    archived_manifest: object,
+    evidence_id: str,
+    expected_ref: EvidenceRef,
+) -> str | None:
+    """Return ``None`` only when archived bytes and metadata match exactly."""
     try:
-        exists_method = getattr(archive, "exists", None)
-        if exists_method is None:
-            return False
-        return bool(exists_method(evidence_id))
+        read = getattr(archive, "read", None)
+        if not isinstance(archived_manifest, Mapping) or read is None:
+            return "archive does not expose verified manifest/content"
+        if expected_ref.evidence_id != evidence_id:
+            return "supplied EvidenceRef id does not match manifest key"
+        archived_ref = archived_manifest.get(evidence_id)
+        content = read(evidence_id)
+        if not isinstance(archived_ref, EvidenceRef) or not isinstance(
+            content, bytes,
+        ):
+            return "not found or corrupt"
+        if archived_ref != expected_ref:
+            return "archived EvidenceRef does not match supplied manifest"
+        if hashlib.sha256(content).hexdigest() != expected_ref.content_sha256:
+            return "archived content hash does not match supplied manifest"
+        return None
     except Exception:
-        return False
+        return "archive verification raised"
 
 
 def validate_submission(
@@ -176,6 +197,11 @@ def validate_submission(
     facts_without_evidence: List[str] = []
     facts_with_invalid_evidence: List[str] = []
     facts_with_future_evidence: List[str] = []
+    fundamental_evidence_issues: List[str] = []
+    fundamental_evidence_ids: set[str] = set()
+    has_fundamental_cores = any(
+        bool(bundle.qualified_fundamental_reports) for bundle in bundles.values()
+    )
 
     for bundle in bundles.values():
         decision_time = bundle.as_of_time
@@ -216,6 +242,95 @@ def validate_submission(
                             f"decision_time={decision_time.isoformat()}"
                         )
 
+        fundamental_reports = bundle.qualified_fundamental_reports
+        if not isinstance(fundamental_reports, tuple):
+            fundamental_evidence_issues.append(
+                f"{bundle.ticker}: qualified_fundamental_reports must be a tuple"
+            )
+            fundamental_reports = ()
+        for core in fundamental_reports:
+            if not isinstance(core, FundamentalReportCore):
+                fundamental_evidence_issues.append(
+                    f"{bundle.ticker}: non-FundamentalReportCore value"
+                )
+                continue
+            label = f"{bundle.ticker}/{core.source_version_id}"
+            if not is_qualified_fundamental_core(
+                core, bundle.ticker, decision_time,
+            ):
+                fundamental_evidence_issues.append(
+                    f"{label}: core is not individually qualified at decision time"
+                )
+            if not isinstance(core.evidence_id, str):
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence_id must be a string"
+                )
+                continue
+            fundamental_evidence_ids.add(core.evidence_id)
+            if evidence_manifest is None:
+                continue
+            ref = evidence_manifest.get(core.evidence_id)
+            if not isinstance(ref, EvidenceRef):
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence '{core.evidence_id}' not in manifest"
+                )
+                continue
+            if ref.evidence_id != core.evidence_id:
+                fundamental_evidence_issues.append(
+                    f"{label}: embedded EvidenceRef id does not match manifest key"
+                )
+            if ref.source_type != "financial_statement":
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence source_type must be financial_statement"
+                )
+            if ref.source_name != core.source_authority:
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence source_name does not match core authority"
+                )
+            if not _evidence_has_valid_source(ref) or not _evidence_has_valid_hash(ref):
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence source/hash is invalid"
+                )
+            if ref.content_sha256 != core.evidence_sha256:
+                fundamental_evidence_issues.append(
+                    f"{label}: core hash does not match evidence manifest"
+                )
+            if (
+                not isinstance(ref.period_end, datetime)
+                or ref.period_end.date() != core.report_period_end
+            ):
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence period_end does not match filing period"
+                )
+            if ref.published_at != core.published_at:
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence published_at does not match core"
+                )
+            if ref.available_at != core.available_at:
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence available_at does not match core"
+                )
+            try:
+                retrieved_after_available = (
+                    ref.retrieved_at.tzinfo is not None
+                    and ref.retrieved_at.utcoffset() is not None
+                    and ref.retrieved_at >= ref.available_at
+                )
+            except (AttributeError, TypeError):
+                retrieved_after_available = False
+            if not retrieved_after_available:
+                fundamental_evidence_issues.append(
+                    f"{label}: evidence retrieved_at is invalid"
+                )
+
+        if (
+            fundamental_reports
+            and not has_qualified_fundamental(bundle)
+        ):
+            fundamental_evidence_issues.append(
+                f"{bundle.ticker}: no unique qualified terminal filing core"
+            )
+
     if facts_without_evidence:
         blockers.append(
             f"Numeric facts without any evidence ID ({len(facts_without_evidence)} cases): "
@@ -230,6 +345,22 @@ def validate_submission(
         blockers.append(
             f"Facts referencing future evidence ({len(facts_with_future_evidence)} cases): "
             f"{facts_with_future_evidence[:10]}{'...' if len(facts_with_future_evidence) > 10 else ''}"
+        )
+
+    if has_fundamental_cores and evidence_manifest is None:
+        blockers.append(
+            "Qualified fundamental reports require an evidence_manifest"
+        )
+    if has_fundamental_cores and archive is None:
+        blockers.append(
+            "Qualified fundamental reports require an EvidenceArchive"
+        )
+    if fundamental_evidence_issues:
+        blockers.append(
+            "Qualified fundamental evidence is invalid "
+            f"({len(fundamental_evidence_issues)} cases): "
+            f"{fundamental_evidence_issues[:10]}"
+            f"{'...' if len(fundamental_evidence_issues) > 10 else ''}"
         )
 
     if evidence_manifest is None:
@@ -247,6 +378,14 @@ def validate_submission(
     # ---- 9. Evidence archive verification (BLOCKER) ----
     if archive is not None and evidence_manifest is not None:
         unresolved: list[str] = []
+        mismatched: list[str] = []
+        try:
+            build_manifest = getattr(archive, "build_manifest", None)
+            archived_manifest = (
+                build_manifest() if build_manifest is not None else None
+            )
+        except Exception:
+            archived_manifest = None
         all_evidence_ids: set[str] = set()
         for bundle in bundles.values():
             for fact in (
@@ -254,6 +393,7 @@ def validate_submission(
                 + bundle.event_facts + bundle.risk_facts
             ):
                 all_evidence_ids.update(fact.evidence_ids)
+        all_evidence_ids.update(fundamental_evidence_ids)
         for eid in sorted(all_evidence_ids):
             ref = evidence_manifest.get(eid)
             if (
@@ -264,21 +404,39 @@ def validate_submission(
                 # Market snapshots are installed and hash-verified in the
                 # candidate package's data_snapshot directory.
                 continue
-            if not _archive_exists(archive, eid):
+            if ref is None:
+                continue
+            archive_issue = _archive_entry_status(
+                archive, archived_manifest, eid, ref,
+            )
+            if archive_issue == "not found or corrupt":
                 unresolved.append(eid)
+            elif archive_issue is not None:
+                mismatched.append(f"{eid}: {archive_issue}")
         if unresolved:
             blockers.append(
                 f"Evidence referenced by facts but not found in archive "
                 f"({len(unresolved)} ids): "
                 f"{unresolved[:10]}{'...' if len(unresolved) > 10 else ''}"
             )
+        if mismatched:
+            blockers.append(
+                "Archived evidence does not match the supplied manifest "
+                f"({len(mismatched)} ids): "
+                f"{mismatched[:10]}{'...' if len(mismatched) > 10 else ''}"
+            )
         metrics["evidence_ids_total"] = len(all_evidence_ids)
         metrics["evidence_ids_unresolved"] = len(unresolved)
+        metrics["evidence_ids_mismatched"] = len(mismatched)
     elif archive is not None and evidence_manifest is None:
         blockers.append(
             "Archive provided but no evidence_manifest; "
             "cannot verify that every fact's evidence is archived"
         )
+
+    metrics["qualified_fundamental_evidence_ids"] = len(
+        fundamental_evidence_ids
+    )
 
     # ---- 10. Report grading ----
     grade_result: GradeResult = grade_submission(bundles)

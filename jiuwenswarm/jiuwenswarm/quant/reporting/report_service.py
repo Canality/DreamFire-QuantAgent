@@ -13,6 +13,7 @@ from jiuwenswarm.quant.reporting.models import (
     AgentView,
     CompanyFactBundle,
     EvidenceRef,
+    FundamentalReportCore,
     MetricFact,
     PortfolioSnapshot,
     ReportQualityResult,
@@ -20,6 +21,7 @@ from jiuwenswarm.quant.reporting.models import (
 from jiuwenswarm.quant.reporting.company_report import generate_company_report
 from jiuwenswarm.quant.reporting.package_builder import build_candidate_package
 from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
+from jiuwenswarm.quant.reporting.providers.status import ProviderStatus
 from jiuwenswarm.quant.reporting.submission_contract import (
     SubmissionContract,
     get_contract,
@@ -56,8 +58,14 @@ class ReportService:
         risk_facts: Tuple[MetricFact, ...] = (),
         agent_views: Tuple[AgentView, ...] = (),
         data_provider_status: str = "partial",
+        qualified_fundamental_reports: Tuple[FundamentalReportCore, ...] = (),
     ) -> CompanyFactBundle:
         """Build a single company's fact bundle with contract-derived metadata."""
+        allowed_statuses = {status.value for status in ProviderStatus}
+        if data_provider_status not in allowed_statuses:
+            raise ValueError(
+                f"unsupported data_provider_status: {data_provider_status!r}"
+            )
         return CompanyFactBundle(
             ticker=ticker,
             report_code=self._contract.ticker_to_report_code.get(ticker, ticker.split(".")[0]),
@@ -73,6 +81,7 @@ class ReportService:
             risk_facts=risk_facts,
             agent_views=agent_views,
             data_provider_status=data_provider_status,
+            qualified_fundamental_reports=qualified_fundamental_reports,
         )
 
     def build_portfolio_snapshot(

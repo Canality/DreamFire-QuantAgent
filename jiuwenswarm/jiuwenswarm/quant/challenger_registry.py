@@ -24,6 +24,9 @@ from jiuwenswarm.quant.strategy_configs import (
 ROUND_ID = "wp1c_round_1_20260804"
 BASE_STRATEGY_ID = "phase_b_t2_score_alloc"
 ACCEPTED_WP1B_TASK_ID = "WP1B-EVALUATION-0804"
+WP1B_REVIEW_EVIDENCE_RELATIVE_PATH = Path(
+    "coordination/evidence/WP1B-EVALUATION-0804.review.json"
+)
 ACCEPTED_WP1B_REVIEW_SHA256 = (
     "35c72c69f1defe417cb218f84f0af55efb520b10af80883fe255e724e0b3284d"
 )

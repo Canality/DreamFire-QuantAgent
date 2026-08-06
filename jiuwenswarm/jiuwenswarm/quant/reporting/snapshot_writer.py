@@ -278,6 +278,19 @@ def _combined_market_content_hash(raw_artifacts: Mapping[str, bytes]) -> str:
     return _sha256(combined)
 
 
+def market_data_content_sha256(
+    bundle: MarketDataBundle,
+    diagnostics: MarketDiagnostics,
+) -> str:
+    """Return the canonical full-bundle content identity without writing files."""
+    if not diagnostics.passed:
+        raise ValueError("blocked market-data diagnostics have no runtime identity")
+    frames = _market_matrix_frames(bundle)
+    raw_artifacts = {name: _csv_bytes(frame) for name, frame in frames.items()}
+    raw_artifacts["diagnostics"] = _json_bytes(diagnostics.to_dict())
+    return _combined_market_content_hash(raw_artifacts)
+
+
 def write_market_data_snapshot(
     bundle: MarketDataBundle,
     diagnostics: MarketDiagnostics,
@@ -317,7 +330,7 @@ def write_market_data_snapshot(
     frames = _market_matrix_frames(bundle)
     raw_artifacts = {name: _csv_bytes(frame) for name, frame in frames.items()}
     raw_artifacts["diagnostics"] = _json_bytes(diagnostics.to_dict())
-    content_hash = _combined_market_content_hash(raw_artifacts)
+    content_hash = market_data_content_sha256(bundle, diagnostics)
     generated_at = datetime.now(timezone.utc)
     if snapshot_id is None:
         snapshot_id = (

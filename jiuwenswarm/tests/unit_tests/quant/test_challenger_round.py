@@ -14,7 +14,10 @@ from jiuwenswarm.quant.challenger_mechanisms import (
     TAIL_CANDIDATE,
     TREND_CANDIDATE,
 )
-from jiuwenswarm.quant.challenger_registry import build_registry
+from jiuwenswarm.quant.challenger_registry import (
+    WP1B_REVIEW_EVIDENCE_RELATIVE_PATH,
+    build_registry,
+)
 from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP
 
 
@@ -122,10 +125,7 @@ def _details() -> dict[str, list[dict[str, Any]]]:
 def _registry():
     return build_registry(
         task_path=REPO_ROOT / "coordination/active/WP1B-EVALUATION-0804.md",
-        review_path=(
-            REPO_ROOT
-            / "output/agent_handoffs/WP1B-EVALUATION-0804/review.json"
-        ),
+        review_path=REPO_ROOT / WP1B_REVIEW_EVIDENCE_RELATIVE_PATH,
     )
 
 

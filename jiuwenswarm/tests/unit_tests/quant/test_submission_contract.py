@@ -497,8 +497,8 @@ def test_report_code_is_six_digits_and_roundtrips_to_ticker():
 # Third-round tests (N11-N16) — Codex R0 backlog
 # ============================================================
 
-def test_official_source_hash_mismatch_marks_contract_stale_or_raises():
-    """Bad hash on canonical path → ValueError. Correct hash → source_verified=True.
+def test_official_source_requires_matching_hash_and_semantics():
+    """Bad hash and fake semantics on the canonical path both fail closed.
 
     Uses absolute path to guarantee _is_official_path matches via os.path.realpath.
     """
@@ -526,26 +526,29 @@ def test_official_source_hash_mismatch_marks_contract_stale_or_raises():
     msg = str(exc_info.value).lower()
     assert "hash mismatch" in msg or "verification failed" in msg or "tampered" in msg
 
-    # Correct hash on absolute path → source_verified=True
-    c = SubmissionContract(
-        company_codes=("000001.SH",),
-        company_names={"000001.SH": "Test"},
-        sectors={"000001.SH": "T"},
-        sector_names=("T",),
-        source_file=official_abs,
-        source_sha256=_OFFICIAL_EXCEL_SHA256,
-        report_file_extension=".md",
-        equity_weight_rule="equities_plus_cash_equals_one",
-        allow_cash=None,
-        report_quality_rule="unresolved",
-        unresolved_questions=(),
-        contract_status="PROVISIONAL",
-    )
-    assert c.source_verified is True
+    # Correct path/hash cannot self-attest an unrelated one-company contract.
+    with pytest.raises(ValueError, match="semantic mismatch"):
+        SubmissionContract(
+            company_codes=("000001.SH",),
+            company_names={"000001.SH": "Test"},
+            sectors={"000001.SH": "T"},
+            sector_names=("T",),
+            source_file=official_abs,
+            source_sha256=_OFFICIAL_EXCEL_SHA256,
+            report_file_extension=".md",
+            equity_weight_rule="equities_plus_cash_equals_one",
+            allow_cash=None,
+            report_quality_rule="unresolved",
+            unresolved_questions=(),
+            contract_status="PROVISIONAL",
+        )
+
+    # The repository's exact 49-name/six-group contract remains verified.
+    assert get_contract().source_verified is True
 
 
 def test_formal_gate_rejects_non_official_or_self_asserted_source():
-    """Formal gate must reject: non-canonical source, unresolved semantics, wrong allow_cash type."""
+    """Formal gate rejects non-canonical, unresolved, and fake official inputs."""
     # Case A: test source (not canonical) → reject
     c = SubmissionContract(
         company_codes=("000001.SH", "000002.SZ"),
@@ -582,28 +585,102 @@ def test_formal_gate_rejects_non_official_or_self_asserted_source():
     can, reason = c2.can_proceed_formal()
     assert not can
 
-    # Case C: canonical source (abs path) with all resolved → eligible
+    # Case C: canonical bytes cannot bless an unrelated two-company contract.
     import os
     official_abs = _resolve_official_excel_path()
     if os.path.exists(official_abs):
-        c3 = SubmissionContract(
-            company_codes=("000001.SH", "000002.SZ"),
-            company_names={"000001.SH": "A", "000002.SZ": "B"},
-            sectors={"000001.SH": "T", "000002.SZ": "T"},
-            sector_names=("T",),
-            source_file=official_abs,           # absolute → _is_official_path = True
-            source_sha256=_OFFICIAL_EXCEL_SHA256,
-            report_file_extension=".md",
-            equity_weight_rule="equities_plus_cash_equals_one",
-            allow_cash=True,
-            report_quality_rule="affects_shortlisting",
-            unresolved_questions=(),
-            contract_status="CONFIRMED",
-        )
-        assert c3.source_verified is True
-        can, reason = c3.can_proceed_formal()
-        assert can, f"Canonical source with resolved semantics should pass, got: {reason}"
+        with pytest.raises(ValueError, match="semantic mismatch"):
+            SubmissionContract(
+                company_codes=("000001.SH", "000002.SZ"),
+                company_names={"000001.SH": "A", "000002.SZ": "B"},
+                sectors={"000001.SH": "T", "000002.SZ": "T"},
+                sector_names=("T",),
+                source_file=official_abs,
+                source_sha256=_OFFICIAL_EXCEL_SHA256,
+                report_file_extension=".md",
+                equity_weight_rule="equities_plus_cash_equals_one",
+                allow_cash=True,
+                report_quality_rule="affects_shortlisting",
+                unresolved_questions=(),
+                contract_status="CONFIRMED",
+            )
 
+
+def test_canonical_source_rejects_name_or_group_drift() -> None:
+    canonical = get_contract()
+    ticker = canonical.company_codes[0]
+
+    changed_names = dict(canonical.company_names)
+    changed_names[ticker] = "伪造公司名称"
+    with pytest.raises(ValueError, match="company_names"):
+        SubmissionContract(
+            company_codes=canonical.company_codes,
+            company_names=changed_names,
+            sectors=canonical.sectors,
+            sector_names=canonical.sector_names,
+            source_file=canonical.source_file,
+            source_sha256=canonical.source_sha256,
+            report_file_extension=canonical.report_file_extension,
+            equity_weight_rule=canonical.equity_weight_rule,
+            allow_cash=canonical.allow_cash,
+            report_quality_rule=canonical.report_quality_rule,
+            unresolved_questions=canonical.unresolved_questions,
+            contract_status=canonical.contract_status,
+        )
+
+    changed_sectors = dict(canonical.sectors)
+    changed_sectors[ticker] = next(
+        sector
+        for sector in canonical.sector_names
+        if sector != canonical.sectors[ticker]
+    )
+    with pytest.raises(ValueError, match="sectors"):
+        SubmissionContract(
+            company_codes=canonical.company_codes,
+            company_names=canonical.company_names,
+            sectors=changed_sectors,
+            sector_names=canonical.sector_names,
+            source_file=canonical.source_file,
+            source_sha256=canonical.source_sha256,
+            report_file_extension=canonical.report_file_extension,
+            equity_weight_rule=canonical.equity_weight_rule,
+            allow_cash=canonical.allow_cash,
+            report_quality_rule=canonical.report_quality_rule,
+            unresolved_questions=canonical.unresolved_questions,
+            contract_status=canonical.contract_status,
+        )
+
+
+def test_official_source_rejects_symlink_aliases(
+    tmp_path: Path,
+) -> None:
+    canonical = get_contract()
+    official_path = Path(_resolve_official_excel_path())
+
+    final_alias = tmp_path / "alias.xlsx"
+    parent_alias = tmp_path / "aliased-parent"
+    try:
+        final_alias.symlink_to(official_path)
+        parent_alias.symlink_to(official_path.parent, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    for alias in (final_alias, parent_alias / official_path.name):
+        contract = SubmissionContract(
+            company_codes=canonical.company_codes,
+            company_names=canonical.company_names,
+            sectors=canonical.sectors,
+            sector_names=canonical.sector_names,
+            source_file=str(alias),
+            source_sha256=canonical.source_sha256,
+            report_file_extension=canonical.report_file_extension,
+            equity_weight_rule=canonical.equity_weight_rule,
+            allow_cash=canonical.allow_cash,
+            report_quality_rule=canonical.report_quality_rule,
+            unresolved_questions=canonical.unresolved_questions,
+            contract_status=canonical.contract_status,
+        )
+        assert contract.source_verified is False
 
 def test_allow_cash_requires_bool_or_none_and_formal_requires_bool():
     """allow_cash type invariant: must be None or bool. Formal requires bool."""

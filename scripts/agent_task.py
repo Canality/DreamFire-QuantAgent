@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic task contracts and handoffs for the multi-model workflow."""
+"""Deterministic task contracts and handoffs for the Codex/Claude workflow."""
 
 from __future__ import annotations
 
@@ -284,7 +284,7 @@ def cmd_set_scope(args: argparse.Namespace) -> int:
         raise ValueError("at least one allowed file or pattern is required")
     text = replace_list_field(path.read_text(encoding="utf-8"), "allowed_files", values)
     path.write_text(text, encoding="utf-8", newline="\n")
-    set_task_status(root, task_id, "LOCATED", "Write scope approved by Planner.")
+    set_task_status(root, task_id, "LOCATED", "Write scope approved by Codex.")
     return 0
 
 

@@ -1,9 +1,9 @@
 ---
 name: diff-contract-reviewer
-description: Independently review a task-scoped baseline diff against its contract, tests, ownership boundaries, and project safety invariants. Use after implementation and before Codex acceptance, especially to detect missed callers, superficial fixes, false completion claims, or out-of-scope edits.
+description: Codex's independent review phase: inspect a task-scoped baseline diff against its contract, tests, ownership boundaries, and safety invariants before acceptance, looking for missed callers, superficial fixes, false claims, and out-of-scope edits.
 ---
 
-# Diff Contract Reviewer
+# Codex Independent Diff Review Phase
 
 ## Workflow
 
@@ -13,6 +13,6 @@ description: Independently review a task-scoped baseline diff against its contra
 4. Prefer a reproducible counterexample or targeted test over stylistic commentary.
 5. Do not edit source. Write `output/agent_handoffs/<TASK-ID>/review.json` with `decision`, `findings`, `required_actions`, `checked_commands`, and `residual_risks`.
 6. Use `ACCEPT` only when the scoped evidence is sufficient. Use `MODIFY` for actionable defects and `BLOCKED` for missing/invalid evidence.
-7. Set task status to `REVIEWED`. Only Planner/Arbiter can set `VERIFIED`.
+7. Set task status to `REVIEWED`. Codex may set `VERIFIED/CLOSED` only after separately reproducing the accepted evidence.
 
-Do not accept a patch by majority vote. Project contracts and executable evidence take precedence over model agreement.
+Do not accept a patch by role authority or majority vote. Project contracts and executable evidence take precedence. This is a phase checklist, not a third development identity.

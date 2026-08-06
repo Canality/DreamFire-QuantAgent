@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import importlib
 import json
+import subprocess
 import sys
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -98,9 +99,16 @@ _resource_meter = importlib.import_module(
 )
 ResourceReport = _resource_meter.ResourceReport
 StageMetrics = _resource_meter.StageMetrics
+ObservedConcurrency = _resource_meter.ObservedConcurrency
+ProcessTreeRssSampler = _resource_meter.ProcessTreeRssSampler
+canonical_tool_schema_accounting = _resource_meter.canonical_tool_schema_accounting
 get_contract = importlib.import_module(
     "jiuwenswarm.quant.reporting.submission_contract"
 ).get_contract
+_phase_state = importlib.import_module("jiuwenswarm.quant.phase_state")
+build_trace_receipt = _phase_state.build_trace_receipt
+validate_phase_payload = _phase_state.validate_phase_payload
+validate_quant_rpc_calls = _phase_state.validate_quant_rpc_calls
 Runner = importlib.import_module("openjiuwen.core.runner").Runner
 
 # ── Constants ───────────────────────────────────────────────
@@ -117,115 +125,41 @@ FORMAL_TEAM_NAME = "quant_team"
 FORMAL_LEADER_NAME = "quant-leader"
 FORMAL_MEMBER_NAMES = {"alpha_analyst", "risk_evidence_analyst"}
 
-QUANT_PHASE_METHODS = {
-    "fetch": "quant.fetch_data",
-    "factors": "quant.compute_factors",
-    "alpha_view": "quant.alpha_view",
-    "risk_evidence_view": "quant.risk_evidence_view",
-    "select": "quant.select_stocks",
-    "allocate": "quant.allocate_positions",
-    "backtest": "quant.run_backtest",
-    "report": "quant.generate_report",
+QUANT_PHASE_METHODS = _phase_state.QUANT_PHASE_METHODS
+FORMAL_ROLES = ("quant-leader", "alpha_analyst", "risk_evidence_analyst")
+FORMAL_ROLE_TOOL_NAMES = {
+    "quant-leader": {
+        "quant_fetch_data",
+        "quant_compute_factors",
+        "quant_select_stocks",
+        "quant_allocate_positions",
+        "quant_run_backtest",
+        "quant_generate_report",
+    },
+    "alpha_analyst": {"quant_alpha_view"},
+    "risk_evidence_analyst": {"quant_risk_evidence_view"},
 }
+_PENDING_TEARDOWN_TASKS: set[asyncio.Task] = set()
+FORMAL_WORKER_PARENT_ENV = "JIUWENSWARM_FORMAL_WORKER_PARENT_PID"
+FORMAL_PROCESS_TIMEOUT_SECONDS = 720.0
 
 
 def _phase_payload_valid(phase: str, payload: dict) -> bool:
-    """Validate successful output, not merely that a tool name appeared."""
-    if not isinstance(payload, dict) or payload.get("success") is not True:
-        return False
-    if phase == "fetch":
-        return (
-            payload.get("coverage_complete") is True
-            and payload.get("n_stocks") == EXPECTED_STOCKS
-            and payload.get("expected_stocks") == EXPECTED_STOCKS
-        )
-    if phase == "factors":
-        return (
-            payload.get("n_stocks_analyzed") == EXPECTED_STOCKS
-            and len(payload.get("all_composite", {})) == EXPECTED_STOCKS
-        )
-    if phase == "select":
-        return (
-            payload.get("n_selected") == 15
-            and payload.get("n_sectors_covered") == EXPECTED_SECTORS
-        )
-    if phase == "allocate":
-        portfolio = payload.get("portfolio", [])
-        sector_totals = {}
-        for holding in portfolio:
-            weight = float(holding.get("weight", 0.0))
-            if weight > 0.10 + 1e-9:
-                return False
-            sector = holding.get("sector")
-            sector_totals[sector] = sector_totals.get(sector, 0.0) + weight
-        return (
-            payload.get("n_holdings") == 15
-            and float(payload.get("cash_reserve", 0.0)) >= 0.05 - 1e-9
-            and all(weight <= 0.25 + 1e-9 for weight in sector_totals.values())
-        )
-    if phase == "backtest":
-        return payload.get("n_forward_returns") == 20
-    if phase == "report":
-        # Basic: report text present and correct holding count
-        base_ok = bool(payload.get("report")) and payload.get("summary", {}).get("n_holdings") == 15
-        if not base_ok:
-            return False
-        # Candidate package: report count must match the frozen contract.
-        cp = payload.get("candidate_package")
-        if cp is None:
-            return False
-        if cp.get("error"):
-            return False
-        if cp.get("quality_passed") is not True:
-            return False
-        binding = cp.get("artifact_binding")
-        if not isinstance(binding, dict):
-            return False
-        candidate_path = Path(str(cp.get("path") or ""))
-        hash_fields = (
-            "snapshot_manifest_sha256",
-            "report_manifest_sha256",
-            "evidence_manifest_sha256",
-            "company_reports_tree_sha256",
-            "binding_sha256",
-            "candidate_binding_file_sha256",
-        )
-        return (
-            cp.get("n_reports") == EXPECTED_STOCKS
-            and cp.get("immutable") is True
-            and candidate_path.parent.name == "submission_candidates"
-            and candidate_path.name == cp.get("candidate_id")
-            and binding.get("schema") == "candidate_artifact_binding/v1"
-            and binding.get("candidate_id") == cp.get("candidate_id")
-            and binding.get("snapshot_id") == cp.get("snapshot_id")
-            and binding.get("report_count") == EXPECTED_STOCKS
-            and binding.get("announcement_facts") == cp.get("announcement_facts")
-            and binding.get("disclosure_reports") == cp.get("disclosure_reports")
-            and all(
-                isinstance(binding.get(field), str)
-                and len(binding[field]) == 64
-                for field in hash_fields
-            )
-        )
-    return True
+    return validate_phase_payload(
+        phase,
+        payload,
+        expected_stocks=EXPECTED_STOCKS,
+        expected_sectors=EXPECTED_SECTORS,
+    )
 
 
 def _validate_quant_rpc_calls(calls: list[dict]) -> tuple[dict[str, bool], list[str]]:
-    phases = {}
-    issues = []
-    for phase, method in QUANT_PHASE_METHODS.items():
-        matching = [call for call in calls if call.get("method") == method]
-        invalid = [
-            call
-            for call in matching
-            if not _phase_payload_valid(phase, call.get("payload", {}))
-        ]
-        phases[phase] = bool(matching) and not invalid
-        if invalid:
-            issues.append(
-                f"{method} returned {len(invalid)} unsuccessful or invalid result(s)"
-            )
-    return phases, issues
+    validation = validate_quant_rpc_calls(
+        calls,
+        expected_stocks=EXPECTED_STOCKS,
+        expected_sectors=EXPECTED_SECTORS,
+    )
+    return dict(validation.phases), list(validation.issues)
 
 
 def _serialize_chunk(chunk) -> dict:
@@ -250,6 +184,59 @@ def _make_serializable(obj):
     if isinstance(obj, (str, int, float, bool, type(None))):
         return obj
     return str(obj)[:500]
+
+
+def _aggregate_role_usage(
+    chunks_log: list[dict],
+) -> dict[str, dict[str, int | None]]:
+    """Aggregate only provider-reported fields for the exact formal roles."""
+    usage_by_role: dict[str, dict[str, int | None]] = {
+        role: {"input_tokens": None, "output_tokens": None, "cache_tokens": None}
+        for role in FORMAL_ROLES
+    }
+    incomplete = {role: set() for role in FORMAL_ROLES}
+    for chunk in chunks_log:
+        if chunk.get("type") != "llm_usage":
+            continue
+        role = _canonical_member_name(chunk.get("source_member"))
+        usage = chunk.get("payload", {}).get("usage_metadata", {})
+        if role not in usage_by_role:
+            continue
+        bucket = usage_by_role[role]
+        for field in bucket:
+            value = usage.get(field) if isinstance(usage, dict) else None
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                if field not in incomplete[role]:
+                    bucket[field] = (bucket[field] or 0) + value
+            else:
+                incomplete[role].add(field)
+                bucket[field] = None
+    return usage_by_role
+
+
+def _complete_role_total(
+    usage_by_role: dict[str, dict[str, int | None]],
+    field: str,
+) -> int | None:
+    """Return an exact total only when every formal role reported the field."""
+    values = [usage_by_role[role][field] for role in FORMAL_ROLES]
+    return sum(values) if all(value is not None for value in values) else None
+
+
+def _formal_tool_schema(quant_toolkit_type) -> dict:
+    """Account for the exact quant RPC ToolCards exposed to each formal role."""
+    quant_tools = {
+        tool.card.name: tool
+        for tool in quant_toolkit_type().get_tools()
+    }
+    expected_names = set().union(*FORMAL_ROLE_TOOL_NAMES.values())
+    missing = expected_names - set(quant_tools)
+    if missing:
+        raise RuntimeError(f"formal quant ToolCards are missing: {sorted(missing)}")
+    return canonical_tool_schema_accounting({
+        role: [quant_tools[name] for name in sorted(names)]
+        for role, names in FORMAL_ROLE_TOOL_NAMES.items()
+    })
 
 
 async def _load_formal_team_spec(team_manager, *, session_id: str):
@@ -279,6 +266,109 @@ async def _load_formal_team_spec(team_manager, *, session_id: str):
             f"leader={leader_name!r}, members={sorted(member_names)!r}"
         )
     return spec
+
+
+async def _teardown_formal_runtime(
+    team_manager,
+    stream,
+    *,
+    session_id: str,
+    session_timeout_seconds: float = 20.0,
+    stream_timeout_seconds: float = 10.0,
+    runner_timeout_seconds: float = 20.0,
+) -> dict:
+    """Stop all standalone formal runtime layers and retain every failure."""
+    steps: dict[str, dict] = {}
+    issues: list[str] = []
+
+    def observe_late_task(task: asyncio.Task) -> None:
+        _PENDING_TEARDOWN_TASKS.discard(task)
+        if task.cancelled():
+            return
+        try:
+            task.exception()
+        except (asyncio.CancelledError, Exception):
+            # The timeout is already serialized as formal evidence. Retrieving
+            # the exception here prevents an unhandled-task warning.
+            pass
+
+    async def run_step(
+        name: str,
+        awaitable_factory,
+        timeout_seconds: float,
+        *,
+        false_is_failure: bool = False,
+    ) -> None:
+        task = asyncio.create_task(
+            awaitable_factory(), name=f"formal-teardown:{name}"
+        )
+        try:
+            done, _pending = await asyncio.wait({task}, timeout=timeout_seconds)
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        if task not in done:
+            task.cancel()
+            _PENDING_TEARDOWN_TASKS.add(task)
+            task.add_done_callback(observe_late_task)
+            detail = f"{name} failed: timeout after {timeout_seconds:g}s"
+            steps[name] = {
+                "completed": False,
+                "cancellation_pending": not task.done(),
+                "detail": detail,
+            }
+            issues.append(detail)
+            return
+        try:
+            result = task.result()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - cleanup failures are evidence
+            detail = f"{name} failed: {type(exc).__name__}: {exc}"
+            steps[name] = {"completed": False, "detail": detail}
+            issues.append(detail)
+        else:
+            completed = not (false_is_failure and result is False)
+            detail = None if completed else f"{name} returned false"
+            steps[name] = {
+                "completed": completed,
+                "return_value": result if isinstance(result, bool) else None,
+                "detail": detail,
+            }
+            if detail:
+                issues.append(detail)
+
+    await run_step(
+        "team_session_stop",
+        lambda: team_manager.stop_session_runtime(
+            session_id,
+            reason="formal validation teardown",
+        ),
+        session_timeout_seconds,
+    )
+    if stream is None:
+        steps["stream_close"] = {
+            "completed": True,
+            "skipped": True,
+            "detail": "stream was not created",
+        }
+    else:
+        await run_step("stream_close", stream.aclose, stream_timeout_seconds)
+    await run_step(
+        "runner_stop",
+        Runner.stop,
+        runner_timeout_seconds,
+        false_is_failure=True,
+    )
+    return {
+        "schema": "formal_runtime_teardown/v1",
+        "normal_shutdown": not issues,
+        "pending_cancellation_count": sum(
+            step.get("cancellation_pending") is True for step in steps.values()
+        ),
+        "steps": steps,
+        "issues": issues,
+    }
 
 
 async def _init_extensions():
@@ -360,6 +450,8 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     from jiuwenswarm.agents.harness.common.tools.quant_toolkits import QuantToolkit
 
     quant_rpc_calls = []
+    rpc_stage_metrics: dict[str, StageMetrics] = {}
+    rpc_concurrency = ObservedConcurrency()
     failure_counts = {}
     failure_guard = {"triggered": False, "detail": None}
     progress_guard = ToolProgressGuard()
@@ -368,14 +460,36 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     original_call_rpc = QuantToolkit._call_rpc
 
     async def audited_call_rpc(toolkit, method, params):
-        payload = await original_call_rpc(toolkit, method, params)
+        phase_by_method = {value: key for key, value in QUANT_PHASE_METHODS.items()}
+        phase = phase_by_method.get(method)
+        started_at = datetime.now(timezone.utc)
+        started_ns = time.monotonic_ns()
+        rpc_concurrency.enter()
+        error = None
+        try:
+            payload = await original_call_rpc(toolkit, method, params)
+        except Exception as exc:
+            error = str(exc)
+            raise
+        finally:
+            finished_ns = time.monotonic_ns()
+            rpc_concurrency.exit()
+            if phase is not None:
+                rpc_stage_metrics[phase] = StageMetrics(
+                    stage=phase,
+                    started_at=started_at,
+                    finished_at=datetime.now(timezone.utc),
+                    duration_seconds=(finished_ns - started_ns) / 1_000_000_000,
+                    tool_calls=1,
+                    errors=[error] if error else [],
+                )
         quant_rpc_calls.append({
             "method": method,
             "params_keys": sorted(params) if params else [],
             "payload": payload,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-        phases, _ = _validate_quant_rpc_calls(quant_rpc_calls)
+        phases, sequence_issues = _validate_quant_rpc_calls(quant_rpc_calls)
         completed = sum(phases.values())
         if completed > quant_progress["completed"]:
             quant_progress["completed"] = completed
@@ -383,6 +497,9 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             progress_guard.record_quant_progress(completed)
         if all(phases.values()) and pipeline_completed_at["monotonic"] is None:
             pipeline_completed_at["monotonic"] = time.monotonic()
+        if sequence_issues:
+            failure_guard["triggered"] = True
+            failure_guard["detail"] = sequence_issues[0]
         if isinstance(payload, dict) and payload.get("success") is True:
             failure_counts[method] = 0
         else:
@@ -403,6 +520,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     chunks_log = []
     text_output = []
     tool_calls = []
+    pending_tool_names: dict[str, str] = {}
     errors = []
 
     t_start = time.time()
@@ -410,15 +528,24 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     started_at = datetime.now(timezone.utc)
     process = None
     cpu_start = None
+    rss_sampler = None
     try:
         import psutil
 
         process = psutil.Process()
         cpu_times = process.cpu_times()
         cpu_start = float(cpu_times.user + cpu_times.system)
+        rss_sampler = ProcessTreeRssSampler(process)
+        rss_sampler.start()
     except (ImportError, OSError):
         pass
     stream = None
+    teardown_report = {
+        "schema": "formal_runtime_teardown/v1",
+        "normal_shutdown": False,
+        "steps": {},
+        "issues": ["formal runtime teardown did not execute"],
+    }
 
     try:
         stream = Runner.run_agent_team_streaming(
@@ -462,11 +589,32 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             tc = _extract_tool_call(chunk)
             if tc:
                 tool_calls.append(tc)
+                call_id = str(tc.get("call_id") or "")
+                if call_id and tc.get("name"):
+                    if call_id in pending_tool_names:
+                        failure_guard["triggered"] = True
+                        failure_guard["detail"] = (
+                            "DUPLICATE_TOOL_CALL_ID: " + call_id
+                        )
+                    else:
+                        pending_tool_names[call_id] = str(tc["name"]).strip()
                 guard_detail = progress_guard.record_tool_call(tc)
                 if guard_detail:
                     failure_guard["triggered"] = True
                     failure_guard["detail"] = guard_detail
                 print(f"  [TOOL] {tc.get('name', '?')} → {str(tc.get('result', ''))[:150]}", flush=True)
+
+            tool_outcome = _extract_tool_result(chunk, pending_tool_names)
+            if tool_outcome:
+                binding_error = tool_outcome.get("binding_error")
+                if binding_error:
+                    failure_guard["triggered"] = True
+                    failure_guard["detail"] = binding_error
+                else:
+                    guard_detail = progress_guard.record_tool_call(tool_outcome)
+                    if guard_detail:
+                        failure_guard["triggered"] = True
+                        failure_guard["detail"] = guard_detail
 
             # Detect errors
             err = _extract_error(chunk)
@@ -494,6 +642,14 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
                 print(f"\n  ⚠ Timeout reached ({timeout_seconds}s), stopping...")
                 break
 
+        if not failure_guard["triggered"] and pending_tool_names:
+            failure_guard["triggered"] = True
+            failure_guard["detail"] = (
+                "PENDING_TOOL_RESULTS: "
+                + ",".join(sorted(pending_tool_names))
+            )
+            errors.append(failure_guard["detail"])
+
     except asyncio.TimeoutError:
         if pipeline_completed_at["monotonic"] is None:
             if (
@@ -516,24 +672,14 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         traceback.print_exc()
     finally:
         QuantToolkit._call_rpc = original_call_rpc
-        # The upstream team stream can remain open after the leader has emitted
-        # its final answer. Stop the Runner-owned runtime before closing the
-        # iterator; otherwise async-generator teardown may wait indefinitely.
-        try:
-            await asyncio.wait_for(
-                tm.stop_session_runtime(
-                    SESSION_ID,
-                    reason="formal validation teardown",
-                ),
-                timeout=20.0,
-            )
-        except (asyncio.TimeoutError, RuntimeError) as exc:
-            errors.append(f"team runtime teardown failed: {exc or 'timeout'}")
-        if stream is not None:
-            try:
-                await asyncio.wait_for(stream.aclose(), timeout=10.0)
-            except (asyncio.TimeoutError, RuntimeError) as exc:
-                errors.append(f"agent stream close failed: {exc or 'timeout'}")
+        teardown_report = await _teardown_formal_runtime(
+            tm,
+            stream,
+            session_id=SESSION_ID,
+        )
+        errors.extend(teardown_report["issues"])
+        if rss_sampler is not None:
+            rss_sampler.stop()
 
     elapsed = time.time() - t_start
 
@@ -615,7 +761,11 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         )
     if missing_roles:
         errors.append(f"MISSING REQUIRED ROLES: {sorted(missing_roles)}")
-    validation_passed = loop_complete and multi_agent_working
+    validation_passed = (
+        loop_complete
+        and multi_agent_working
+        and teardown_report["normal_shutdown"]
+    )
     if not multi_agent_working:
         missing = [
             member
@@ -649,6 +799,13 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         and _phase_payload_valid("report", call.get("payload", {}))
     ]
     formal_candidate = report_candidates[-1] if report_candidates else None
+    deterministic_trace = None
+    if all(phases_completed.values()) and not validation_issues:
+        deterministic_trace = build_trace_receipt(
+            quant_rpc_calls,
+            expected_stocks=EXPECTED_STOCKS,
+            expected_sectors=EXPECTED_SECTORS,
+        )
 
     summary = {
         "session_id": SESSION_ID,
@@ -678,7 +835,9 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             "progress_budget": progress_guard.as_dict(),
         },
         "quant_rpc_calls": quant_rpc_calls,
+        "deterministic_trace": deterministic_trace,
         "candidate_package": formal_candidate,
+        "runtime_teardown": teardown_report,
         "issues": errors if errors else None,
     }
 
@@ -716,36 +875,10 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
 
     # Real resource report for the formal Agent path. Token usage comes from
     # openJiuwen llm_usage chunks; absent measurements remain None.
-    usage_by_role: dict[str, dict[str, int]] = {}
-    for chunk in chunks_log:
-        if chunk.get("type") != "llm_usage":
-            continue
-        role = _canonical_member_name(chunk.get("source_member")) or "unknown"
-        usage = chunk.get("payload", {}).get("usage_metadata", {})
-        bucket = usage_by_role.setdefault(
-            role,
-            {"input_tokens": 0, "output_tokens": 0, "cache_tokens": 0},
-        )
-        for field in bucket:
-            value = usage.get(field)
-            if isinstance(value, int):
-                bucket[field] += value
-
-    input_tokens = (
-        sum(row["input_tokens"] for row in usage_by_role.values())
-        if usage_by_role
-        else None
-    )
-    output_tokens = (
-        sum(row["output_tokens"] for row in usage_by_role.values())
-        if usage_by_role
-        else None
-    )
-    cache_tokens = (
-        sum(row["cache_tokens"] for row in usage_by_role.values())
-        if usage_by_role
-        else None
-    )
+    usage_by_role = _aggregate_role_usage(chunks_log)
+    input_tokens = _complete_role_total(usage_by_role, "input_tokens")
+    output_tokens = _complete_role_total(usage_by_role, "output_tokens")
+    cache_tokens = _complete_role_total(usage_by_role, "cache_tokens")
     cpu_seconds = None
     peak_memory_mb = None
     if process is not None:
@@ -753,30 +886,35 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
             cpu_times = process.cpu_times()
             cpu_end = float(cpu_times.user + cpu_times.system)
             cpu_seconds = cpu_end - cpu_start if cpu_start is not None else None
-            peak_bytes = getattr(process.memory_info(), "peak_wset", None)
-            if peak_bytes is not None:
-                peak_memory_mb = float(peak_bytes) / (1024 * 1024)
         except (OSError, AttributeError):
             pass
+    if rss_sampler is not None:
+        peak_memory_mb = rss_sampler.peak_rss_mb
+
+    tool_schema = _formal_tool_schema(QuantToolkit)
 
     resource_report = ResourceReport(
         run_id=SESSION_ID,
         started_at=started_at,
-        stages={
-            "formal_multi_agent": StageMetrics(
-                stage="formal_multi_agent",
-                started_at=started_at,
-                finished_at=datetime.now(timezone.utc),
-                duration_seconds=round(elapsed, 3),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cache_tokens=cache_tokens,
-                tool_calls=len(tool_calls),
-                retries=0,
-                peak_memory_mb=peak_memory_mb,
-                cpu_time_seconds=cpu_seconds,
-            )
-        },
+        stages=rpc_stage_metrics,
+        total_duration_seconds=round(elapsed, 3),
+        total_input_tokens=input_tokens,
+        total_output_tokens=output_tokens,
+        total_cache_tokens=cache_tokens,
+        peak_memory_mb=peak_memory_mb,
+        total_cpu_time_seconds=cpu_seconds,
+        max_concurrency=rpc_concurrency.maximum,
+        current_memory_mb=(
+            rss_sampler.current_rss_mb if rss_sampler is not None else None
+        ),
+        memory_sample_count=(
+            rss_sampler.sample_count if rss_sampler is not None else None
+        ),
+        memory_sample_interval_seconds=(
+            rss_sampler.interval_seconds if rss_sampler is not None else None
+        ),
+        max_processes=(rss_sampler.max_processes if rss_sampler is not None else None),
+        tool_schema=tool_schema,
         role_breakdown={
             role: StageMetrics(
                 stage=role,
@@ -794,6 +932,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
         },
     )
     resource_report.finalize()
+    summary["resource_usage"] = resource_report.to_dict()
     candidate_path = (
         Path(str(formal_candidate.get("path"))).resolve()
         if isinstance(formal_candidate, dict)
@@ -807,11 +946,10 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     ):
         resource_report.save_json(str(candidate_path / "resource_usage.json"))
         resource_report.save_markdown(str(candidate_path / "resource_usage.md"))
-        summary["resource_usage"] = resource_report.to_dict()
-        summary_path.write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"  Chunks log:  {chunks_path}")
     print(f"  Summary:     {summary_path}")
@@ -955,7 +1093,81 @@ def _extract_tool_call(chunk) -> dict | None:
     if "tool_call_id" in d:
         tc["call_id"] = d["tool_call_id"]
 
+    nested_call_id = tc.pop("tool_call_id", None)
+    if nested_call_id is not None and "call_id" not in tc:
+        tc["call_id"] = nested_call_id
+    if tc:
+        tc["event_type"] = "tool_call"
+
     return tc if tc else None
+
+
+def _extract_tool_result(
+    chunk,
+    pending_tool_names: dict[str, str],
+) -> dict | None:
+    """Extract a terminal result and bind missing names to prior call ids."""
+    if hasattr(chunk, "model_dump"):
+        try:
+            data = chunk.model_dump()
+        except Exception:  # noqa: BLE001 - unknown chunk model
+            return None
+    elif isinstance(chunk, dict):
+        data = chunk
+    else:
+        return None
+    if data.get("type") != "tool_result":
+        return None
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    raw_result = payload.get("tool_result")
+    if not isinstance(raw_result, dict):
+        return {
+            "event_type": "tool_result",
+            "binding_error": "MALFORMED_TOOL_RESULT: payload is not a mapping",
+        }
+
+    call_id = str(raw_result.get("tool_call_id") or "")
+    explicit_name = str(
+        raw_result.get("tool_name") or raw_result.get("name") or ""
+    ).strip()
+    if not call_id:
+        return {
+            "event_type": "tool_result",
+            "binding_error": "TOOL_RESULT_MISSING_CALL_ID",
+        }
+    expected_name = pending_tool_names.pop(call_id, None)
+    if expected_name is None:
+        return {
+            "event_type": "tool_result",
+            "call_id": call_id,
+            "binding_error": f"TOOL_RESULT_UNKNOWN_CALL_ID: {call_id}",
+        }
+    name = str(expected_name).strip()
+    if explicit_name and explicit_name != name:
+        return {
+            "event_type": "tool_result",
+            "call_id": call_id,
+            "name": name,
+            "binding_error": (
+                "TOOL_RESULT_NAME_MISMATCH: "
+                f"call_id={call_id} expected={name} actual={explicit_name}"
+            ),
+        }
+    outcome = {
+        "event_type": "tool_result",
+        "name": name,
+        "call_id": call_id or None,
+        "result": raw_result.get("raw_output", raw_result.get("result")),
+        "success": raw_result.get("success"),
+        "status": raw_result.get("status"),
+        "is_error": raw_result.get("is_error"),
+        "error": raw_result.get("error"),
+    }
+    if not name:
+        outcome["binding_error"] = f"TOOL_RESULT_EMPTY_TOOL_NAME: {call_id}"
+    return outcome
 
 
 def _extract_error(chunk) -> str | None:
@@ -978,7 +1190,7 @@ def _default_validation_end_date(*, now: datetime | None = None) -> date:
     return end_date
 
 
-async def main(argv: list[str] | None = None):
+async def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", help="Inclusive market-data start date")
     parser.add_argument("--end-date", help="Inclusive market-data end date")
@@ -1033,14 +1245,133 @@ async def main(argv: list[str] | None = None):
             print(f"    - {issue}")
     print(f"  Elapsed: {summary['elapsed_seconds']:.0f}s")
     print("\nFull output path is recorded in the timestamped validation artifacts above.")
-    exit_code = 0 if summary["validation_passed"] else 1
-    sys.stdout.flush()
-    sys.stderr.flush()
-    # asyncio.run() waits indefinitely for openJiuwen scheduler tasks after a
-    # deliberately early business-completion close on Windows.  This is a
-    # standalone validator and all artifacts are already durably written.
-    os_env._exit(exit_code)
+    return 0 if summary["validation_passed"] else 1
+
+
+def _supervise_formal_worker(
+    argv: list[str],
+    *,
+    timeout_seconds: float = FORMAL_PROCESS_TIMEOUT_SECONDS,
+    popen_factory=subprocess.Popen,
+) -> int:
+    """Bound the standalone worker even if an upstream task never cancels."""
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        *argv,
+    ]
+    worker_env = os_env.environ.copy()
+    worker_env[FORMAL_WORKER_PARENT_ENV] = str(os_env.getpid())
+    process = popen_factory(command, env=worker_env)
+    try:
+        exit_code = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        print(
+            "Formal worker exceeded the process deadline; terminating the "
+            "task-scoped worker and failing validation.",
+            file=sys.stderr,
+            flush=True,
+        )
+        _terminate_formal_worker_tree(process)
+        return 1
+    return exit_code if isinstance(exit_code, int) and exit_code >= 0 else 1
+
+
+def _terminate_formal_worker_tree(process, *, grace_seconds: float = 10.0) -> None:
+    """Terminate only the timed-out worker and its recursive descendants."""
+    descendants_by_identity = {}
+    psutil_module = None
+    psutil_process = None
+
+    def collect_and_terminate_descendants() -> None:
+        if psutil_module is None or psutil_process is None:
+            return
+        try:
+            discovered = psutil_process.children(recursive=True)
+        except psutil_module.Error:
+            return
+        for child in discovered:
+            identity = getattr(child, "pid", id(child))
+            if identity in descendants_by_identity:
+                continue
+            descendants_by_identity[identity] = child
+            try:
+                child.terminate()
+            except psutil_module.Error:
+                pass
+
+    try:
+        import psutil
+    except ImportError:
+        pass
+    else:
+        psutil_module = psutil
+        try:
+            psutil_process = psutil.Process(process.pid)
+        except (AttributeError, OSError, psutil.Error):
+            psutil_module = None
+            psutil_process = None
+        else:
+            collect_and_terminate_descendants()
+
+    try:
+        process.terminate()
+    except OSError:
+        pass
+
+    # Re-scan after signaling the parent so a descendant created between the
+    # first snapshot and parent termination is also contained. Inspection
+    # failure never prevents direct parent terminate/kill escalation.
+    collect_and_terminate_descendants()
+    descendants = list(descendants_by_identity.values())
+    if psutil_module is not None and descendants:
+        try:
+            _gone, alive = psutil_module.wait_procs(
+                descendants, timeout=grace_seconds
+            )
+        except psutil_module.Error:
+            alive = descendants
+        for child in alive:
+            try:
+                child.kill()
+            except psutil_module.Error:
+                pass
+        if alive:
+            try:
+                psutil_module.wait_procs(alive, timeout=grace_seconds)
+            except psutil_module.Error:
+                pass
+
+    try:
+        process.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except OSError:
+            return
+        try:
+            process.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            print(
+                "Timed-out formal worker did not exit after terminate and kill.",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
+def _run_cli(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    worker_parent = os_env.environ.pop(FORMAL_WORKER_PARENT_ENV, "")
+    if worker_parent:
+        try:
+            expected_parent_pid = int(worker_parent)
+        except ValueError:
+            return 2
+        if expected_parent_pid != os_env.getppid():
+            return 2
+        return asyncio.run(main(arguments))
+    return _supervise_formal_worker(arguments)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(_run_cli())

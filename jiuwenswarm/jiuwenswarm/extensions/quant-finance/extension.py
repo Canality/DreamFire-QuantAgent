@@ -13,6 +13,8 @@ matrices through the LLM context window.
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import hashlib
 import logging
 import os
 import threading
@@ -20,6 +22,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
 from datetime import datetime, timedelta
+from functools import wraps
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -55,6 +58,54 @@ _last_fetch_provider_ledger: dict[str, str] = {}
 # the LLM from inflating tool-call counts by re-running deterministic
 # stages that were already executed.
 _phase_results: dict[str, dict[str, Any]] = {}
+_phase_epoch = 0
+_phase_reservation_serial = 0
+
+
+class _PhaseReservation:
+    __slots__ = ("phase", "epoch", "serial", "market_hash")
+
+    def __init__(
+        self,
+        *,
+        phase: str,
+        epoch: int,
+        serial: int,
+        market_hash: str | None,
+    ) -> None:
+        self.phase = phase
+        self.epoch = epoch
+        self.serial = serial
+        self.market_hash = market_hash
+
+
+_phase_inflight: dict[str, _PhaseReservation] = {}
+_current_phase_reservation: contextvars.ContextVar[_PhaseReservation | None] = (
+    contextvars.ContextVar("quant_phase_reservation", default=None)
+)
+_PHASE_PREREQUISITES = {
+    "fetch_data": frozenset(),
+    "compute_factors": frozenset({"fetch_data"}),
+    "alpha_view": frozenset({"fetch_data", "compute_factors"}),
+    "risk_evidence_view": frozenset({
+        "fetch_data", "compute_factors", "alpha_view",
+    }),
+    "select_stocks": frozenset({
+        "fetch_data", "compute_factors", "alpha_view", "risk_evidence_view",
+    }),
+    "allocate_positions": frozenset({"select_stocks"}),
+    "run_backtest": frozenset({"allocate_positions"}),
+    "generate_report": frozenset({"run_backtest"}),
+}
+_PHASE_CACHE_KEYS = {
+    "compute_factors": "_factor_result",
+    "alpha_view": "_alpha_result",
+    "risk_evidence_view": "_risk_result",
+    "select_stocks": "_selection_result",
+    "allocate_positions": "_allocation_result",
+    "run_backtest": "_backtest_result",
+    "generate_report": "_report_result",
+}
 
 
 def _cache_key(tickers: list, start: str, end: str) -> str:
@@ -66,35 +117,186 @@ def _get_cached_data() -> dict | None:
         return _data_cache.get("_last", None)
 
 
-def _idempotent_phase(phase: str) -> dict[str, Any] | None:
-    """Return cached result if *phase* already completed.
+def _reserve_phase(
+    phase: str,
+) -> tuple[dict[str, Any] | None, _PhaseReservation | None]:
+    """Return a committed result or reserve one epoch-bound execution.
 
     Key is canonical (phase name only) — LLM-supplied params are
     deliberately ignored.  Only one valid pipeline exists per session;
     repeated calls with different params must return the same committed
     result, not re-execute.
     """
+    global _phase_reservation_serial
     with _cache_lock:
         entry = _phase_results.get(phase)
         if entry is not None:
-            return dict(entry, cached=True, executed=False)
-        return None
+            return dict(entry, cached=True, executed=False), None
+        required = _PHASE_PREREQUISITES.get(phase)
+        if required is None:
+            raise ValueError(f"unknown quant phase: {phase}")
+        missing = sorted(required - set(_phase_results))
+        if missing:
+            raise RuntimeError(
+                f"quant phase {phase} is out of order; missing {missing}"
+            )
+        if phase in _phase_inflight:
+            raise RuntimeError(f"quant phase {phase} is already in flight")
+        cached = _data_cache.get("_last")
+        market_hash = (
+            cached.get("_runtime_market_content_sha256")
+            if isinstance(cached, dict)
+            else None
+        )
+        if phase != "fetch_data" and (
+            not isinstance(market_hash, str) or len(market_hash) != 64
+        ):
+            raise RuntimeError("runtime market snapshot is not bound")
+        _phase_reservation_serial += 1
+        reservation = _PhaseReservation(
+            phase=phase,
+            epoch=_phase_epoch,
+            serial=_phase_reservation_serial,
+            market_hash=market_hash,
+        )
+        _phase_inflight[phase] = reservation
+        return None, reservation
+
+
+def _reserve_fetch(
+    *,
+    start_date: str,
+    end_date: str,
+    tickers: list[str],
+    force_refresh: bool,
+) -> tuple[dict[str, Any] | None, _PhaseReservation | None]:
+    """Reuse an exact fetch or start one new epoch before provider work."""
+    global _phase_epoch, _phase_reservation_serial
+    with _cache_lock:
+        cached = _data_cache.get("_last")
+        if (
+            not force_refresh
+            and isinstance(cached, dict)
+            and cached.get("_start") == start_date
+            and cached.get("_end") == end_date
+            and cached.get("_tickers") == tickers
+        ):
+            return dict(
+                _public_cache_summary(cached),
+                cached=True,
+                executed=False,
+            ), None
+        if (
+            not force_refresh
+            and _provider_failure is not None
+            and _provider_failure.get("_start") == start_date
+            and _provider_failure.get("_end") == end_date
+            and _provider_failure.get("_tickers") == tickers
+            and time.monotonic() - _provider_failure["_failed_at"]
+            < _PROVIDER_FAILURE_TTL_SECONDS
+        ):
+            return dict(
+                _public_cache_summary(_provider_failure),
+                cached=True,
+                executed=False,
+            ), None
+        if "fetch_data" in _phase_inflight:
+            raise RuntimeError("quant phase fetch_data is already in flight")
+        _phase_epoch += 1
+        _phase_results.clear()
+        _phase_inflight.clear()
+        _phase_reservation_serial += 1
+        reservation = _PhaseReservation(
+            phase="fetch_data",
+            epoch=_phase_epoch,
+            serial=_phase_reservation_serial,
+            market_hash=None,
+        )
+        _phase_inflight["fetch_data"] = reservation
+        return None, reservation
+
+
+def _abort_phase(reservation: _PhaseReservation) -> None:
+    with _cache_lock:
+        if _phase_inflight.get(reservation.phase) == reservation:
+            del _phase_inflight[reservation.phase]
+
+
+def _phase_handler(phase: str):
+    """Reserve a phase before handler work and always release failed work."""
+    def decorate(method):
+        @wraps(method)
+        async def guarded(self, params=None, request=None):
+            cached, reservation = _reserve_phase(phase)
+            if cached is not None:
+                return cached
+            assert reservation is not None
+            context_token = _current_phase_reservation.set(reservation)
+            try:
+                return await method(self, params, request)
+            finally:
+                _abort_phase(reservation)
+                _current_phase_reservation.reset(context_token)
+
+        return guarded
+
+    return decorate
 
 
 def _commit_phase(phase: str, result: dict[str, Any]) -> dict[str, Any]:
-    """Cache and return a successfully completed phase result."""
-    committed = dict(result, cached=False, executed=True)
+    """Commit one server-owned phase against the current market epoch."""
+    reservation = _current_phase_reservation.get()
+    if reservation is None or reservation.phase != phase:
+        raise RuntimeError(f"quant phase {phase} has no active reservation")
     with _cache_lock:
+        if (
+            reservation.epoch != _phase_epoch
+            or _phase_inflight.get(phase) != reservation
+        ):
+            raise RuntimeError(f"quant phase {phase} reservation is stale")
+        cached = _data_cache.get("_last")
+        market_hash = (
+            cached.get("_runtime_market_content_sha256")
+            if isinstance(cached, dict)
+            else None
+        )
+        if not isinstance(market_hash, str) or len(market_hash) != 64:
+            raise RuntimeError("runtime market snapshot is not bound")
+        if phase != "fetch_data" and market_hash != reservation.market_hash:
+            raise RuntimeError(f"quant phase {phase} market epoch changed")
+        required = _PHASE_PREREQUISITES.get(phase)
+        if required is None:
+            raise ValueError(f"unknown quant phase: {phase}")
+        missing = sorted(required - set(_phase_results))
+        if missing:
+            raise RuntimeError(
+                f"quant phase {phase} is out of order; missing {missing}"
+            )
+        committed = dict(
+            result,
+            market_content_sha256=market_hash,
+            cached=False,
+            executed=True,
+        )
         _phase_results[phase] = committed
+        cache_key = _PHASE_CACHE_KEYS.get(phase)
+        if cache_key is not None:
+            cached[cache_key] = committed
+        del _phase_inflight[phase]
     return dict(committed)
 
 
 def _set_cached_data(data: dict) -> None:
+    reservation = _current_phase_reservation.get()
+    if reservation is None or reservation.phase != "fetch_data":
+        raise RuntimeError("fetch_data has no active reservation")
     with _cache_lock:
+        if (
+            reservation.epoch != _phase_epoch
+            or _phase_inflight.get("fetch_data") != reservation
+        ):
+            raise RuntimeError("fetch_data reservation is stale")
         _data_cache["_last"] = data
-        # A new fetch result (success or failure) starts a new pipeline epoch.
-        # Derived phases from a previous market-data bundle must never survive.
-        _phase_results.clear()
         # Keep only last 3 fetches to bound memory
         keys = [k for k in _data_cache if k != "_last"]
         for k in keys[:-2]:
@@ -109,9 +311,23 @@ def _update_cached_data(**updates: Any) -> bool:
     Mutating the live cache under the shared lock preserves both results and
     avoids copying the large price/volume frames.
     """
+    reservation = _current_phase_reservation.get()
+    if reservation is None:
+        return False
     with _cache_lock:
+        if (
+            reservation.epoch != _phase_epoch
+            or _phase_inflight.get(reservation.phase) != reservation
+        ):
+            return False
         cached = _data_cache.get("_last")
         if not isinstance(cached, dict):
+            return False
+        if (
+            reservation.phase != "fetch_data"
+            and cached.get("_runtime_market_content_sha256")
+            != reservation.market_hash
+        ):
             return False
         cached.update(updates)
         return True
@@ -275,36 +491,23 @@ class QuantFinanceExtension(BaseExtension):
             if ticker_filter is None
             else list(ticker_filter)
         )
+        cached_result, reservation = _reserve_fetch(
+            start_date=start_date,
+            end_date=end_date,
+            tickers=tickers,
+            force_refresh=force_refresh,
+        )
+        if cached_result is not None:
+            logger.info(
+                "[QuantFinance] Using cached data for %s ~ %s",
+                start_date,
+                end_date,
+            )
+            return cached_result
+        assert reservation is not None
 
         def _fetch() -> dict:
             global _provider_failure
-            # Check cache first
-            cached = _get_cached_data()
-            if (not force_refresh and cached and cached.get("_start") == start_date
-                    and cached.get("_end") == end_date
-                    and cached.get("_tickers") == tickers):
-                logger.info("[QuantFinance] Using cached data for %s ~ %s", start_date, end_date)
-                return dict(
-                    _public_cache_summary(cached),
-                    cached=True,
-                    executed=False,
-                )
-            if (
-                not force_refresh
-                and _provider_failure is not None
-                and _provider_failure.get("_start") == start_date
-                and _provider_failure.get("_end") == end_date
-                and _provider_failure.get("_tickers") == tickers
-                and time.monotonic() - _provider_failure["_failed_at"]
-                < _PROVIDER_FAILURE_TTL_SECONDS
-            ):
-                logger.warning("[QuantFinance] Provider circuit breaker open; skipping repeated fetch")
-                return dict(
-                    _public_cache_summary(_provider_failure),
-                    cached=True,
-                    executed=False,
-                )
-
             if tickers != list(ALL_STOCKS):
                 failure = {
                     "success": False,
@@ -329,6 +532,9 @@ class QuantFinanceExtension(BaseExtension):
                     diagnose_market_data,
                     require_diagnostics_passed,
                 )
+                from jiuwenswarm.quant.reporting.snapshot_writer import (
+                    market_data_content_sha256,
+                )
 
                 bundle = _fetch_market_bundle(
                     tickers,
@@ -338,6 +544,33 @@ class QuantFinanceExtension(BaseExtension):
                 )
                 diagnostics = require_diagnostics_passed(
                     diagnose_market_data(bundle, tickers)
+                )
+                split_at = len(bundle.closes) - _FORWARD_TEST_DAYS
+                if split_at < _MIN_TRAIN_DAYS:
+                    raise ValueError("market bundle is too short for runtime snapshot")
+                decision_index = bundle.closes.index[split_at - 1]
+                decision_time = _market_as_of_time(str(decision_index.date()))
+                runtime_bundle = replace(
+                    bundle,
+                    opens=bundle.opens.loc[:decision_index].copy(),
+                    highs=bundle.highs.loc[:decision_index].copy(),
+                    lows=bundle.lows.loc[:decision_index].copy(),
+                    closes=bundle.closes.loc[:decision_index].copy(),
+                    volumes=bundle.volumes.loc[:decision_index].copy(),
+                    secondary_closes=bundle.secondary_closes.loc[:decision_index].copy(),
+                    benchmark_closes=bundle.benchmark_closes.loc[:decision_index].copy(),
+                    as_of_time=decision_time,
+                )
+                runtime_diagnostics = require_diagnostics_passed(
+                    diagnose_market_data(
+                        runtime_bundle,
+                        tickers,
+                        minimum_rows=_MIN_TRAIN_DAYS,
+                    )
+                )
+                runtime_market_hash = market_data_content_sha256(
+                    runtime_bundle,
+                    runtime_diagnostics,
                 )
             except Exception as exc:  # noqa: BLE001 - compact fail-closed evidence
                 failure = {
@@ -374,6 +607,8 @@ class QuantFinanceExtension(BaseExtension):
                 "_provider_stats": dict(bundle.provider_stats),
                 "_market_data_bundle": bundle,
                 "_market_diagnostics": diagnostics,
+                "_runtime_market_content_sha256": runtime_market_hash,
+                "market_content_sha256": runtime_market_hash,
                 # Compact summary for LLM
                 "n_stocks": len(prices_df.columns),
                 "expected_stocks": len(tickers),
@@ -387,17 +622,21 @@ class QuantFinanceExtension(BaseExtension):
                 "diagnostic_warnings": list(diagnostics.warnings),
                 "regimes": diagnostic_payload["regimes"],
                 "breadth": diagnostic_payload["breadth"],
-                "cached": False,
-                "executed": True,
             }
             _set_cached_data(result)
             _provider_failure = None
-            return _public_cache_summary(result)
+            return _commit_phase("fetch_data", _public_cache_summary(result))
 
-        return await asyncio.to_thread(_fetch)
+        context_token = _current_phase_reservation.set(reservation)
+        try:
+            return await asyncio.to_thread(_fetch)
+        finally:
+            _abort_phase(reservation)
+            _current_phase_reservation.reset(context_token)
 
     # ---- quant.compute_factors ----
 
+    @_phase_handler("compute_factors")
     async def compute_factors(
         self,
         params: dict[str, Any] | None = None,
@@ -410,11 +649,6 @@ class QuantFinanceExtension(BaseExtension):
         """
         del request
         params = params or {}
-
-        # Idempotency: return cached result if factors already computed
-        cached_result = _idempotent_phase("compute_factors")
-        if cached_result is not None:
-            return cached_result
 
         frames = _cached_frames()
         if frames is None:
@@ -462,6 +696,7 @@ class QuantFinanceExtension(BaseExtension):
 
     # ---- quant.select_stocks ----
 
+    @_phase_handler("select_stocks")
     async def select_stocks(
         self,
         params: dict[str, Any] | None = None,
@@ -471,11 +706,14 @@ class QuantFinanceExtension(BaseExtension):
         del request
         del params
 
-        # Idempotency: return cached result if already selected
-        cached_result = _idempotent_phase("select_stocks")
-        if cached_result is not None:
-            return cached_result
-
+        from jiuwenswarm.quant.agent_decision import (
+            OFFICIAL_SELECTION_POLICY,
+            AgentProposal,
+            DecisionAssembler,
+            ProposalEvidence,
+            SelectedStock,
+            select_portfolio,
+        )
         from jiuwenswarm.quant.stock_pool import SECTOR_MAP, STOCK_POOL
 
         cached = _get_cached_data()
@@ -494,15 +732,43 @@ class QuantFinanceExtension(BaseExtension):
         # Gated behind AGENT_OVERLAY_ENABLED.  When False the deterministic
         # composite scores are used directly; Alpha/Risk views still appear
         # in reports but do not affect selection or allocation.
+        selected_records_override: tuple[SelectedStock, ...] | None = None
         if AGENT_OVERLAY_ENABLED:
-            from jiuwenswarm.quant.agent_decision import (
-                AgentProposal,
-                DecisionAssembler,
-            )
-
             proposals: list[AgentProposal] = []
             alpha_raw = cached.get("_alpha_result") if cached else None
             risk_raw = cached.get("_risk_result") if cached else None
+            factor_result = cached.get("_factor_result") if cached else None
+            if not isinstance(factor_result, dict) or not factor_result.get("decision_date"):
+                return {
+                    "success": False,
+                    "detail": "cached decision date required for Agent proposals",
+                }
+            decision_time = _market_as_of_time(str(factor_result["decision_date"]))
+
+            def bind_evidence(
+                role: str,
+                ticker: str,
+                raw_items: list[Any],
+            ) -> tuple[ProposalEvidence, ...]:
+                bound: list[ProposalEvidence] = []
+                for index, raw_item in enumerate(raw_items):
+                    detail = str(raw_item).strip()
+                    if not detail:
+                        continue
+                    signal_id = detail.split("=", 1)[0].strip() or f"signal_{index}"
+                    bound.append(
+                        ProposalEvidence(
+                            evidence_id=f"{role}:{ticker}:{signal_id}:{index}",
+                            signal_id=signal_id,
+                            payload_sha256=hashlib.sha256(
+                                detail.encode("utf-8")
+                            ).hexdigest(),
+                            available_at=decision_time,
+                            valid_until=decision_time,
+                            detail=detail,
+                        )
+                    )
+                return tuple(bound)
 
             if alpha_raw and isinstance(alpha_raw, dict):
                 for item in alpha_raw.get("alpha_stocks", [])[:12]:
@@ -511,15 +777,23 @@ class QuantFinanceExtension(BaseExtension):
                         proposals.append(AgentProposal(
                             role="alpha", ticker=item["ticker"], action="include",
                             adjustment=2, confidence="high",
-                            evidence=tuple(item.get("signals", [])[:2]),
+                            evidence=bind_evidence(
+                                "alpha", item["ticker"], item.get("signals", [])[:2]
+                            ),
                             rationale=item.get("signals", [""])[0] if item.get("signals") else "",
+                            valid_from=decision_time,
+                            valid_until=decision_time,
                         ))
                     elif ascore >= 5:
                         proposals.append(AgentProposal(
                             role="alpha", ticker=item["ticker"], action="include",
                             adjustment=1, confidence="medium",
-                            evidence=tuple(item.get("signals", [])[:1]),
+                            evidence=bind_evidence(
+                                "alpha", item["ticker"], item.get("signals", [])[:1]
+                            ),
                             rationale=item.get("signals", [""])[0] if item.get("signals") else "",
+                            valid_from=decision_time,
+                            valid_until=decision_time,
                         ))
 
             if risk_raw and isinstance(risk_raw, dict):
@@ -529,27 +803,62 @@ class QuantFinanceExtension(BaseExtension):
                         proposals.append(AgentProposal(
                             role="risk_evidence", ticker=item["ticker"], action="exclude",
                             adjustment=-3, confidence="high",
-                            evidence=tuple(item.get("warnings", [])[:2]),
+                            evidence=bind_evidence(
+                                "risk", item["ticker"], item.get("warnings", [])[:2]
+                            ),
                             rationale=item.get("warnings", [""])[0] if item.get("warnings") else "",
+                            valid_from=decision_time,
+                            valid_until=decision_time,
                         ))
                     elif rscore >= 5:
                         proposals.append(AgentProposal(
                             role="risk_evidence", ticker=item["ticker"], action="reduce",
                             adjustment=-1, confidence="medium",
-                            evidence=tuple(item.get("warnings", [])[:2]),
+                            evidence=bind_evidence(
+                                "risk", item["ticker"], item.get("warnings", [])[:2]
+                            ),
                             rationale=item.get("warnings", [""])[0] if item.get("warnings") else "",
+                            valid_from=decision_time,
+                            valid_until=decision_time,
                         ))
 
             if proposals:
-                trace = DecisionAssembler.assemble(all_composite, proposals)
+                trace = DecisionAssembler.assemble(
+                    all_composite,
+                    proposals,
+                    decision_time=decision_time,
+                    selection_policy=OFFICIAL_SELECTION_POLICY,
+                )
                 adjusted_scores = trace.adjusted_scores
+                selected_records_override = tuple(
+                    SelectedStock(
+                        ticker=ticker,
+                        composite=float(trace.adjusted_scores[ticker]),
+                        sector=SECTOR_MAP[ticker],
+                    )
+                    for ticker in trace.selected_after
+                )
                 if not _update_cached_data(_decision_trace={
-                    "base_scores": trace.base_scores,
+                    "decision_time": trace.decision_time.isoformat(),
+                    "base_scores": dict(trace.base_scores),
                     "n_proposals": len(trace.proposals),
                     "n_accepted": len(trace.accepted),
                     "n_rejected": len(trace.rejected),
-                    "reject_reasons": trace.reject_reasons,
-                    "adjusted_scores": trace.adjusted_scores,
+                    "reject_reasons": dict(trace.reject_reasons),
+                    "adjusted_scores": dict(trace.adjusted_scores),
+                    "base_ranking": list(trace.base_ranking),
+                    "adjusted_ranking": list(trace.adjusted_ranking),
+                    "selected_before": list(trace.selected_before),
+                    "selected_after": list(trace.selected_after),
+                    "role_adjustments": [
+                        {
+                            "role": item.role,
+                            "ticker": item.ticker,
+                            "action": item.action,
+                            "adjustment": item.adjustment,
+                        }
+                        for item in trace.role_adjustments
+                    ],
                 }):
                     return _cache_required_error()
             else:
@@ -557,38 +866,29 @@ class QuantFinanceExtension(BaseExtension):
         else:
             adjusted_scores = dict(all_composite)
 
-        top_n = 15
-        min_score = -0.5
+        selected_records = (
+            selected_records_override
+            if selected_records_override is not None
+            else select_portfolio(adjusted_scores)
+        )
+        selected = [
+            {
+                "ticker": item.ticker,
+                "composite": item.composite,
+                "sector": item.sector,
+            }
+            for item in selected_records
+        ]
+        sectors_covered = len({item.sector for item in selected_records})
 
-        sorted_stocks = sorted(adjusted_scores.items(), key=lambda x: x[1], reverse=True)
-
-        selected = []
-        selected_set = set()
-
-        # Ensure at least 1 per sector
-        for sector in STOCK_POOL:
-            sector_stocks_in_pool = set(STOCK_POOL[sector])
-            for ticker, score in sorted_stocks:
-                if ticker in sector_stocks_in_pool and ticker not in selected_set and score > min_score:
-                    selected.append({"ticker": ticker, "composite": score, "sector": sector})
-                    selected_set.add(ticker)
-                    break
-
-        # Fill remaining
-        for ticker, score in sorted_stocks:
-            if len(selected) >= top_n:
-                break
-            if ticker not in selected_set and score > min_score:
-                sector = SECTOR_MAP.get(ticker, "其他")
-                selected.append({"ticker": ticker, "composite": score, "sector": sector})
-                selected_set.add(ticker)
-
-        sectors_covered = len({s["sector"] for s in selected})
-
-        if len(selected) != top_n or sectors_covered != len(STOCK_POOL):
+        if len(selected) != OFFICIAL_SELECTION_POLICY.top_n or sectors_covered != len(STOCK_POOL):
             return {
                 "success": False,
-                "detail": f"选股覆盖不足：{len(selected)}/{top_n} 只，{sectors_covered}/{len(STOCK_POOL)} 个板块",
+                "detail": (
+                    "选股覆盖不足："
+                    f"{len(selected)}/{OFFICIAL_SELECTION_POLICY.top_n} 只，"
+                    f"{sectors_covered}/{len(STOCK_POOL)} 个板块"
+                ),
                 "selected_stocks": selected,
             }
 
@@ -606,6 +906,7 @@ class QuantFinanceExtension(BaseExtension):
 
     # ---- quant.allocate_positions ----
 
+    @_phase_handler("allocate_positions")
     async def allocate_positions(
         self,
         params: dict[str, Any] | None = None,
@@ -614,11 +915,6 @@ class QuantFinanceExtension(BaseExtension):
         """Risk-parity position sizing with constraints."""
         del request
         params = params or {}
-
-        # Idempotency (canonical — one allocation per session)
-        cached_result = _idempotent_phase("allocate_positions")
-        if cached_result is not None:
-            return cached_result
 
         frames = _cached_frames()
         if frames is None:
@@ -686,6 +982,7 @@ class QuantFinanceExtension(BaseExtension):
 
     # ---- quant.run_backtest ----
 
+    @_phase_handler("run_backtest")
     async def run_backtest(
         self,
         params: dict[str, Any] | None = None,
@@ -694,11 +991,6 @@ class QuantFinanceExtension(BaseExtension):
         """Run vectorized backtest with given portfolio weights."""
         del request
         del params
-
-        # Idempotency
-        cached_result = _idempotent_phase("run_backtest")
-        if cached_result is not None:
-            return cached_result
 
         initial_capital = 1_000_000.0
 
@@ -742,6 +1034,7 @@ class QuantFinanceExtension(BaseExtension):
 
     # ---- quant.generate_report ----
 
+    @_phase_handler("generate_report")
     async def generate_report(
         self,
         params: dict[str, Any] | None = None,
@@ -755,11 +1048,6 @@ class QuantFinanceExtension(BaseExtension):
         """
         del request
         del params
-
-        # Idempotency
-        cached_result = _idempotent_phase("generate_report")
-        if cached_result is not None:
-            return cached_result
 
         cached = _get_cached_data()
         allocation = cached.get("_allocation_result") if cached else None
@@ -813,6 +1101,12 @@ class QuantFinanceExtension(BaseExtension):
                 AnnouncementProvider,
             )
             from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
+            from jiuwenswarm.quant.reporting.announcement_service import (
+                announcement_snapshot_projection,
+            )
+            from jiuwenswarm.quant.reporting.snapshot_writer import (
+                market_data_content_sha256,
+            )
             from jiuwenswarm.quant.stock_pool import (
                 ALL_STOCKS,
                 SECTOR_MAP,
@@ -895,6 +1189,12 @@ class QuantFinanceExtension(BaseExtension):
                     minimum_rows=_MIN_TRAIN_DAYS,
                 )
             )
+            runtime_market_hash = cached.get("_runtime_market_content_sha256")
+            if market_data_content_sha256(
+                report_bundle,
+                report_diagnostics,
+            ) != runtime_market_hash:
+                raise RuntimeError("report market snapshot differs from runtime epoch")
 
             output_root = Path(__file__).resolve().parents[4] / "output"
             snapshot = write_market_data_snapshot(
@@ -939,6 +1239,9 @@ class QuantFinanceExtension(BaseExtension):
                 snapshot.snapshot_id: ev_ref,
                 **announcement_result.manifest,
             }
+            result["announcement_evidence"] = (
+                announcement_snapshot_projection(announcement_result)
+            )
 
             # Build weights from the server-owned cached allocation.
             weights_dict = {}
@@ -986,7 +1289,7 @@ class QuantFinanceExtension(BaseExtension):
                     event_facts=tuple(
                         announcement_result.facts_by_ticker.get(ticker, ())
                     ),
-                    data_provider_status="partial",
+                    data_provider_status=announcement_result.status_value(ticker),
                 )
 
             # Bind the already-validated current analyst views to this snapshot.
@@ -1011,7 +1314,7 @@ class QuantFinanceExtension(BaseExtension):
                             technical_facts=bundles[tk].technical_facts,
                             event_facts=bundles[tk].event_facts,
                             agent_views=tuple(existing),
-                            data_provider_status="partial",
+                            data_provider_status=announcement_result.status_value(tk),
                         )
 
             holdings = {t: w for t, w in weights_dict.items() if w > 0}
@@ -1086,6 +1389,7 @@ class QuantFinanceExtension(BaseExtension):
 
     # ---- quant.alpha_view ----
 
+    @_phase_handler("alpha_view")
     async def alpha_view(
         self,
         params: dict[str, Any] | None = None,
@@ -1097,11 +1401,6 @@ class QuantFinanceExtension(BaseExtension):
         """
         del request
         params = params or {}
-
-        # Idempotency: return cached result if already computed
-        cached_view = _idempotent_phase("alpha_view")
-        if cached_view is not None:
-            return cached_view
 
         frames = _cached_frames()
         if frames is None:
@@ -1200,6 +1499,7 @@ class QuantFinanceExtension(BaseExtension):
 
     # ---- quant.risk_evidence_view ----
 
+    @_phase_handler("risk_evidence_view")
     async def risk_evidence_view(
         self,
         params: dict[str, Any] | None = None,
@@ -1211,11 +1511,6 @@ class QuantFinanceExtension(BaseExtension):
         """
         del request
         params = params or {}
-
-        # Idempotency: return cached result if already computed
-        cached_view = _idempotent_phase("risk_evidence_view")
-        if cached_view is not None:
-            return cached_view
 
         frames = _cached_frames()
         if frames is None:

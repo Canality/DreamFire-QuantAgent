@@ -11,11 +11,16 @@ should copy/paste session IDs, token counts, or performance numbers by hand.
 
 from __future__ import annotations
 
+import argparse
 import json
 import hashlib
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+
+README_SUMMARY_START = "<!-- BEGIN GENERATED VALIDATION SUMMARY -->"
+README_SUMMARY_END = "<!-- END GENERATED VALIDATION SUMMARY -->"
 
 
 def _find_latest(glob_pattern: str, output_dir: Path) -> Path | None:
@@ -112,6 +117,76 @@ def _build_summary(
         },
     }
     return summary
+
+
+def _markdown_value(value: object) -> str:
+    """Render one artifact-derived value without breaking the README table."""
+
+    if value is None or value == "":
+        return "EVIDENCE_MISSING"
+    return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def render_readme_summary_block(summary: dict | None) -> str:
+    """Render the only README block allowed to contain per-run status values."""
+
+    if summary is None:
+        values = {
+            "direct_status": "NOT_GENERATED",
+            "formal_status": "NOT_GENERATED",
+            "report_status": "NOT_GENERATED",
+            "formal_session": "NOT_GENERATED",
+            "formal_input_tokens": "NOT_GENERATED",
+            "audit_passed": "NOT_GENERATED",
+        }
+    else:
+        statuses = summary.get("status") or {}
+        formal = summary.get("formal") or {}
+        resources = formal.get("resource_usage") or {}
+        audit = summary.get("audit_status") or {}
+        values = {
+            "direct_status": statuses.get("quant_core_and_market_data"),
+            "formal_status": statuses.get("multi_agent_path"),
+            "report_status": statuses.get("report_candidate"),
+            "formal_session": formal.get("session_id"),
+            "formal_input_tokens": resources.get("input_tokens"),
+            "audit_passed": audit.get("passed"),
+        }
+
+    rows = "\n".join(
+        f"| `{key}` | `{_markdown_value(value)}` |"
+        for key, value in values.items()
+    )
+    return (
+        f"{README_SUMMARY_START}\n"
+        "> 本区块只能由 `generate_validation_summary.py --readme update` "
+        "根据绑定的运行与独立审计产物更新。\n\n"
+        "| 动态字段 | 当前值 |\n"
+        "|---|---|\n"
+        f"{rows}\n"
+        f"{README_SUMMARY_END}"
+    )
+
+
+def replace_readme_summary(readme_text: str, summary: dict | None) -> str:
+    """Replace exactly one generated block; missing/duplicate markers fail closed."""
+
+    if readme_text.count(README_SUMMARY_START) != 1:
+        raise ValueError("README must contain exactly one generated-summary start marker")
+    if readme_text.count(README_SUMMARY_END) != 1:
+        raise ValueError("README must contain exactly one generated-summary end marker")
+    start = readme_text.index(README_SUMMARY_START)
+    end = readme_text.index(README_SUMMARY_END, start) + len(README_SUMMARY_END)
+    return readme_text[:start] + render_readme_summary_block(summary) + readme_text[end:]
+
+
+def readme_summary_matches(readme_text: str, summary: dict | None) -> bool:
+    """Return whether README exactly projects the supplied machine summary."""
+
+    try:
+        return replace_readme_summary(readme_text, summary) == readme_text
+    except ValueError:
+        return False
 
 
 def _direct_section(pipeline: dict | None) -> dict | None:
@@ -281,7 +356,19 @@ def _status_section(pipeline: dict | None, multi: dict | None, audit_passed: boo
     return statuses
 
 
-def main() -> int:
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--readme",
+        choices=("skip", "check", "update"),
+        default="skip",
+        help="check or update the README generated block after writing the JSON",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
     project_root = Path(__file__).resolve().parents[2]  # scripts/ → jiuwenswarm/ → Track_2/
     output_dir = project_root / "output"
 
@@ -335,6 +422,23 @@ def main() -> int:
     out_path = output_dir / "validation_summary.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
+
+    readme_path = project_root / "README.md"
+    if args.readme != "skip":
+        readme_text = readme_path.read_text(encoding="utf-8")
+        projection_summary = summary if pipeline is not None or multi is not None else None
+        if args.readme == "check":
+            if not readme_summary_matches(readme_text, projection_summary):
+                print(
+                    "ERROR: README generated validation block is stale",
+                    file=sys.stderr,
+                )
+                return 2
+        else:
+            readme_path.write_text(
+                replace_readme_summary(readme_text, projection_summary),
+                encoding="utf-8",
+            )
 
     print(f"validation_summary.json written to {out_path}")
     print(f"  Direct:  {'present' if pipeline else 'MISSING'}")

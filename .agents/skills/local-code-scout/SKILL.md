@@ -1,9 +1,9 @@
 ---
 name: local-code-scout
-description: Read-only repository localization that finds definitions, callers, tests, contracts, and likely change boundaries, then writes a bounded location.json handoff. Use before assigning implementation when a task would otherwise require a model to read broad repository context.
+description: Claude's read-only location phase: find definitions, callers, tests, contracts, and the smallest likely change boundary, then write a bounded location.json for Codex to accept before baseline freeze.
 ---
 
-# Local Code Scout
+# Claude Read-only Location Phase
 
 ## Workflow
 
@@ -11,7 +11,7 @@ description: Read-only repository localization that finds definitions, callers, 
 2. Search with `rg`/`rg --files` before opening files. Limit the pass to 12 search/read calls.
 3. Trace the definition, direct callers, relevant tests and any project contract that can invalidate the proposed change.
 4. Do not edit source, tests, state documents or the task contract. Only write `output/agent_handoffs/<TASK-ID>/location.json`.
-5. Run `python scripts/agent_task.py validate-location <TASK-ID>` and stop if validation fails.
+5. Run `python scripts/agent_task.py validate-location <TASK-ID>` and hand the artifact to Codex. Codex alone approves the write scope and freezes the baseline.
 
 ## Output schema
 
@@ -34,4 +34,4 @@ description: Read-only repository localization that finds definitions, callers, 
 }
 ```
 
-Use repository-relative POSIX paths. Keep ranges tight and confidence conservative. Recommend escalation when confidence is below `0.75`, ownership is unclear, or the task touches a HIGH-risk area in `AGENT_WORKFLOW.md`.
+Use repository-relative POSIX paths. Keep ranges tight and confidence conservative. Stop for Codex adjudication when confidence is below `0.75`, ownership is unclear, or the task touches a HIGH-risk area in `AGENT_WORKFLOW.md`. This is a phase checklist, not a third development identity.

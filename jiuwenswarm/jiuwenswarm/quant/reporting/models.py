@@ -7,7 +7,7 @@ No hardcoded numbers, no LLM hallucinations, no stale IC numbers.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Mapping, Tuple
 
 
@@ -35,6 +35,50 @@ class MetricFact:
     unit: str | None
     status: str          # "available" | "unavailable" | "stale" | "derived"
     evidence_ids: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class FundamentalLineItem:
+    """One normalized line item inside a qualification-only filing core.
+
+    These objects do not replace :class:`MetricFact` and are not rendered.
+    They carry the statement semantics needed to decide whether a future
+    Provider's filing is strong enough to affect the report grade.
+    """
+
+    statement: str
+    line_item_id: str
+    status: str
+    raw_value: float | int | None
+    raw_unit: str | None
+    currency: str | None
+    normalized_value: float | int | None
+    normalized_unit: str | None
+    normalization_formula: str | None
+
+
+@dataclass(frozen=True)
+class FundamentalReportCore:
+    """Immutable qualification record for one version of one annual filing."""
+
+    ticker: str
+    issuer_id: str
+    report_period_start: date
+    report_period_end: date
+    report_type: str
+    statement_scope: str
+    audit_status: str
+    currency: str
+    published_at: datetime
+    available_at: datetime
+    source_authority: str
+    source_version_id: str
+    evidence_id: str
+    evidence_sha256: str
+    is_correction: bool
+    superseded_source_version_id: str | None
+    superseded_evidence_id: str | None
+    line_items: Tuple[FundamentalLineItem, ...]
 
 
 @dataclass(frozen=True)
@@ -76,7 +120,11 @@ class CompanyFactBundle:
     agent_views: Tuple[AgentView, ...]
 
     # Provider status
-    data_provider_status: str          # "complete" | "partial" | "unavailable"
+    data_provider_status: str          # complete | available_no_event | partial | unavailable
+
+    # Qualification-only filing cores. Generic ``fundamental_facts`` remain
+    # renderable but cannot self-attest report-grade coverage.
+    qualified_fundamental_reports: Tuple[FundamentalReportCore, ...] = ()
 
 
 @dataclass(frozen=True)

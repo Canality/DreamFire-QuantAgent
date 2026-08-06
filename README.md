@@ -2,7 +2,23 @@
 
 华为 openJiuwen Track 2 参赛项目。系统在官方 49 家上市公司范围内完成行情获取、多因子分析、Alpha/Risk & Evidence 多 Agent 审查、选股、配仓、20 日回测和逐公司报告生成。
 
-> 当前本地交付候选为 **v2.14**：共享行情、公告 PIT、量化 direct 与 fixed `quant_team` formal 均已真实通过；活动源码中的退役角色兼容层已删除，parser/model 对旧角色输入失败关闭。最新 direct 为 49/49 行情、1,470 条公告和 49/49 披露，最新 formal 为严格 8/8、三角色真实参与、无角色越权，绑定两者的独立 E2E audit 退出 0。历史证据和市场 regime 的 `bull`/`bear` 标签保留；报告仍为 `FINANCIAL_PARTIAL`，正式提交契约仍受官方口径冲突阻断。最新数量、证据、命令、退出码和已知问题只看 [VALIDATION.md](VALIDATION.md)；下一阶段架构与验收路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
+> 当前代码候选为 **v2.15**：动态研究和正式稳定性代码门已形成 Mac 本地候选，开发协作已收敛为 Codex / Claude 两方；生产策略、报告等级和正式提交门仍按当前契约执行。v2.14 继续是最后一次已接受业务运行锚，v2.15 等待 Windows 正式复验。任何 direct/formal 的覆盖量、阶段完成度、资源消耗和独立审计结果都不得在说明文字中手工维护，只能由下方机器区块和 [VALIDATION.md](VALIDATION.md) 表达；下一阶段路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
+
+<!-- BEGIN GENERATED VALIDATION SUMMARY -->
+> 本区块只能由 `generate_validation_summary.py --readme update` 根据绑定的运行与独立审计产物更新。
+
+| 动态字段 | 当前值 |
+|---|---|
+| `direct_status` | `NOT_GENERATED` |
+| `formal_status` | `NOT_GENERATED` |
+| `report_status` | `NOT_GENERATED` |
+| `formal_session` | `NOT_GENERATED` |
+| `formal_input_tokens` | `NOT_GENERATED` |
+| `audit_passed` | `NOT_GENERATED` |
+<!-- END GENERATED VALIDATION SUMMARY -->
+
+版本更迭、失败探索、旧数值及其适用限制统一归档在
+[history/README.md](history/README.md)。新功能开发不需要默认加载历史目录。
 
 ## 项目定位
 
@@ -30,15 +46,15 @@ Sina → Tencent → akshare → baostock → yfinance
 | 能力 | 当前状态 |
 |---|---|
 | 官方股票池契约 | Excel hash 校验；49 家、6 板块；数量不在业务入口硬编码 |
-| 行情数据 | 五源逐只补缺、逐 ticker 来源、49/49 fail-closed |
+| 行情数据 | 五源逐只补缺、逐 ticker 来源；未覆盖完整官方股票池时失败关闭 |
 | 时序安全 | 决策日前训练、首日开盘固定股数、20 日前向持有 |
 | 仓位安全 | 选股输入与配仓输入一致；单股 ≤10%、板块 ≤25%、现金 ≥5% |
-| 多 Agent | 正式入口精确选择 Coordinator/Alpha/Risk & Evidence 三角色；最新 formal 严格 8/8，每阶段恰好执行 1 次，角色专属 RPC 1/1 且无越权 |
-| 报告 | direct/formal 均到达报告路径；49 份公司报告、组合报告、行情快照和 49/49 公告披露通过独立 E2E audit，整体仍为 `FINANCIAL_PARTIAL` |
-| 资源 | 正式路径按角色记录 token、耗时和 CPU；最新峰值工作集与最大并发明确标为缺测，不伪填 0 |
+| 多 Agent | 正式入口只允许 Coordinator/Alpha/Risk & Evidence 三角色；八个业务阶段、角色专属 RPC 和越权检查由机器验收 |
+| 报告 | direct/formal 共享报告契约；每家公司报告、组合报告、行情快照和公告披露均须通过独立 E2E audit，等级由证据覆盖决定 |
+| 资源 | 正式路径按角色记录 token、耗时和 CPU；缺测字段必须显式标为未知，不伪填 0 |
 | 失败策略 | 数据不全、报告缺失、hash 错误、角色越权和重复失败均关闭 |
 
-正式路径的具体 session、token、耗时、收益和回撤数字以 `VALIDATION.md` 绑定的 timestamped `output/` 产物为准。`output/validation_summary.json` 仍是可再生的动态摘要入口，但不是项目事实源；只有它绑定当前产物且独立 E2E audit 退出 0，才能写 `BUSINESS_PASSED`。8/8 本身只证明量化 Agent 路径可运行。这只是路径验收区间，不是比赛成绩预测。
+正式路径的具体 session、token、耗时、收益和回撤数字以 `VALIDATION.md` 绑定的 timestamped `output/` 产物为准。`output/validation_summary.json` 仍是可再生的动态摘要入口，但不是项目事实源；只有它绑定当前产物且独立 E2E audit 成功，才能写 `BUSINESS_PASSED`。业务阶段完整本身只证明量化 Agent 路径可运行，不是比赛成绩预测。
 
 ## 策略状态
 
@@ -59,7 +75,7 @@ Sina → Tencent → akshare → baostock → yfinance
 - Alpha/Risk & Evidence 观点来自角色专属 RPC，不由 Coordinator 冒充；
 - 资源日志来自 openJiuwen 运行事件，不用估算值填 0。
 
-公告 Provider 的 point-in-time 分页、终止诊断和归档已通过真实 49/49 smoke、direct 与 formal；最新候选含 1,470 条公告事实。基本面、新闻、宏观与另类数据尚未形成当前可审计覆盖，因此仍不是 `FULL_REPORT_PASSED` 最终作品。
+公告 Provider 实现 point-in-time 分页、终止诊断和不可变归档；实际覆盖量和候选事实数只看机器摘要与 `VALIDATION.md`。基本面、新闻、宏观与另类数据必须分别通过证据准入，不能由公告或技术风险字段替代。
 
 ## 对比赛的竞争力
 
@@ -73,7 +89,7 @@ Sina → Tencent → akshare → baostock → yfinance
 
 短板：
 
-1. 最新 formal 已保持精确 8 个业务阶段和 12 次工具调用；动态 token、耗时及角色拆分只引用 `VALIDATION.md` 的最新 timestamped 工件。官方资源基准未公布，仍不能断言资源分达标。
+1. formal 契约固定八个业务阶段；实际工具调用数、token、耗时及角色拆分只引用 `VALIDATION.md` 的 timestamped 工件。官方资源基准未公布，不能断言资源分达标。
 2. alpha 尚未得到样本外证明；工程可信不等于收益领先。
 3. 报告仍偏技术面，完整金融分析深度不足。
 4. fixed quant capability ceiling 依赖锁定的 openJiuwen `0.1.15.post3` 接口与工具面；依赖升级会故意失败关闭，必须重新审查和双路径验收。
@@ -85,7 +101,7 @@ Sina → Tencent → akshare → baostock → yfinance
 cd jiuwenswarm
 
 # 单元测试
-$env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
+Remove-Item Env:PYTEST_DISABLE_PLUGIN_AUTOLOAD -ErrorAction SilentlyContinue
 .\.venv\Scripts\python.exe -m pytest -o addopts='' tests/unit_tests/quant -q
 
 # 研发旁路
@@ -97,26 +113,28 @@ $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD='1'
 
 完整端到端审计命令见 [VALIDATION.md](VALIDATION.md)。
 
-## 多模型开发协作
+## Codex / Claude 开发协作
 
-Qwen、DeepSeek 和 Codex 不再通过一段超长聊天串行接力。每个任务使用 Git 管理的任务契约与本机最小交接工件；Qwen 负责低成本定位和受限小改，DeepSeek 只在中风险或本地实现失败时读取最小上下文，Codex 负责规划、裁决与最终验收。
+开发协作只保留两个平等角色：Codex 负责计划、范围冻结、独立审查、验收和
+交付；Claude 负责只读定位、实现、测试和实现证据。定位、实现、审查是任务
+阶段，不是额外 Agent。双方都可提交证据质疑，但同一争议最多各两次证据交换，
+随后必须接受、修改、拒绝或升级给用户。
 
 ```powershell
 # 创建任务、查看任务状态
 python scripts/agent_task.py new TASK-ID --title "任务标题" --risk LOW
 python scripts/agent_task.py status TASK-ID
 
-# 自动按任务风险选择模型并启动独立角色会话
-.\scripts\agent-role.cmd TASK-ID scout
-.\scripts\agent-role.cmd TASK-ID builder
-.\scripts\agent-role.cmd TASK-ID critic
+# Claude 定位后，Codex 验收并冻结基线
+python scripts/agent_task.py validate-location TASK-ID
+python scripts/agent_task.py freeze TASK-ID
 
-# 在两个终端中独立启动；无需切换 CC Switch 或重启另一终端
-.\scripts\claude-qwen.cmd
-.\scripts\claude-deepseek.cmd
+# Claude 实现后检查任务范围；Codex 再独立审查差异
+python scripts/agent_task.py scope-check TASK-ID
 ```
 
-完整状态机、文件白名单、token 预算和升级规则见 [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md)。密钥和模型 Provider 配置位于用户目录的独立 profile，不进入仓库。
+完整状态机、白名单、有界质疑和 Mac/Windows 交付规则见
+[AGENT_WORKFLOW.md](AGENT_WORKFLOW.md)。模型账号和凭据由各自电脑管理，不进入仓库。
 
 ## 目录
 
@@ -125,15 +143,14 @@ Track_2/
 ├── README.md
 ├── VALIDATION.md                    # 唯一运行事实源
 ├── DEVELOPMENT_PLAN.md              # Git 管理的长期开发计划与验收契约
-├── AGENT_WORKFLOW.md                 # 多模型任务状态机、风险路由与交接规范
-├── AGENTS.md / CLAUDE.md            # Agent 开发与验收约束
+├── AGENT_WORKFLOW.md                 # Codex / Claude 两方任务状态机与交接规范
+├── AGENTS.md / CLAUDE.md            # 两方计划验收 / 执行开发身份
+├── history/                          # append-only 项目版本记录与索引
 ├── coordination/                    # Git 管理的当前任务契约和模板
 ├── scripts/agent_task.py            # 任务工件、基线和越界检查 CLI
-├── scripts/agent_role.py            # 按风险选择模型并启动 Scout/Builder/Critic
-├── scripts/claude-*.cmd             # 独立 Qwen / DeepSeek Claude Code 启动入口
-├── .agents/skills/local-code-scout/ # 本地只读代码定位 Skill
-├── .agents/skills/bounded-code-implementer/ # 白名单受限实现 Skill
-├── .agents/skills/diff-contract-reviewer/   # 新会话差异审查 Skill
+├── .agents/skills/local-code-scout/ # Claude 只读定位阶段检查表
+├── .agents/skills/bounded-code-implementer/ # Claude 白名单实现阶段检查表
+├── .agents/skills/diff-contract-reviewer/   # Codex 独立差异审查检查表
 ├── .agents/skills/verify-quant-e2e/ # 发布前双路径验收 Skill
 ├── .claude/discussion.md            # 当前协作交接
 ├── jiuwenswarm/

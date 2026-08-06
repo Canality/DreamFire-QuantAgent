@@ -23,6 +23,7 @@ from jiuwenswarm.quant.challenger_mechanisms import (
 )
 from jiuwenswarm.quant.challenger_registry import (
     BASE_STRATEGY_ID,
+    WP1B_REVIEW_EVIDENCE_RELATIVE_PATH,
     build_registry,
     canonical_hash,
     file_sha256,
@@ -40,9 +41,7 @@ EVALUATION_DIR = Path(__file__).resolve().parent
 REPO_ROOT = EVALUATION_DIR.parents[1]
 OUTPUT_ROOT = REPO_ROOT / "output" / "challenger_evaluations"
 WP1B_TASK = REPO_ROOT / "coordination/active/WP1B-EVALUATION-0804.md"
-WP1B_REVIEW = (
-    REPO_ROOT / "output/agent_handoffs/WP1B-EVALUATION-0804/review.json"
-)
+WP1B_REVIEW = REPO_ROOT / WP1B_REVIEW_EVIDENCE_RELATIVE_PATH
 
 _PB_SPEC = _iu.spec_from_file_location(
     "phase_b_experiment_for_wp1c",

@@ -266,6 +266,11 @@ class AnnouncementProvider(BaseProvider):
                 if not isinstance(ann, dict):
                     parse_failures += 1
                     continue
+                try:
+                    self._validate_payload_ownership(ticker, ann)
+                except ValueError:
+                    parse_failures += 1
+                    continue
                 notice_date = self._parse_notice_date(ann.get("notice_date"))
                 if notice_date is None:
                     parse_failures += 1
@@ -379,6 +384,82 @@ class AnnouncementProvider(BaseProvider):
             return True
         except ValueError:
             return False
+
+    @classmethod
+    def replay_archived_fact(
+        cls,
+        ticker: str,
+        raw_content: str | bytes,
+        ref: EvidenceRef,
+        as_of_time: datetime,
+    ) -> MetricFact:
+        """Rebuild one fact from immutable archive bytes without network access.
+
+        The archived payload remains authoritative.  Receipt fields never carry
+        a second copy of the title, date, or evidence identity that could drift
+        from the bytes protected by ``EvidenceRef.content_sha256``.
+        """
+        if as_of_time.tzinfo is None:
+            raise ValueError("offline replay as_of_time must be timezone-aware")
+        try:
+            content = (
+                raw_content.decode("utf-8")
+                if isinstance(raw_content, bytes)
+                else raw_content
+            )
+            announcement = json.loads(content)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("archived announcement is not valid UTF-8 JSON") from exc
+        if not isinstance(announcement, dict):
+            raise ValueError("archived announcement must be a JSON object")
+
+        code = ticker.split(".")[0]
+        cls._validate_payload_ownership(ticker, announcement)
+        expected_id = cls._make_evidence_id(code, announcement)
+        if ref.evidence_id != expected_id:
+            raise ValueError("archived announcement evidence_id mismatch")
+        expected_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if ref.content_sha256 != expected_hash:
+            raise ValueError("archived announcement content hash mismatch")
+        if ref.source_type != "disclosure" or ref.evidence_id != expected_id:
+            raise ValueError("archived announcement source_type mismatch")
+
+        notice_date = cls._parse_notice_date(announcement.get("notice_date"))
+        if notice_date is None:
+            raise ValueError("archived announcement notice_date is invalid")
+        if notice_date > as_of_time:
+            raise ValueError("archived announcement is future evidence")
+        if ref.available_at != notice_date or ref.available_at > as_of_time:
+            raise ValueError("archived announcement availability mismatch")
+
+        title_raw = announcement.get("title")
+        if not isinstance(title_raw, str) or not title_raw.strip():
+            raise ValueError("archived announcement title is invalid")
+        return MetricFact(
+            name="exchange_announcement",
+            value=title_raw.strip(),
+            unit=None,
+            status="available",
+            evidence_ids=(ref.evidence_id,),
+        )
+
+    @staticmethod
+    def _validate_payload_ownership(ticker: str, announcement: Dict) -> None:
+        """Require an explicit, well-formed owner matching the request ticker."""
+        code = ticker.split(".")[0]
+        codes = announcement.get("codes")
+        if not isinstance(codes, list) or not codes:
+            raise ValueError("announcement payload has no ticker ownership")
+        owners: set[str] = set()
+        for row in codes:
+            if not isinstance(row, dict):
+                raise ValueError("announcement payload ownership is malformed")
+            owner = str(row.get("stock_code") or "").strip()
+            if not owner.isdigit() or len(owner) != 6:
+                raise ValueError("announcement payload ownership is malformed")
+            owners.add(owner)
+        if code not in owners:
+            raise ValueError("announcement payload ticker ownership mismatch")
 
     # ------------------------------------------------------------------
     # Internal helpers

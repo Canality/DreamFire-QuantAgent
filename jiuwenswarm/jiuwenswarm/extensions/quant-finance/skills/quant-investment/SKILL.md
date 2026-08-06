@@ -102,7 +102,8 @@ allowed_tools:
 ### Phase 2: 并行分析（委派给 Alpha 和 Risk & Evidence）
 
 > ⚠️ **重要架构原则**: Alpha 和 Risk & Evidence 使用**不同的因子集和不同的工具**，而非同一因子集的不同权重。
-> 已验证：因子集分离后 overlap 仅 28%（Spearman r=-0.095），实现真正的多视角分析。
+> 两类提案的差异必须由当前运行产物计算；overlap 和相关性只引用
+> `VALIDATION.md` 绑定的结果，不在 Skill 中固定历史数值。
 
 4. **创建并明确委派两个分析任务**：
 
@@ -243,7 +244,7 @@ allowed_tools:
     - 回测验证指标
     - PM 的决策依据
     - **模型局限性说明**（诚实披露模型的风险和假设）
-    - **多 Agent 差异化证明**：Alpha 和 Risk & Evidence 使用不同因子集，提案 overlap ~28%，证实多视角互补
+    - **多 Agent 差异化证明**：Alpha 和 Risk & Evidence 使用不同因子集；提案 overlap 由当前运行产物计算并引用 `VALIDATION.md`
 
 ## 风险控制约束
 

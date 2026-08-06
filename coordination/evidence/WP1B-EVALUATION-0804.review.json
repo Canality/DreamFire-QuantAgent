@@ -1,0 +1,81 @@
+{
+  "task_id": "WP1B-EVALUATION-0804",
+  "role": "independent_read_only_critic",
+  "reviewed_at": "2026-08-04T18:19:23+08:00",
+  "verdict": "ACCEPT",
+  "blocking_findings_count": 0,
+  "findings": [],
+  "contract_checks": {
+    "decision_embargo_and_evidence_cutoff": {
+      "status": "PASS",
+      "evidence": "CompetitionWindowPolicy enforces one trading-day embargo and a 15:00 Asia/Shanghai cutoff for price, factor and timestamped evidence; embargo-day and decision-day post-close negative tests pass."
+    },
+    "exact_20_valuation_dates_and_fixed_shares": {
+      "status": "PASS",
+      "evidence": "All 100 strategy-window rows in both fresh artifacts contain entry=open, exactly 20 ordered valuation dates, exit=the final valuation date, 49 stocks and 6 sectors. Backtest regression tests confirm shares are fixed from entry open through exit close and cash is preserved."
+    },
+    "outer_result_isolation": {
+      "status": "PASS",
+      "evidence": "The promotion API exposes only the frozen median_return_delta selection metric over InnerSelectionView; arbitrary selector callbacks were removed and an outer metric fails with OuterResultAccessError. Inner indices are 0-9 and outer indices are 10-19."
+    },
+    "exact_pairing_and_input_binding": {
+      "status": "PASS",
+      "evidence": "Exact strategy set, canonical contiguous window indices, chronology and full identity fields are checked before evaluation. The complete details payload is bound by details_hash; candidate mutation, missing valuation date and pairing mismatch tests fail closed."
+    },
+    "bootstrap_and_determinism": {
+      "status": "PASS",
+      "evidence": "Circular moving-block bootstrap uses seed 20260804, 2000 iterations and three-window blocks. Fresh artifacts wp1b_20260804_180848.json and wp1b_20260804_180900.json have identical details hash 8adb3d377189f093da023b3f6eb9f6d79cd0eb022c5d3063b38f989a9f7981c0 and evaluation hash b1cd9a849bcbf53f1f32bad8363c623694782791f797e201f7aeda2296783099."
+    },
+    "risk_noninferiority": {
+      "status": "PASS",
+      "evidence": "Promotion checks median return delta, bootstrap positive probability, utility win rate, candidate-versus-baseline P10 return, median paired drawdown deterioration and candidate-versus-baseline worst drawdown; maximum paired drawdown deterioration remains an explicit diagnostic. Negative P10 tests fail closed."
+    },
+    "provenance_git_and_frozen_plan_gates": {
+      "status": "PASS",
+      "evidence": "Config payload self-hash, exact plan, exact strategy/candidate sets and protocol are verified. Snapshot manifest, WP1-A declaration, both report path/hash bindings and each report's semantic VERIFIED status are cross-checked. Git state is reread from the bound repository. Dirty, unverified, semantically failed, tampered and non-default-plan cases cannot promote."
+    },
+    "current_run_cannot_promote": {
+      "status": "PASS",
+      "evidence": "Both fresh runs are statistically qualified but status=RESEARCH_ONLY and promotion_eligible=false because clean_git=false and verified_wp1a_snapshot=false. The historical raw/unadjusted Sina snapshot is not laundered into promotion evidence."
+    },
+    "historical_evidence_and_legacy_conclusion": {
+      "status": "PASS",
+      "evidence": "Eight historical phase_b/unified_baselines JSON hashes match the frozen baseline with zero mismatches. Writers use create-once run-scoped paths and do not update latest pointers. The historical +0.91pp conclusion is explicitly deprecated and the legacy unified comparison is always RESEARCH_ONLY."
+    },
+    "scope": {
+      "status": "PASS",
+      "evidence": "scope_check.json reports violations=[] and passed=true. Its sole excluded file is the separately owned, CLOSED WP1-C Scout task document with an explicit SHA-256 and reason; it is absent from the WP1-B diff."
+    }
+  },
+  "checked_commands": [
+    {
+      "command": "uv run --project jiuwenswarm pytest -q --no-cov test_nested_evaluation.py test_competition_window_policy.py test_phase_b_experiment.py test_unified_baselines.py test_backtest_regression.py",
+      "result": "PASS: 57 passed in 1.62s in the final independent Critic run"
+    },
+    {
+      "command": "ruff check <eight WP1-B source/test files>",
+      "result": "PASS: All checks passed"
+    },
+    {
+      "command": "git diff --check -- <WP1-B allowed source/task paths>",
+      "result": "PASS"
+    },
+    {
+      "command": "SHA-256 recomputation for wp1b_20260804_181757.json and wp1b_20260804_181808.json",
+      "result": "PASS: 6bf9b52093af57abf9154cc98e47eb5c9352f04fc31c7bf0ec5a8d516ae93293 and a05797f7272bd81b5828dc1c0e4069edbed8f556a31c908904c1047ef86a9c98 match run6.log/run7.log"
+    },
+    {
+      "command": "Validate exact identities/dates across both fresh artifacts and compare evaluation/details hashes",
+      "result": "PASS: five strategies, 20 windows each, 100 rows, ten untouched outer rows, identical deterministic hashes"
+    },
+    {
+      "command": "Compare frozen baseline SHA-256 for historical phase_b_*.json and unified_baselines_*.json",
+      "result": "PASS: 8 checked, 0 mismatches"
+    }
+  ],
+  "residual_risks": [
+    "No real verified WP1-A snapshot was available in this worktree, so the positive production provenance path is covered by adversarial unit fixtures rather than a live eligible run; the real raw Sina runs correctly remain RESEARCH_ONLY.",
+    "Only ten chronological outer windows are available. The block-bootstrap and regime tables are useful research evidence but do not remove small-sample uncertainty or substitute for the future competition holdout."
+  ],
+  "review_note": "Initial counterexamples against selector callbacks, post-close factor timestamps, self-asserted snapshot/config/Git bindings and non-default bootstrap plans were reproduced during review. The implementation was hardened before this final verdict, and the corresponding adversarial tests now pass."
+}

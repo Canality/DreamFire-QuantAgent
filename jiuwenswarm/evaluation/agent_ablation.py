@@ -1,360 +1,600 @@
 #!/usr/bin/env python3
-"""A0/A1/A2 Agent ablation experiment (WP0-B research acceptance).
-
-Compares three configurations on the same snapshot, base scores, embargo
-and position constraints:
-
-  A0 — No Agent:  raw composite scores → select → allocate → backtest
-  A1 — Alpha only: composite + Alpha proposals → select → allocate → backtest
-  A2 — Dual Agent: composite + Alpha + Risk & Evidence proposals →
-                    DecisionAssembler → select → allocate → backtest
-
-Produces ablation_results_<timestamp>.json with per-variant returns,
-MDD, P10, utility, position overlap and DecisionTrace.
-"""
+"""Deterministic A0/A1/A2 Agent ablation on one frozen PIT snapshot."""
 
 from __future__ import annotations
 
+import argparse
 import asyncio
+import hashlib
 import importlib.util
 import json
 import sys
-from datetime import datetime, timezone
+from collections.abc import Mapping, Sequence
+from datetime import datetime, time
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
-# ---- Load extension ----
+import pandas as pd
+
+from jiuwenswarm.quant.agent_decision import (
+    OFFICIAL_SELECTION_POLICY,
+    AgentProposal,
+    DecisionAssembler,
+    ProposalEvidence,
+)
+from jiuwenswarm.quant.backtest_engine import BacktestEngine
+from jiuwenswarm.quant.evaluation_protocol import CompetitionWindowPolicy
+from jiuwenswarm.quant.factors import PositionSizer
+from jiuwenswarm.quant.stock_pool import ALL_STOCKS, SECTOR_MAP, STOCK_POOL
+from jiuwenswarm.quant.strategy_configs import production_position_config
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _EXT_PATH = (
-    _PROJECT_ROOT / "jiuwenswarm" / "extensions"
-    / "quant-finance" / "extension.py"
+    _PROJECT_ROOT
+    / "jiuwenswarm"
+    / "extensions"
+    / "quant-finance"
+    / "extension.py"
 )
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+_POLICY = CompetitionWindowPolicy()
 
 
 def _load_extension():
     spec = importlib.util.spec_from_file_location("quant_ablation_ext", _EXT_PATH)
     assert spec is not None and spec.loader is not None
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def _pp_pct(value: float) -> str:
-    return f"{value:+.4%}"
-
-
-def _score(prices_df, weights: dict[str, float]) -> dict:
-    """Compute realised return and MDD from price DataFrame and fixed weights."""
-    import numpy as np
-
-    rets = prices_df.pct_change().dropna(how="all")
-    if rets.empty:
-        return {"total_return": 0.0, "max_drawdown": 0.0,
-                "p10_return": 0.0, "sharpe": 0.0}
-
-    # Daily portfolio return
-    port_rets = rets.multiply(pd.Series(weights)).sum(axis=1)
-    port_rets = port_rets.fillna(0.0)
-
-    total_ret = float((1.0 + port_rets).prod() - 1.0)
-    cum = (1.0 + port_rets).cumprod()
-    running_max = cum.expanding().max()
-    drawdown = (cum / running_max - 1.0)
-    max_dd = float(drawdown.min())
-
-    # P10 daily return
-    daily_sorted = sorted(port_rets.dropna())
-    n = len(daily_sorted)
-    p10_idx = max(0, int(n * 0.10))
-    p10 = float(np.mean(daily_sorted[:p10_idx])) if p10_idx > 0 else 0.0
-
-    # Sharpe (simple, no risk-free)
-    mean_daily = float(port_rets.mean())
-    std_daily = float(port_rets.std())
-    sharpe = (mean_daily / std_daily * (252 ** 0.5)) if std_daily > 0 else 0.0
-
+def _frame_payload(frame: pd.DataFrame) -> dict[str, Any]:
+    ordered = frame.sort_index().sort_index(axis=1)
     return {
-        "total_return": round(total_ret, 6),
-        "max_drawdown": round(max_dd, 6),
-        "p10_daily_return": round(p10, 6),
-        "sharpe_ratio": round(sharpe, 4),
+        "index": [pd.Timestamp(value).isoformat() for value in ordered.index],
+        "columns": [str(value) for value in ordered.columns],
+        "values": [
+            [None if pd.isna(value) else round(float(value), 12) for value in row]
+            for row in ordered.to_numpy()
+        ],
     }
 
 
-def _position_overlap(a_weights: dict[str, float],
-                      b_weights: dict[str, float]) -> dict:
-    a_set = set(a_weights)
-    b_set = set(b_weights)
-    common = a_set & b_set
-    only_a = a_set - b_set
-    only_b = b_set - a_set
+def _snapshot_sha256(
+    *,
+    base_scores: Mapping[str, float],
+    train_prices: pd.DataFrame,
+    entry_open: pd.Series,
+    holding_closes: pd.DataFrame,
+    decision_time: datetime,
+    embargo_date: pd.Timestamp,
+    session_calendar: pd.DatetimeIndex,
+) -> str:
+    payload = {
+        "base_scores": [
+            [ticker, round(float(score), 12)]
+            for ticker, score in sorted(base_scores.items())
+        ],
+        "train_prices": _frame_payload(train_prices),
+        "entry_open": [
+            [ticker, round(float(entry_open[ticker]), 12)]
+            for ticker in sorted(entry_open.index)
+        ],
+        "holding_closes": _frame_payload(holding_closes),
+        "decision_time": decision_time.isoformat(),
+        "embargo_date": pd.Timestamp(embargo_date).isoformat(),
+        "session_calendar": [
+            pd.Timestamp(value).isoformat() for value in session_calendar
+        ],
+        "window_policy": {
+            "embargo_trading_days": _POLICY.embargo_trading_days,
+            "holding_days": _POLICY.holding_days,
+            "entry": _POLICY.entry,
+            "exit": _POLICY.exit,
+        },
+    }
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _position_overlap(left: Mapping[str, float], right: Mapping[str, float]) -> dict:
+    left_set = set(left)
+    right_set = set(right)
     return {
-        "n_common": len(common),
-        "n_only_a": len(only_a),
-        "n_only_b": len(only_b),
-        "common_tickers": sorted(common),
-        "only_a_tickers": sorted(only_a),
-        "only_b_tickers": sorted(only_b),
+        "n_common": len(left_set & right_set),
+        "n_only_left": len(left_set - right_set),
+        "n_only_right": len(right_set - left_set),
+        "common_tickers": sorted(left_set & right_set),
+        "only_left_tickers": sorted(left_set - right_set),
+        "only_right_tickers": sorted(right_set - left_set),
     }
 
 
-def _utility(total_return: float, max_drawdown: float,
-             penalty: float = 1.0) -> float:
-    """Simple risk-adjusted utility: return − λ × |MDD|."""
-    return round(total_return - penalty * abs(max_drawdown), 6)
+def _proposal_payload(proposal: AgentProposal) -> dict[str, Any]:
+    return {
+        "role": proposal.role,
+        "ticker": proposal.ticker,
+        "action": proposal.action,
+        "adjustment": proposal.adjustment,
+        "confidence": proposal.confidence,
+        "rationale": proposal.rationale,
+        "valid_from": proposal.valid_from.isoformat(),
+        "valid_until": proposal.valid_until.isoformat(),
+        "evidence": [
+            {
+                "evidence_id": evidence.evidence_id,
+                "signal_id": evidence.signal_id,
+                "payload_sha256": evidence.payload_sha256,
+                "available_at": evidence.available_at.isoformat(),
+                "valid_until": evidence.valid_until.isoformat(),
+                "detail": evidence.detail,
+            }
+            for evidence in proposal.evidence
+        ],
+    }
 
 
-# ---- Main ----
-def main() -> int:
-    ext = _load_extension()
-    ext._data_cache.clear()
-    ext._phase_results.clear()
+def _trace_payload(trace) -> dict[str, Any]:
+    return {
+        "decision_time": trace.decision_time.isoformat(),
+        "base_scores": dict(sorted(trace.base_scores.items())),
+        "adjusted_scores": {
+            ticker: (
+                "EXCLUDED"
+                if score == float("-inf")
+                else score
+            )
+            for ticker, score in sorted(trace.adjusted_scores.items())
+        },
+        "proposals": [_proposal_payload(proposal) for proposal in trace.proposals],
+        "outcomes": [
+            {
+                "proposal": _proposal_payload(outcome.proposal),
+                "accepted": outcome.accepted,
+                "reason": outcome.reason,
+                "applied_adjustment": outcome.applied_adjustment,
+            }
+            for outcome in trace.outcomes
+        ],
+        "n_proposals": len(trace.proposals),
+        "n_accepted": len(trace.accepted),
+        "n_rejected": len(trace.rejected),
+        "reject_reasons": dict(trace.reject_reasons),
+        "base_ranking": list(trace.base_ranking),
+        "adjusted_ranking": list(trace.adjusted_ranking),
+        "selected_before": list(trace.selected_before),
+        "selected_after": list(trace.selected_after),
+        "excluded_tickers": sorted(
+            proposal.ticker for proposal in trace.accepted if proposal.is_veto
+        ),
+        "role_adjustments": [
+            {
+                "role": item.role,
+                "ticker": item.ticker,
+                "action": item.action,
+                "adjustment": item.adjustment,
+            }
+            for item in trace.role_adjustments
+        ],
+    }
 
-    # Fetch data (same as direct pipeline)
-    print("[1/6] Fetching data...")
-    instance = ext.QuantFinanceExtension()
-    fetched = asyncio.run(instance.fetch_data({}))
-    if not fetched.get("success"):
-        print(f"Fetch failed: {fetched.get('detail')}")
-        return 1
-    print(f"  {fetched['n_stocks']} stocks, {fetched['n_days']} days, "
-          f"coverage={fetched['coverage_complete']}")
 
-    # Compute factors
-    print("[2/6] Computing factors...")
-    factors = asyncio.run(instance.compute_factors({}))
-    if not factors.get("success"):
-        print(f"Factors failed: {factors.get('detail')}")
-        return 1
-    base_scores = factors["all_composite"]
-    print(f"  Regime={factors['regime']}, "
-          f"decision_date={factors['decision_date']}")
-
-    # A0: No Agent — raw composite scores
-    print("[3/6] A0: No Agent...")
-    a0_selection = asyncio.run(instance.select_stocks({}))
-    a0_alloc = asyncio.run(
-        instance.allocate_positions({"tickers": a0_selection["tickers"]})
+def _evaluate_variant(
+    *,
+    name: str,
+    base_scores: Mapping[str, float],
+    proposals: Sequence[AgentProposal],
+    train_prices: pd.DataFrame,
+    entry_open: pd.Series,
+    holding_closes: pd.DataFrame,
+    decision_time: datetime,
+) -> dict[str, Any]:
+    trace = DecisionAssembler.assemble(
+        base_scores,
+        proposals,
+        decision_time=decision_time,
+        selection_policy=OFFICIAL_SELECTION_POLICY,
     )
-    a0_backtest = asyncio.run(
-        instance.run_backtest({"weights": a0_alloc["weights"]})
+    tickers = list(trace.selected_after)
+    sectors = {SECTOR_MAP[ticker] for ticker in tickers}
+    if len(tickers) != OFFICIAL_SELECTION_POLICY.top_n or len(sectors) != len(STOCK_POOL):
+        raise ValueError(
+            f"{name} selection incomplete: {len(tickers)} stocks, {len(sectors)} sectors"
+        )
+
+    score_frame = pd.DataFrame(
+        {
+            "composite": [float(trace.adjusted_scores[ticker]) for ticker in tickers],
+            "sector": [SECTOR_MAP[ticker] for ticker in tickers],
+        },
+        index=tickers,
     )
+    weights = PositionSizer(production_position_config()).allocate(
+        score_frame,
+        train_prices[tickers],
+    )
+    result = BacktestEngine().run_open_to_close(
+        entry_open,
+        holding_closes,
+        weights,
+    )
+    p10_daily = float(result.daily_returns.quantile(0.10))
+    total_return = float(result.metrics["total_return"])
+    max_drawdown = float(result.metrics["max_drawdown"])
+    return {
+        "variant": name,
+        "tickers": tickers,
+        "weights": dict(sorted(weights.items())),
+        "metrics": {
+            **result.metrics,
+            "p10_daily_return": round(p10_daily, 6),
+            "utility_return_minus_mdd": round(total_return - abs(max_drawdown), 6),
+        },
+        "trace": _trace_payload(trace),
+    }
 
-    # A1: Alpha-only overlay
-    print("[4/6] A1: Alpha only...")
-    alpha_view = asyncio.run(instance.alpha_view({}))
-    from jiuwenswarm.quant.agent_decision import AgentProposal, DecisionAssembler
 
-    alpha_proposals = []
+def evaluate_ablation(
+    *,
+    base_scores: Mapping[str, float],
+    alpha_proposals: Sequence[AgentProposal],
+    risk_proposals: Sequence[AgentProposal],
+    train_prices: pd.DataFrame,
+    entry_open: pd.Series,
+    holding_closes: pd.DataFrame,
+    decision_time: datetime,
+    embargo_date: pd.Timestamp,
+    session_calendar: Sequence[pd.Timestamp],
+) -> dict[str, Any]:
+    """Evaluate A0/A1/A2 simultaneously without shared mutable caches."""
+
+    if decision_time.tzinfo is None or decision_time.utcoffset() is None:
+        raise ValueError("decision_time must be timezone-aware")
+    if set(base_scores) != set(ALL_STOCKS):
+        raise ValueError("base_scores must exactly match the official stock universe")
+    if list(train_prices.columns) != list(ALL_STOCKS):
+        raise ValueError("train_prices must preserve the official stock order")
+    if list(holding_closes.columns) != list(ALL_STOCKS):
+        raise ValueError("holding_closes must preserve the official stock order")
+    if list(entry_open.index) != list(ALL_STOCKS):
+        raise ValueError("entry_open must preserve the official stock order")
+    if len(holding_closes) != _POLICY.holding_days:
+        raise ValueError(f"holding_closes must contain {_POLICY.holding_days} sessions")
+    def normalise_session(value: object) -> pd.Timestamp:
+        timestamp = pd.Timestamp(value)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.tz_convert(_SHANGHAI).tz_localize(None)
+        return timestamp.normalize()
+
+    calendar = pd.DatetimeIndex(
+        [normalise_session(value) for value in session_calendar]
+    )
+    if calendar.empty or calendar.has_duplicates or not calendar.is_monotonic_increasing:
+        raise ValueError("session_calendar must be unique and strictly increasing")
+    if any(timestamp.dayofweek >= 5 for timestamp in calendar):
+        raise ValueError("session_calendar cannot contain weekend sessions")
+    embargo = normalise_session(embargo_date)
+    embargo_positions = [
+        index for index, timestamp in enumerate(calendar) if timestamp == embargo
+    ]
+    if len(embargo_positions) != 1 or embargo_positions[0] == 0:
+        raise ValueError("embargo_date must identify one canonical forward session")
+    start_idx = embargo_positions[0]
+    try:
+        window = _POLICY.get_window(calendar, start_idx)
+    except IndexError as exc:
+        raise ValueError("session_calendar does not contain the full holding window") from exc
+
+    decision_date = normalise_session(decision_time)
+    train_sessions = pd.DatetimeIndex(
+        [normalise_session(value) for value in train_prices.index]
+    )
+    holding_sessions = pd.DatetimeIndex(
+        [normalise_session(value) for value in holding_closes.index]
+    )
+    if train_sessions.has_duplicates or not train_sessions.is_monotonic_increasing:
+        raise ValueError("training sessions must be unique and increasing")
+    if holding_sessions.has_duplicates or not holding_sessions.is_monotonic_increasing:
+        raise ValueError("holding sessions must be unique and increasing")
+    if list(train_sessions) != list(calendar[:start_idx]):
+        raise ValueError("training sessions must end exactly before canonical embargo")
+    if decision_date != normalise_session(window.decision_date):
+        raise ValueError("decision_time does not match the canonical decision session")
+    if embargo != normalise_session(window.embargo_date):
+        raise ValueError("embargo_date does not match the canonical window")
+    if list(holding_sessions) != [
+        normalise_session(value) for value in window.valuation_dates
+    ]:
+        raise ValueError("holding closes do not match the 20 canonical valuation sessions")
+    if entry_open.name is None:
+        raise ValueError("entry_open must retain its source session label")
+    entry_label = normalise_session(entry_open.name)
+    entry_date = normalise_session(window.entry_date)
+    if entry_label != entry_date or holding_sessions[0] != entry_date:
+        raise ValueError("entry_open label must equal the canonical entry session")
+
+    snapshot_sha256 = _snapshot_sha256(
+        base_scores=base_scores,
+        train_prices=train_prices,
+        entry_open=entry_open,
+        holding_closes=holding_closes,
+        decision_time=decision_time,
+        embargo_date=embargo,
+        session_calendar=calendar,
+    )
+    proposal_payload = {
+        "alpha": [_proposal_payload(proposal) for proposal in alpha_proposals],
+        "risk": [_proposal_payload(proposal) for proposal in risk_proposals],
+    }
+    proposal_bundle_sha256 = hashlib.sha256(
+        json.dumps(
+            proposal_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    variants = {
+        "A0_no_agent": _evaluate_variant(
+            name="A0_no_agent",
+            base_scores=base_scores,
+            proposals=(),
+            train_prices=train_prices,
+            entry_open=entry_open,
+            holding_closes=holding_closes,
+            decision_time=decision_time,
+        ),
+        "A1_alpha_only": _evaluate_variant(
+            name="A1_alpha_only",
+            base_scores=base_scores,
+            proposals=tuple(alpha_proposals),
+            train_prices=train_prices,
+            entry_open=entry_open,
+            holding_closes=holding_closes,
+            decision_time=decision_time,
+        ),
+        "A2_alpha_risk": _evaluate_variant(
+            name="A2_alpha_risk",
+            base_scores=base_scores,
+            proposals=tuple(alpha_proposals) + tuple(risk_proposals),
+            train_prices=train_prices,
+            entry_open=entry_open,
+            holding_closes=holding_closes,
+            decision_time=decision_time,
+        ),
+    }
+    a0 = variants["A0_no_agent"]
+    for key in ("A1_alpha_only", "A2_alpha_risk"):
+        variant = variants[key]
+        variant["vs_A0"] = {
+            "return_delta_pp": round(
+                (variant["metrics"]["total_return"] - a0["metrics"]["total_return"])
+                * 100,
+                6,
+            ),
+            "max_drawdown_delta_pp": round(
+                (
+                    variant["metrics"]["max_drawdown"]
+                    - a0["metrics"]["max_drawdown"]
+                )
+                * 100,
+                6,
+            ),
+            "p10_daily_delta_pp": round(
+                (
+                    variant["metrics"]["p10_daily_return"]
+                    - a0["metrics"]["p10_daily_return"]
+                )
+                * 100,
+                6,
+            ),
+            "overlap": _position_overlap(a0["weights"], variant["weights"]),
+        }
+
+    return {
+        "schema_version": "wp0b-ablation-v2",
+        "snapshot_sha256": snapshot_sha256,
+        "proposal_bundle_sha256": proposal_bundle_sha256,
+        "decision_time": decision_time.isoformat(),
+        "embargo_date": str(embargo.date()),
+        "entry_date": str(entry_date.date()),
+        "exit_date": str(pd.Timestamp(holding_closes.index[-1]).date()),
+        "holding_sessions": len(holding_closes),
+        "variants": variants,
+        "promotion_eligible": False,
+        "promotion_note": (
+            "A single snapshot is diagnostic only; production overlay remains disabled "
+            "until pre-registered outer-window evidence passes."
+        ),
+    }
+
+
+def _bind_evidence(
+    *,
+    role: str,
+    ticker: str,
+    raw_items: Sequence[Any],
+    decision_time: datetime,
+) -> tuple[ProposalEvidence, ...]:
+    bound: list[ProposalEvidence] = []
+    for index, raw in enumerate(raw_items):
+        detail = str(raw).strip()
+        if not detail:
+            continue
+        payload_hash = hashlib.sha256(detail.encode("utf-8")).hexdigest()
+        signal_id = detail.split("=", 1)[0].strip() or f"signal_{index}"
+        bound.append(
+            ProposalEvidence(
+                evidence_id=f"derived:{role}:{ticker}:{payload_hash}:{index}",
+                signal_id=signal_id,
+                payload_sha256=payload_hash,
+                available_at=decision_time,
+                valid_until=decision_time,
+                detail=detail,
+            )
+        )
+    return tuple(bound)
+
+
+def _proposals_from_views(
+    alpha_view: Mapping[str, Any],
+    risk_view: Mapping[str, Any],
+    decision_time: datetime,
+) -> tuple[tuple[AgentProposal, ...], tuple[AgentProposal, ...]]:
+    alpha: list[AgentProposal] = []
     for item in alpha_view.get("alpha_stocks", [])[:12]:
-        ascore = item.get("alpha_score", 0)
-        if ascore >= 7:
-            alpha_proposals.append(AgentProposal(
-                role="alpha", ticker=item["ticker"], action="include",
-                adjustment=2, confidence="high",
-                evidence=tuple(item.get("signals", [])[:2]),
-                rationale=item.get("signals", [""])[0] if item.get("signals") else "",
-            ))
-        elif ascore >= 5:
-            alpha_proposals.append(AgentProposal(
-                role="alpha", ticker=item["ticker"], action="include",
-                adjustment=1, confidence="medium",
-                evidence=tuple(item.get("signals", [])[:1]),
-                rationale=item.get("signals", [""])[0] if item.get("signals") else "",
-            ))
+        score = item.get("alpha_score", 0)
+        adjustment = 2 if score >= 7 else 1 if score >= 5 else 0
+        if adjustment == 0:
+            continue
+        alpha.append(
+            AgentProposal(
+                role="alpha",
+                ticker=item["ticker"],
+                action="include",
+                adjustment=adjustment,
+                confidence="high" if adjustment == 2 else "medium",
+                evidence=_bind_evidence(
+                    role="alpha",
+                    ticker=item["ticker"],
+                    raw_items=item.get("signals", [])[:2],
+                    decision_time=decision_time,
+                ),
+                rationale=str(item.get("signals", [""])[0]),
+                valid_from=decision_time,
+                valid_until=decision_time,
+            )
+        )
 
-    a1_trace = DecisionAssembler.assemble(dict(base_scores), alpha_proposals)
-    # Override select cache to use A1 adjusted scores
-    ext._update_cached_data(_scores_df=ext._get_cached_data()["_scores_df"].copy(),
-                            _alpha_result=alpha_view)
-    # Manually run selection with adjusted scores
-    a1_sorted = sorted(a1_trace.adjusted_scores.items(), key=lambda x: x[1], reverse=True)
-    from jiuwenswarm.quant.stock_pool import STOCK_POOL
-    a1_selected = []
-    sel_set = set()
-    for sector in STOCK_POOL:
-        for ticker, score in a1_sorted:
-            if ticker in STOCK_POOL[sector] and ticker not in sel_set and score > -0.5:
-                a1_selected.append(ticker)
-                sel_set.add(ticker)
-                break
-    for ticker, score in a1_sorted:
-        if len(a1_selected) >= 15:
-            break
-        if ticker not in sel_set and score > -0.5:
-            a1_selected.append(ticker)
-            sel_set.add(ticker)
-    # Re-run allocate/backtest with A1 tickers
-    ext._phase_results.pop("allocate_positions", None)
-    ext._phase_results.pop("run_backtest", None)
-    a1_alloc = asyncio.run(instance.allocate_positions({"tickers": a1_selected}))
-    a1_backtest = asyncio.run(instance.run_backtest({"weights": a1_alloc["weights"]}))
-
-    # A2: Dual Agent (Alpha + Risk & Evidence)
-    print("[5/6] A2: Alpha + Risk & Evidence...")
-    risk_view = asyncio.run(instance.risk_evidence_view({}))
-
-    risk_proposals = []
+    risk: list[AgentProposal] = []
     for item in risk_view.get("risky_stocks", [])[:12]:
-        rscore = item.get("risk_score", 0)
-        if rscore >= 8:
-            risk_proposals.append(AgentProposal(
-                role="risk_evidence", ticker=item["ticker"], action="exclude",
-                adjustment=-3, confidence="high",
-                evidence=tuple(item.get("warnings", [])[:2]),
-                rationale=item.get("warnings", [""])[0] if item.get("warnings") else "",
-            ))
-        elif rscore >= 5:
-            risk_proposals.append(AgentProposal(
-                role="risk_evidence", ticker=item["ticker"], action="reduce",
-                adjustment=-1, confidence="medium",
-                evidence=tuple(item.get("warnings", [])[:2]),
-                rationale=item.get("warnings", [""])[0] if item.get("warnings") else "",
-            ))
+        score = item.get("risk_score", 0)
+        action = "exclude" if score >= 8 else "reduce" if score >= 5 else None
+        if action is None:
+            continue
+        risk.append(
+            AgentProposal(
+                role="risk_evidence",
+                ticker=item["ticker"],
+                action=action,
+                adjustment=-3 if action == "exclude" else -1,
+                confidence="high" if action == "exclude" else "medium",
+                evidence=_bind_evidence(
+                    role="risk",
+                    ticker=item["ticker"],
+                    raw_items=item.get("warnings", [])[:2],
+                    decision_time=decision_time,
+                ),
+                rationale=str(item.get("warnings", [""])[0]),
+                valid_from=decision_time,
+                valid_until=decision_time,
+            )
+        )
+    return tuple(alpha), tuple(risk)
 
-    a2_trace = DecisionAssembler.assemble(dict(base_scores),
-                                           alpha_proposals + risk_proposals)
-    a2_sorted = sorted(a2_trace.adjusted_scores.items(), key=lambda x: x[1], reverse=True)
-    a2_selected = []
-    sel_set2 = set()
-    for sector in STOCK_POOL:
-        for ticker, score in a2_sorted:
-            if ticker in STOCK_POOL[sector] and ticker not in sel_set2 and score > -0.5:
-                a2_selected.append(ticker)
-                sel_set2.add(ticker)
-                break
-    for ticker, score in a2_sorted:
-        if len(a2_selected) >= 15:
-            break
-        if ticker not in sel_set2 and score > -0.5:
-            a2_selected.append(ticker)
-            sel_set2.add(ticker)
-    ext._phase_results.pop("allocate_positions", None)
-    ext._phase_results.pop("run_backtest", None)
-    a2_alloc = asyncio.run(instance.allocate_positions({"tickers": a2_selected}))
-    a2_backtest = asyncio.run(instance.run_backtest({"weights": a2_alloc["weights"]}))
 
-    # ---- Compare ----
-    print("[6/6] Comparing...")
-    a0_metrics = {
-        "total_return": a0_backtest.get("total_return", 0.0),
-        "max_drawdown": a0_backtest.get("max_drawdown", 0.0),
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start-date")
+    parser.add_argument("--end-date")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args(argv)
+
+    extension_module = _load_extension()
+    extension_module._data_cache.clear()
+    extension_module._phase_results.clear()
+    extension = extension_module.QuantFinanceExtension()
+    fetch_params = {
+        key: value
+        for key, value in {
+            "start_date": args.start_date,
+            "end_date": args.end_date,
+        }.items()
+        if value
     }
-    a1_metrics = {
-        "total_return": a1_backtest.get("total_return", 0.0),
-        "max_drawdown": a1_backtest.get("max_drawdown", 0.0),
-    }
-    a2_metrics = {
-        "total_return": a2_backtest.get("total_return", 0.0),
-        "max_drawdown": a2_backtest.get("max_drawdown", 0.0),
-    }
+    fetched = asyncio.run(extension.fetch_data(fetch_params))
+    if not fetched.get("success"):
+        raise RuntimeError(f"fetch failed: {fetched.get('detail')}")
+    cached = extension_module._get_cached_data()
+    bundle = cached.get("_market_data_bundle") if cached else None
+    if bundle is None or len(bundle.closes) < 61 + _POLICY.total_forward_days:
+        raise RuntimeError("complete market bundle with decision/embargo/holding data required")
 
-    result = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "regime": factors["regime"],
-        "decision_date": factors["decision_date"],
-        "n_base_stocks": len(base_scores),
-        "A0_no_agent": {
-            "description": "Raw composite scores, no Agent overlay",
-            "tickers": a0_selection["tickers"],
-            "weights": dict(a0_alloc["weights"]),
-            "backtest": a0_metrics,
-            "utility": _utility(a0_metrics["total_return"], a0_metrics["max_drawdown"]),
-        },
-        "A1_alpha_only": {
-            "description": "Composite + Alpha Analyst proposals",
-            "n_alpha_proposals": len(alpha_proposals),
-            "n_accepted": len(a1_trace.accepted),
-            "n_rejected": len(a1_trace.rejected),
-            "tickers": a1_selected,
-            "weights": dict(a1_alloc["weights"]),
-            "backtest": a1_metrics,
-            "utility": _utility(a1_metrics["total_return"], a1_metrics["max_drawdown"]),
-            "vs_A0": {
-                "return_delta_pp": round((a1_metrics["total_return"] - a0_metrics["total_return"]) * 100, 4),
-                "mdd_delta_pp": round((a1_metrics["max_drawdown"] - a0_metrics["max_drawdown"]) * 100, 4),
-                "utility_delta": round(
-                    _utility(a1_metrics["total_return"], a1_metrics["max_drawdown"])
-                    - _utility(a0_metrics["total_return"], a0_metrics["max_drawdown"]), 6),
-            },
-            "overlap_vs_A0": _position_overlap(dict(a1_alloc["weights"]), dict(a0_alloc["weights"])),
-        },
-        "A2_dual_agent": {
-            "description": "Composite + Alpha + Risk & Evidence proposals",
-            "n_alpha_proposals": len(alpha_proposals),
-            "n_risk_proposals": len(risk_proposals),
-            "n_total_accepted": len(a2_trace.accepted),
-            "n_rejected": len(a2_trace.rejected),
-            "n_excluded": sum(1 for p in a2_trace.accepted if p.action == "exclude"),
-            "tickers": a2_selected,
-            "weights": dict(a2_alloc["weights"]),
-            "backtest": a2_metrics,
-            "utility": _utility(a2_metrics["total_return"], a2_metrics["max_drawdown"]),
-            "vs_A0": {
-                "return_delta_pp": round((a2_metrics["total_return"] - a0_metrics["total_return"]) * 100, 4),
-                "mdd_delta_pp": round((a2_metrics["max_drawdown"] - a0_metrics["max_drawdown"]) * 100, 4),
-                "utility_delta": round(
-                    _utility(a2_metrics["total_return"], a2_metrics["max_drawdown"])
-                    - _utility(a0_metrics["total_return"], a0_metrics["max_drawdown"]), 6),
-            },
-            "vs_A1": {
-                "return_delta_pp": round((a2_metrics["total_return"] - a1_metrics["total_return"]) * 100, 4),
-                "mdd_delta_pp": round((a2_metrics["max_drawdown"] - a1_metrics["max_drawdown"]) * 100, 4),
-            },
-            "overlap_vs_A0": _position_overlap(dict(a2_alloc["weights"]), dict(a0_alloc["weights"])),
-        },
-        "decision_trace_A1": {
-            "n_accepted": len(a1_trace.accepted),
-            "n_rejected": len(a1_trace.rejected),
-        },
-        "decision_trace_A2": {
-            "n_accepted": len(a2_trace.accepted),
-            "n_rejected": len(a2_trace.rejected),
-            "reject_reasons": dict(a2_trace.reject_reasons),
-        },
-    }
+    start_idx = len(bundle.closes) - _POLICY.total_forward_days
+    window = _POLICY.get_window(bundle.closes.index, start_idx)
+    history_prices = bundle.closes.iloc[:start_idx].copy()
+    history_volumes = bundle.volumes.iloc[:start_idx].copy()
+    entry_open, holding_closes = _POLICY.slice_window(
+        bundle.opens,
+        bundle.closes,
+        start_idx,
+    )
+    decision_time = datetime.combine(
+        window.decision_date.date(),
+        time(15, 0),
+        tzinfo=_SHANGHAI,
+    )
 
-    # Print summary
-    print(f"\n{'='*60}")
-    print("ABLATION RESULTS")
-    print(f"{'='*60}")
-    for label, key in [("A0  No Agent       ", "A0_no_agent"),
-                        ("A1  Alpha only     ", "A1_alpha_only"),
-                        ("A2  Dual Agent     ", "A2_dual_agent")]:
-        v = result[key]
-        bt = v["backtest"]
-        print(f"  {label}: return={_pp_pct(bt['total_return'])}, "
-              f"MDD={_pp_pct(bt['max_drawdown'])}, "
-              f"utility={v['utility']:.6f}")
+    # The extension's deterministic factor/analyst functions reserve 20 rows.
+    # Remove the embargo row before appending the 20 holding rows so their
+    # internal training slice ends exactly at the decision close.
+    analysis_prices = pd.concat([history_prices, holding_closes])
+    analysis_volumes = pd.concat(
+        [history_volumes, bundle.volumes.reindex(holding_closes.index)]
+    )
+    analysis_cache = dict(cached)
+    analysis_cache.update(
+        _prices_df=analysis_prices,
+        _volumes_df=analysis_volumes,
+    )
+    extension_module._data_cache["_last"] = analysis_cache
+    extension_module._phase_results.clear()
 
-    print(f"\n  A1 vs A0: return {result['A1_alpha_only']['vs_A0']['return_delta_pp']:+.4f}pp, "
-          f"MDD {result['A1_alpha_only']['vs_A0']['mdd_delta_pp']:+.4f}pp")
-    print(f"  A2 vs A0: return {result['A2_dual_agent']['vs_A0']['return_delta_pp']:+.4f}pp, "
-          f"MDD {result['A2_dual_agent']['vs_A0']['mdd_delta_pp']:+.4f}pp")
-    print(f"  Position overlap (A0 vs A1): {result['A1_alpha_only']['overlap_vs_A0']['n_common']}/15")
-    print(f"  Position overlap (A0 vs A2): {result['A2_dual_agent']['overlap_vs_A0']['n_common']}/15")
-
-    # Agent causal verdict
-    a1_delta = result["A1_alpha_only"]["vs_A0"]["return_delta_pp"]
-    a2_delta = result["A2_dual_agent"]["vs_A0"]["return_delta_pp"]
-    if abs(a1_delta) < 0.01 and abs(a2_delta) < 0.01:
-        result["agent_causal_verdict"] = "NO_SIGNIFICANT_EFFECT"
-        print("\n  VERDICT: Agent overlay has no significant effect on returns.")
-        print("  AGENT_OVERLAY_ENABLED should remain False.")
-    elif a2_delta >= a1_delta >= 0:
-        result["agent_causal_verdict"] = "POSITIVE_INCREMENTAL"
-    else:
-        result["agent_causal_verdict"] = "MIXED_OR_NEGATIVE"
-        print("\n  VERDICT: Agent overlay does not show clear positive increment.")
-        print("  AGENT_OVERLAY_ENABLED should remain False until outer evidence.")
-
-    out_path = _PROJECT_ROOT.parent / "output" / \
-        f"ablation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
-    print(f"\n  Results saved to {out_path}")
+    factor_result = asyncio.run(extension.compute_factors({}))
+    alpha_view = asyncio.run(extension.alpha_view({}))
+    risk_view = asyncio.run(extension.risk_evidence_view({}))
+    if not all(result.get("success") for result in (factor_result, alpha_view, risk_view)):
+        raise RuntimeError("factor or analyst view failed")
+    cached = extension_module._get_cached_data()
+    score_frame = cached.get("_scores_df") if cached else None
+    if not isinstance(score_frame, pd.DataFrame):
+        raise RuntimeError("precise cached factor scores required")
+    alpha_proposals, risk_proposals = _proposals_from_views(
+        alpha_view,
+        risk_view,
+        decision_time,
+    )
+    result = evaluate_ablation(
+        base_scores=score_frame["composite"].to_dict(),
+        alpha_proposals=alpha_proposals,
+        risk_proposals=risk_proposals,
+        train_prices=history_prices,
+        entry_open=entry_open.reindex(ALL_STOCKS),
+        holding_closes=holding_closes.reindex(columns=ALL_STOCKS),
+        decision_time=decision_time,
+        embargo_date=window.embargo_date,
+        session_calendar=bundle.closes.index,
+    )
+    result["generated_at"] = datetime.now(_SHANGHAI).isoformat()
+    output = args.output or (
+        _PROJECT_ROOT.parent
+        / "output"
+        / f"ablation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(json.dumps({"output": str(output), "snapshot_sha256": result["snapshot_sha256"]}))
     return 0
 
 
 if __name__ == "__main__":
-    import pandas as pd  # noqa: E402
     sys.exit(main())

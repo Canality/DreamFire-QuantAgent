@@ -1,127 +1,154 @@
-# 多模型开发工作流
+# Codex / Claude 两方开发工作流
 
 | 字段 | 值 |
 |---|---|
-| 版本 | `1.0.0` |
+| 版本 | `2.0.0` |
 | 状态 | `ACTIVE` |
+| 计划与验收 | Codex |
+| 执行与开发 | Claude |
 | 事实源 | `VALIDATION.md` |
 | 路线源 | `DEVELOPMENT_PLAN.md` |
 | 当前交接 | `.claude/discussion.md` |
+| 版本历史 | `history/README.md` |
 
-## 1. 目的
+## 1. 目的与双方关系
 
-用本地模型完成代码定位、受限实现和独立审查，只在风险或失败达到阈值时调用云端强模型。模型不依靠长聊天传递状态；每项工作使用版本化任务契约和可重算机器产物。
+本工作流只定义两个开发协作者。Codex 负责计划、范围冻结、独立审查、验收和
+交付；Claude 负责只读定位、实现、测试和实现证据。双方是平等协作者，没有
+一般性的上下级关系，权限只绑定任务阶段。
 
-## 2. 角色与模型解耦
+项目运行时的 Coordinator、Alpha Analyst、Risk & Evidence Analyst 是金融业务
+团队，不属于本开发工作流。定位、实现、审查也是阶段，不是额外常驻 Agent。
 
-| 执行角色 | 默认模型 | 权限 |
+## 2. 当前输入
+
+- 新任务先读本文件和 `coordination/active/<TASK-ID>.md`。
+- Codex 在建立计划时读取 `AGENTS.md`、`CLAUDE.md`、`DEVELOPMENT_PLAN.md`、
+  `VALIDATION.md` 和当前 discussion，把必要约束写入任务契约。
+- Claude 默认只读任务、定位所需源码/测试和生成的最小上下文，不用历史聊天
+  猜状态。
+- `history/` 是 append-only 版本档案，只在回归、取证、版本总结或显式 history
+  任务中读取；它不能解除 blocker 或提高证据等级。
+
+## 3. 状态机与职责
+
+`DRAFT → LOCATED → READY → IMPLEMENTED → REVIEWED → VERIFIED → CLOSED`
+
+任一阶段可进入 `BLOCKED`。
+
+| 状态推进 | 责任方 | 要求 |
 |---|---|---|
-| Planner / Arbiter | Codex | 规划、风险分级、裁决、最终验收 |
-| Scout | 本地 Qwen | 只读搜索源码；只写 handoff 产物 |
-| Builder | Codex 或最小上下文 DeepSeek；Qwen 仅实验性后台任务 | 只修改任务白名单文件 |
-| Critic | 本地 Qwen 或独立云端会话 | 只读任务、基线差异和测试证据；结论必须由工件复核 |
-| Domain owner | Missed / Goone | 保留 `CLAUDE.md` 中的项目文件所有权 |
+| 建立 `DRAFT` | Codex | 目标、非目标、风险、初始范围和验收条件 |
+| `LOCATED` | Claude 提交，Codex确认 | 只读位置、调用点、测试、未知项和建议白名单 |
+| `READY` | Codex | 定位验收，精确白名单和完整基线已冻结 |
+| `IMPLEMENTED` | Claude | 最小改动、负向测试、命令/退出码和实现工件 |
+| `REVIEWED` | Codex | 独立差异审查、反例、P0-P3 和明确 verdict |
+| `VERIFIED/CLOSED` | Codex | 范围、证据、测试、限制和交付条件全部核对 |
 
-Missed/Goone 是项目职责，不绑定某个模型。多个弱模型的多数意见不能替代契约和测试。
+Claude 不设置 `VERIFIED/CLOSED`；Codex 不在缺实现工件时推断实现成功。
 
-### 新会话的身份与事实输入
+## 4. 必需工件
 
-- 身份只写当前角色、职责、权限边界、任务目标和停止条件。
-- 事实只写当前决策所需的版本、状态、证据等级、约束和未决问题，并标明对应事实源。
-- “不再”“曾经”“原先”“从 A 改为 B”等身份迁移只保留在 Git、变更记录或 archive；除非迁移本身就是当前任务，不注入新会话。
-- 不用旧身份、旧结论或重复背景解释当前身份；模型重启后以任务契约和当前事实源为准。
+- `coordination/active/<TASK-ID>.md`：Git 管理的任务契约、白名单和阶段记录。
+- `output/agent_handoffs/<TASK-ID>/location.json`：Claude 的只读定位结果。
+- `output/agent_handoffs/<TASK-ID>/context.md`：可选的确定性最小上下文。
+- `output/agent_handoffs/<TASK-ID>/baseline.json`：实现前文件和工作区基线哈希。
+- `output/agent_handoffs/<TASK-ID>/implementation.json`：Claude 的改动、命令、
+  退出码、结果和限制。
+- `output/agent_handoffs/<TASK-ID>/review.json`：Codex 的独立 verdict、P0-P3、
+  复验命令和剩余风险。
+- `history/v<major>.<minor>_YYYY-MM-DD.md`：真实项目版本关闭后的完整记录；
+  不是单任务工件。
 
-本地 Qwen 默认承担 Scout 和非阻塞 Critic。2026-08-03 的真实 Builder 在 180 秒内只完成部分文档修改，Critic 也出现“口头声称已写工件但文件不存在”和中文 JSON 编码错误；因此 Qwen 的文本结论只是建议，状态、工件和改动必须由控制器或 Planner 复核。只有任务不阻塞主线、写范围不超过 1 个文件且失败可直接丢弃时，才把 Qwen 用作实验性 Builder。
-
-## 3. 状态机
-
-`DRAFT -> LOCATED -> READY -> IMPLEMENTED -> REVIEWED -> VERIFIED -> CLOSED`
-
-任一阶段可进入 `BLOCKED`。只有 Planner 能把任务置为 `VERIFIED` 或 `CLOSED`。
-
-## 4. 工件
-
-- `coordination/active/<TASK-ID>.md`：Git 管理的任务契约、白名单、验收命令和阶段记录。
-- `output/agent_handoffs/<TASK-ID>/location.json`：Scout 定位结果。
-- `output/agent_handoffs/<TASK-ID>/context.md`：确定性生成的最小上下文。
-- `output/agent_handoffs/<TASK-ID>/baseline.json`：开始实现前的文件哈希。
-- `output/agent_handoffs/<TASK-ID>/implementation.json`：Builder 的命令与结果。
-- `output/agent_handoffs/<TASK-ID>/review.json`：Critic 的独立结论。
-
-`output/` 不提交。任务关闭后可删除 active 文件，历史由 Git、`VALIDATION.md` 和计划变更记录保留。
+`output/` 不提交。任何口头结论、聊天文字或模型多数意见都不能替代这些工件。
 
 ## 5. 标准流程
 
-1. Planner 创建任务，写目标、非目标、初始读范围和验收条件。
-2. Scout 使用 `rg/Glob/Read` 定位定义、调用点和测试，禁止改源码。
-3. Planner 审核定位结果，设置写入白名单并冻结基线。
-4. 按风险路由 Builder；Builder 先补负向测试，再做最小实现。
-5. Builder 运行目标测试和 `scope-check`，记录退出码。
-6. Critic 在新会话中只读任务、基线差异和测试证据，提交反例。
-7. Planner 验收；涉及量化生产逻辑时继续执行 direct/formal 和 E2E。
-8. 先更新 `VALIDATION.md`，再写 README 摘要和 discussion 阶段结论。
+1. Codex 检查 HEAD、分支和工作树，建立任务契约。来源不明修改保持不动。
+2. Claude 使用 `rg` 定位定义、直接调用点、测试和安全契约；不改源码，只写
+   `location.json`。
+3. Codex 验证定位，决定风险和最小写范围；运行 `freeze` 生成基线。写范围与
+   其他活动任务重叠时失败关闭。
+4. Claude 先补负向回归，再做最小实现；只写 `allowed_files`。
+5. Claude 运行目标测试、Ruff/pycompile、`scope-check` 和 `git diff --check`，
+   写 `implementation.json`。
+6. Codex 在不共享 Claude 实现推理的独立审查回合中读取契约、基线差异和测试
+   证据，主动构造反例并写 `review.json`。
+7. 若 verdict 为 `MODIFY`，Claude 只修复已接受的问题；新增文件必须由 Codex
+   先扩白名单并保留原始基线。若 `ACCEPT`，Codex复验并关闭任务。
+8. 涉及生产能力时继续执行 direct/formal/E2E。Mac 无法完成的模型、网络或
+   Windows 环境门必须保留为明确外部 gate。
+9. 真实事实先写 `VALIDATION.md`；形成项目版本时再写 history/index；最后更新
+   README 和 discussion。
 
-`freeze` 会检查其他处于 READY/IMPLEMENTED/REVIEWED/VERIFIED 的 active task；只要具体写入文件重叠，就失败关闭。并行任务必须先拆开文件所有权，不能依靠聊天约定避免覆盖。
+## 6. 有界质疑和收敛
 
-角色启动入口：
+Codex 与 Claude 都可质疑计划、冻结范围、实现或验收。有效质疑必须给出争议
+命题、证据/反例、受限替代、影响文件和状态、验收与回退。
 
-```powershell
-.\scripts\agent-role.cmd TASK-ID scout
-.\scripts\agent-role.cmd TASK-ID builder
-.\scripts\agent-role.cmd TASK-ID critic
-```
+- 待决期间现行契约继续；只暂停争议范围，无争议工作继续。
+- 每方对同一争议最多两次证据交换。第二次回复后必须选择 `ACCEPT`、
+  `MODIFY`、`REJECT` 或用户升级。
+- 不得把措辞变化包装成新一轮，不得重复无新证据的论点，不得先改后请求授权。
+- 裁决顺序：官方/用户契约 → 时间因果与数据安全 → 可复现证据 → 最小可逆
+  范围 → 资源成本。
+- 技术分歧由 Codex 按验收职责记录结论；这不是一般层级。Claude 提供新证据
+  时可建立新版本任务。
+- 产品意图、新增外部权限/权威来源或无法在现有契约内解决的重大安全边界才
+  升级给用户。
 
-启动器当前仍会把 LOW Builder 自动映射到 Qwen，但该默认值只用于后台实验，不能作为同步主线路由；阻塞主线的 LOW 修改由 Codex 执行，或显式 `--profile deepseek` 发送最小任务包。MEDIUM 默认 DeepSeek，HIGH 和 UNKNOWN 在 Builder 启动前失败并要求 Planner 裁决。`--print` 默认 180 秒硬超时；任何超时、缺工件、状态与文件不一致或乱码都按失败处理，不能从模型文字中补推成功。
+## 7. 风险与停止规则
 
-角色启动器默认使用 Claude Code `--bare`，避免自动注入完整 `CLAUDE.md`、插件、历史记忆和后台预取；角色需要的项目约束由任务契约与对应 skill 显式提供。普通人工 Claude 会话仍可用 `scripts/claude-qwen.cmd` / `scripts/claude-deepseek.cmd` 加载完整项目环境。
+### LOW
 
-## 6. 风险路由
+- 不超过 3 个源码/测试文件；不改公共协议、金融时序、资金约束、RPC、Provider
+  或进程生命周期；已有明确测试。
 
-### LOW：本地 Builder
+### MEDIUM
 
-- 不超过 3 个源码/测试文件；
-- 不改变公共协议；
-- 不涉及金融时序、资金约束、Agent RPC、数据 Provider 或并发生命周期；
-- 已有明确目标测试。
+- 跨 4–8 个文件、文档/开发协议或公共接口；定位置信度低于 0.75；一次实现失败；
+  或双方对根因不一致。
 
-### MEDIUM：DeepSeek 最小上下文实现
+### HIGH
 
-- 跨 4 至 8 个文件或公共接口；
-- Scout 置信度低于 `0.75`；
-- 本地 Builder 第一次失败；
-- Builder 与 Critic 对根因不一致。
+- 回测因果、embargo、收益/回撤；Agent 编排、RPC、服务端可信边界；数据源、
+  证据链、fail-closed；异步/进程生命周期；提交契约；超过 8 个文件或 250 行
+  有效源码修改。
 
-DeepSeek 只接收任务契约、`context.md`、当前差异和失败断言，不默认读取整个仓库。
+停止规则：
 
-### HIGH：Codex 重新规划，强模型实现或复核
+- 相同实现失败连续 2 次停止并转为证据挑战；相同工具调用连续 3 次停止。
+- 定位置信度低于 0.75、白名单不清、基线无法重建或关键工件缺失时不实施。
+- `scope-check` 越界、JSON 不可解析、状态与文件不一致均为失败，不从文字补推。
+- 不向模型传完整行情矩阵、历史 discussion、整个 output 或无关仓库内容。
 
-- 回测因果、embargo、收益或回撤口径；
-- Agent 编排、RPC、服务端缓存可信边界；
-- 数据源、证据链、fail-closed；
-- 异步/进程生命周期、提交契约；
-- 超过 8 个文件或 250 行有效修改。
+## 8. 阶段技能
 
-## 7. 预算和停止规则
+现有三个技能是两方工作流的检查表，不代表额外 Agent：
 
-- Scout：最多 12 次搜索/读取调用，输出不超过 1,500 tokens。
-- Builder：默认上下文不超过 12,000 tokens，只开放必要工具。
-- Critic：只读契约、差异和测试，输出不超过 1,000 tokens。
-- 云端任务包目标不超过 20,000 tokens。
-- 相同失败连续 2 次升级；相同调用连续 3 次停止。
-- 不把完整日志、行情矩阵、历史 discussion 或整个 `output/` 送入模型。
-- 模型写出的任务状态不自证有效：阶段推进前必须检查要求工件存在、JSON 可解析、scope-check 通过，并由 Planner 核对关键声明与文件系统一致。
+- Claude 定位阶段：`.agents/skills/local-code-scout/SKILL.md`；
+- Claude 实现阶段：`.agents/skills/bounded-code-implementer/SKILL.md`；
+- Codex 审查阶段：`.agents/skills/diff-contract-reviewer/SKILL.md`。
 
-## 8. discussion 使用规则
+旧的模型路由和 provider profile 启动器已退出活动路径。Windows 直接在各自的
+Codex 和 Claude 会话中读取当前身份与任务，不再由仓库脚本选择模型供应商。
 
-Agent 可以通过任务工件直接交接；`.claude/discussion.md` 只记录用户需要看到的阶段事件：任务建立、风险升级、实现待审、验收裁决和阻塞。不得把逐次搜索、完整日志或重复上下文写入 discussion。所有消息继续遵守 `CLAUDE.md` 的对话格式。
+## 9. Mac / Windows 交付
 
-## 9. 多 Provider 并行
+- 一项任务只在一端修改。Mac 完成并提交后，Windows 进入只读复验；Windows
+  若需修正，生成 task-scoped 返回补丁，Mac 应用后再出新版本。
+- 每个任务使用独立分支和提交，交付包括 `changes.patch`、Git bundle、
+  `BASE_COMMIT.txt`、`HEAD_COMMIT.txt`、`FILES.txt`、验证日志、handoff 工件和
+  `SHA256SUMS.txt`。
+- Windows 先验 SHA、基线和白名单，再跑测试；不得把 bundle 解包或 Mac 单测
+  自动视为 Windows 正式验收。
+- 未经用户明确授权不 push、tag 或修改 Windows 主工作区。
 
-CC Switch 仍可用于交互式默认 Provider，但自动协作不读取其全局单选状态。不同 Claude Code 进程使用独立 `CLAUDE_CONFIG_DIR`：
+## 10. 版本历史
 
-```powershell
-.\scripts\claude-qwen.ps1
-.\scripts\claude-deepseek.ps1
-```
-
-两者拥有独立 settings、会话和历史，可在不同终端同时运行。密钥只存放在用户目录的 profile 中，不写入 Git。
+1. 项目版本绑定真实 commit 区间和日期；任务 ID、计划版本和项目版本不混写。
+2. 历史文件名固定为 `v<major>.<minor>_YYYY-MM-DD.md`，记录改动、验收、失败、
+   限制和 superseded 判断。
+3. 既有版本文件不可重写；新证据推翻旧结论时追加带日期 Erratum，并同步更新
+   当前 `VALIDATION.md`。
+4. 版本关闭顺序：真实验证 → `VALIDATION.md` → history/index → README/discussion。

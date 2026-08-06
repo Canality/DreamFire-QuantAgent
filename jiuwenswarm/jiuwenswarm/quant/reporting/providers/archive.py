@@ -66,7 +66,7 @@ class EvidenceArchive:
 
         Args:
             evidence_id: Unique evidence identifier.  Must match
-                ``[a-zA-Z0-9_\-\.]+`` and be ≤ 255 chars (no path traversal).
+                ``[a-zA-Z0-9_.-]+`` and be ≤ 255 chars (no path traversal).
             raw_content: The raw provider response (JSON string or bytes).
             ref: The ``EvidenceRef`` whose ``content_sha256`` MUST match.
 
@@ -101,7 +101,14 @@ class EvidenceArchive:
         existing_ref = self._load_manifest().get(evidence_id)
         if existing_ref is not None:
             if existing_ref.content_sha256 == ref.content_sha256:
-                # Idempotent: same ID, same hash → no-op (success)
+                # Idempotency is valid only while the already-committed bytes
+                # still exist and verify.  A manifest entry alone must never
+                # turn missing/corrupt evidence into a successful write.
+                if self.read(evidence_id) is None:
+                    raise ValueError(
+                        f"Evidence '{evidence_id}' manifest entry exists but "
+                        "its archived bytes are missing or corrupted"
+                    )
                 return file_path
             raise ValueError(
                 f"Evidence '{evidence_id}' already archived with a different "

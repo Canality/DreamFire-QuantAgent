@@ -4,13 +4,16 @@ import asyncio
 import hashlib
 import importlib.util
 import json
+import threading
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+import pytest
 from jiuwenswarm.quant.market_data_provider import MarketDataFetchError
+from jiuwenswarm.quant.agent_decision import select_portfolio
 from jiuwenswarm.quant.market_data_service import (
     MarketDataBundle,
     ProviderEvidence,
@@ -99,6 +102,7 @@ def test_fetch_returns_summary_and_downstream_ignores_llm_prices(monkeypatch):
     assert fetched["diagnostics_passed"] is True
     assert fetched["cached"] is False
     assert fetched["executed"] is True
+    assert len(fetched["market_content_sha256"]) == 64
     assert not any(key.startswith("_") for key in fetched)
     fetched_again = asyncio.run(
         extension.fetch_data(
@@ -107,15 +111,24 @@ def test_fetch_returns_summary_and_downstream_ignores_llm_prices(monkeypatch):
     )
     assert fetched_again["cached"] is True
     assert fetched_again["executed"] is False
+    assert fetched_again["market_content_sha256"] == fetched["market_content_sha256"]
 
     malicious_prices = {"2099-01-01": {ticker: 0.0 for ticker in ALL_STOCKS}}
     factors = asyncio.run(extension.compute_factors({"prices": malicious_prices}))
     assert factors["success"] is True
     assert factors["n_stocks_analyzed"] == 49
     assert factors["decision_date"] == "2025-04-23"
+    assert factors["market_content_sha256"] == fetched["market_content_sha256"]
+
+    with pytest.raises(RuntimeError, match="alpha_view"):
+        asyncio.run(extension.risk_evidence_view({}))
+    assert "_risk_result" not in module._get_cached_data()
+    with pytest.raises(RuntimeError, match="out of order"):
+        asyncio.run(extension.select_stocks({}))
+    assert "_selection_result" not in module._get_cached_data()
 
 
-def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, tmp_path):
+def test_report_cache_preserves_scores_and_ordered_agent_views(monkeypatch, tmp_path):
     module = _load_extension_module()
     module._data_cache.clear()
     prices, volumes = _market_data()
@@ -128,10 +141,10 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
     assert fetched["success"] is True
     factors = asyncio.run(extension.compute_factors({}))
 
-    async def run_views():
-        return await asyncio.gather(extension.alpha_view({}), extension.risk_evidence_view({}))
-
-    alpha, risk = asyncio.run(run_views())
+    alpha = asyncio.run(extension.alpha_view({}))
+    risk = asyncio.run(extension.risk_evidence_view({}))
+    assert alpha["market_content_sha256"] == fetched["market_content_sha256"]
+    assert risk["market_content_sha256"] == fetched["market_content_sha256"]
     cached = module._get_cached_data()
     assert isinstance(cached["_scores_df"], pd.DataFrame)
     assert len(cached["_scores_df"]) == 49
@@ -186,7 +199,7 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
         evidence_id = "ann-test-formal-propagation"
         raw = b'{"title":"fixture disclosure"}'
         first = tickers[0]
-        return ServiceResult(
+        result = ServiceResult(
             facts_by_ticker={
                 ticker: (
                     [MetricFact(
@@ -236,7 +249,14 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
                 "recovered_after_retry": False,
                 "attempts": [{"all_empty": False}],
             },
+            receipt_id="announcement-receipt-formal-fixture",
+            snapshot_sha256="f" * 64,
+            mode="LIVE_ACCEPTED",
+            requested_tickers=tickers,
+            as_of_time=as_of_time,
         )
+        result.seal()
+        return result
 
     monkeypatch.setattr(
         reporting.AnnouncementService,
@@ -314,8 +334,11 @@ def test_report_cache_preserves_scores_and_concurrent_agent_views(monkeypatch, t
     assert report["candidate_package"]["n_reports"] == 49
     assert report["candidate_package"]["immutable"] is True
     assert report["candidate_package"]["disclosure_reports"] == 1
+    assert report["announcement_evidence"]["snapshot_sha256"] == "f" * 64
     assert captured["candidate_id"] == "formal-test-formal-session"
     assert len(captured["bundles"]) == 49
+    assert captured["bundles"][ALL_STOCKS[0]].data_provider_status == "complete"
+    assert captured["bundles"][ALL_STOCKS[1]].data_provider_status == "available_no_event"
     assert all(bundle.technical_facts for bundle in captured["bundles"].values())
     assert any(bundle.agent_views for bundle in captured["bundles"].values())
     assert [
@@ -417,6 +440,8 @@ def test_cached_pipeline_uses_exact_selection_and_forward_test(monkeypatch):
 
     asyncio.run(extension.fetch_data({"start_date": "2025-01-01", "end_date": "2025-06-01"}))
     asyncio.run(extension.compute_factors({}))
+    asyncio.run(extension.alpha_view({}))
+    asyncio.run(extension.risk_evidence_view({}))
     composites = {ticker: 1.0 - index / 100 for index, ticker in enumerate(ALL_STOCKS)}
     selected = asyncio.run(extension.select_stocks({
         "all_composite": composites,
@@ -426,6 +451,10 @@ def test_cached_pipeline_uses_exact_selection_and_forward_test(monkeypatch):
     assert selected["success"] is True
     assert selected["n_selected"] == 15
     assert selected["n_sectors_covered"] == 6
+    cached_scores = module._get_cached_data()["_scores_df"]["composite"].to_dict()
+    assert selected["tickers"] == [
+        item.ticker for item in select_portfolio(cached_scores)
+    ]
 
     allocation = asyncio.run(extension.allocate_positions({
         "tickers": selected["tickers"],
@@ -519,10 +548,90 @@ def test_new_fetch_invalidates_all_derived_phase_results(monkeypatch):
         extension.fetch_data({**request, "force_refresh": True})
     )
     assert refreshed["success"] is True
-    assert module._phase_results == {}
+    assert set(module._phase_results) == {"fetch_data"}
     recomputed = asyncio.run(extension.compute_factors({}))
     assert recomputed["executed"] is True
     assert recomputed["cached"] is False
+
+
+def test_force_refresh_invalidates_inflight_old_epoch_without_rebinding(
+    monkeypatch,
+):
+    module = _load_extension_module()
+    module._data_cache.clear()
+    prices, volumes = _market_data()
+    _install_fake_market_service(monkeypatch, module, prices, volumes)
+    extension = module.QuantFinanceExtension()
+    request = {"start_date": "2025-01-01", "end_date": "2025-06-01"}
+    asyncio.run(extension.fetch_data(request))
+
+    from jiuwenswarm.quant.factors import FactorCalculator
+
+    started = threading.Event()
+    release = threading.Event()
+    original_compute = FactorCalculator.compute_factors
+
+    def blocked_compute(self, *args, **kwargs):
+        started.set()
+        assert release.wait(timeout=5)
+        return original_compute(self, *args, **kwargs)
+
+    monkeypatch.setattr(FactorCalculator, "compute_factors", blocked_compute)
+
+    async def run_race():
+        stale_task = asyncio.create_task(extension.compute_factors({}))
+        assert await asyncio.to_thread(started.wait, 5)
+        refreshed = await extension.fetch_data({**request, "force_refresh": True})
+        release.set()
+        stale_result = await stale_task
+        return refreshed, stale_result
+
+    refreshed, stale = asyncio.run(run_race())
+    assert refreshed["success"] is True
+    assert stale["success"] is False
+    assert set(module._phase_results) == {"fetch_data"}
+    assert "_factor_result" not in module._get_cached_data()
+
+
+def test_duplicate_report_reservation_rejects_loser_before_side_effect() -> None:
+    module = _load_extension_module()
+    module._data_cache.clear()
+    module._phase_results.clear()
+    module._phase_inflight.clear()
+    market_hash = "a" * 64
+    module._data_cache["_last"] = {
+        "_runtime_market_content_sha256": market_hash,
+    }
+    module._phase_results["run_backtest"] = {
+        "success": True,
+        "market_content_sha256": market_hash,
+        "cached": False,
+        "executed": True,
+    }
+    started = asyncio.Event()
+    release = asyncio.Event()
+    side_effects: list[str] = []
+
+    class Probe:
+        @module._phase_handler("generate_report")
+        async def generate_report(self, params=None, request=None):
+            del params, request
+            side_effects.append("created")
+            started.set()
+            await release.wait()
+            return module._commit_phase("generate_report", {"success": True})
+
+    async def run_duplicate():
+        first = asyncio.create_task(Probe().generate_report({}))
+        await started.wait()
+        with pytest.raises(RuntimeError, match="already in flight"):
+            await Probe().generate_report({})
+        release.set()
+        return await first
+
+    committed = asyncio.run(run_duplicate())
+    assert committed["market_content_sha256"] == market_hash
+    assert side_effects == ["created"]
 
 
 def test_explicit_empty_ticker_filter_fails_without_calling_provider(monkeypatch):
