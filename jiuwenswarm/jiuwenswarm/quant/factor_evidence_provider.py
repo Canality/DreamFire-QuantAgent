@@ -153,6 +153,24 @@ E0_SNAPSHOT_RECORDS_SPEC = PinnedSourceFile(
         "184388562f6de36dbcf4b1f9d4b5b544b36e21f882e0ced0fdc771a337ed58a2"
     ),
 )
+FORWARD_LABEL_CSV_SPEC = PinnedSourceFile(
+    artifact_id="official_forward_label_csv",
+    relative_path=Path(
+        "jiuwenswarm/evaluation/research_evidence/official_forward_label_2020_2026/forward_labels.csv"
+    ),
+    expected_sha256=(
+        "465b9fc1154971ced84bd2757de102d700b3b04b2704ce157b9925d2bc21b485"
+    ),
+)
+FORWARD_LABEL_RECORDS_SPEC = PinnedSourceFile(
+    artifact_id="official_forward_label_source_records",
+    relative_path=Path(
+        "jiuwenswarm/evaluation/research_evidence/official_forward_label_2020_2026/source_records.json"
+    ),
+    expected_sha256=(
+        "25b860393a2f4a6cd6bf8eedd8b99beb7dcec170dc813970f677720d8cf499a2"
+    ),
+)
 
 PINNED_SOURCE_FILES: tuple[PinnedSourceFile, ...] = (
     OFFICIAL_UNIVERSE_SPEC,
@@ -167,6 +185,8 @@ PINNED_SOURCE_FILES: tuple[PinnedSourceFile, ...] = (
     CORPORATE_ACTION_RECORDS_SPEC,
     E0_SNAPSHOT_CSV_SPEC,
     E0_SNAPSHOT_RECORDS_SPEC,
+    FORWARD_LABEL_CSV_SPEC,
+    FORWARD_LABEL_RECORDS_SPEC,
 )
 
 _SINA_SNAPSHOT_SPECS = (
@@ -188,10 +208,6 @@ _EXPECTED_MANIFEST_CHILDREN = {
 }
 _UNAVAILABLE_CAPABILITY_REASONS: tuple[tuple[str, str], ...] = (
     ("PIT_SECTOR", "UNAVAILABLE_NO_HISTORICAL_SECTOR_VERSION"),
-    (
-        "OFFICIAL_FORWARD_LABEL",
-        "UNAVAILABLE_RAW_NO_LEDGER",
-    ),
 )
 _EVIDENCE_KIND_CAPABILITY = {
     "canonical_calendar": "CANONICAL_CALENDAR",
@@ -221,6 +237,13 @@ _TRUSTED_EVIDENCE_KEYS: frozenset[
             "corporate_action_2020_2026/v1",
             CORPORATE_ACTION_RECORDS_SPEC.expected_sha256,
             CORPORATE_ACTION_CSV_SPEC.expected_sha256,
+        ),
+        (
+            "official_forward_label",
+            "PIT_OFFICIAL_FORWARD_LABEL_ARCHIVE",
+            "official_forward_label_2020_2026/v1",
+            FORWARD_LABEL_RECORDS_SPEC.expected_sha256,
+            "cedab133432af85f165864e74eba9d7943f13249e99036a744f2184dcba4673f",
         ),
     }
 )
@@ -495,6 +518,12 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
             in {"e0_factor_snapshot_csv", "e0_factor_snapshot_source_records"}
         )
     )
+    forward_label_ok = all(
+        item.verified
+        for item in sources
+        if item.artifact_id
+        in {"official_forward_label_csv", "official_forward_label_source_records"}
+    )
     capabilities = (
         CapabilityDisposition(
             capability="CANONICAL_CALENDAR",
@@ -521,6 +550,15 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
                 "AVAILABLE_BAOSTOCK_QFQ_SNAPSHOT_ARCHIVE"
                 if e0_snapshot_ok
                 else "UNAVAILABLE_INVALID_E0_FACTOR_SNAPSHOT_ARCHIVE"
+            ),
+        ),
+        CapabilityDisposition(
+            capability="OFFICIAL_FORWARD_LABEL",
+            available=forward_label_ok,
+            reason=(
+                "AVAILABLE_OFFICIAL_1_20_FORWARD_LABEL_ARCHIVE"
+                if forward_label_ok
+                else "UNAVAILABLE_INVALID_FORWARD_LABEL_ARCHIVE"
             ),
         ),
         *tuple(
