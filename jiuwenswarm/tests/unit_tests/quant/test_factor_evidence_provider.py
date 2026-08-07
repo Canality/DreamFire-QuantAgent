@@ -16,7 +16,10 @@ EXPECTED_CAPABILITIES = {
         True,
         "AVAILABLE_OFFICIAL_SSE_SZSE_CONFIRMED_ARCHIVE",
     ),
-    "PIT_SECTOR": "UNAVAILABLE_NO_HISTORICAL_SECTOR_VERSION",
+    "PIT_SECTOR": (
+        True,
+        "AVAILABLE_STATIC_COMPETITION_SECTORS",
+    ),
     "OFFICIAL_FORWARD_LABEL": (
         True,
         "AVAILABLE_OFFICIAL_1_20_FORWARD_LABEL_ARCHIVE",
@@ -69,7 +72,7 @@ def test_current_bytes_admit_only_the_official_calendar_capability() -> None:
     }
     assert readiness.ready_for_e0 is False
     assert readiness.ready_for_e1 is False
-    assert readiness.trusted_evidence_key_count == 3
+    assert readiness.trusted_evidence_key_count == 4
     assert readiness.trusted_factor_snapshot_count == 0
     assert readiness.to_dict() == provider.inspect_research_evidence_readiness().to_dict()
 

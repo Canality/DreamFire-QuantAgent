@@ -206,9 +206,7 @@ _EXPECTED_MANIFEST_CHILDREN = {
     spec.relative_path.name: spec.expected_sha256
     for spec in _SINA_SNAPSHOT_SPECS[1:]
 }
-_UNAVAILABLE_CAPABILITY_REASONS: tuple[tuple[str, str], ...] = (
-    ("PIT_SECTOR", "UNAVAILABLE_NO_HISTORICAL_SECTOR_VERSION"),
-)
+_UNAVAILABLE_CAPABILITY_REASONS: tuple[tuple[str, str], ...] = ()
 _EVIDENCE_KIND_CAPABILITY = {
     "canonical_calendar": "CANONICAL_CALENDAR",
     "sector_metadata": "PIT_SECTOR",
@@ -244,6 +242,13 @@ _TRUSTED_EVIDENCE_KEYS: frozenset[
             "official_forward_label_2020_2026/v1",
             FORWARD_LABEL_RECORDS_SPEC.expected_sha256,
             "cedab133432af85f165864e74eba9d7943f13249e99036a744f2184dcba4673f",
+        ),
+        (
+            "sector_metadata",
+            "PIT_SECTOR_METADATA_ARCHIVE",
+            "competition_universe_static_v1",
+            OFFICIAL_UNIVERSE_SPEC.expected_sha256,
+            OFFICIAL_UNIVERSE_SPEC.expected_sha256,
         ),
     }
 )
@@ -524,6 +529,10 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
         if item.artifact_id
         in {"official_forward_label_csv", "official_forward_label_source_records"}
     )
+    pit_sector_ok = any(
+        item.artifact_id == "official_competition_universe" and item.verified
+        for item in sources
+    )
     capabilities = (
         CapabilityDisposition(
             capability="CANONICAL_CALENDAR",
@@ -559,6 +568,15 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
                 "AVAILABLE_OFFICIAL_1_20_FORWARD_LABEL_ARCHIVE"
                 if forward_label_ok
                 else "UNAVAILABLE_INVALID_FORWARD_LABEL_ARCHIVE"
+            ),
+        ),
+        CapabilityDisposition(
+            capability="PIT_SECTOR",
+            available=pit_sector_ok,
+            reason=(
+                "AVAILABLE_STATIC_COMPETITION_SECTORS"
+                if pit_sector_ok
+                else "UNAVAILABLE_INVALID_COMPETITION_UNIVERSE"
             ),
         ),
         *tuple(
