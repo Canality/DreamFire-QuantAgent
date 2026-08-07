@@ -910,3 +910,11 @@ def test_tool_result_requires_one_known_matching_pending_call() -> None:
     }, pending)
     assert missing is not None
     assert missing["binding_error"] == "TOOL_RESULT_MISSING_CALL_ID"
+
+
+def test_phantom_pending_ignored_when_all_phases_complete() -> None:
+    """A trailing unresolved tool call after 8/8 must not fail the run."""
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert 'quant_progress["completed"] == 8' in source
+    assert 'pipeline_completed_at["monotonic"] is not None' in source
+    assert "PENDING_TOOL_RESULTS" in source

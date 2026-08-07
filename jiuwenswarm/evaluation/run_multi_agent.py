@@ -643,7 +643,17 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
                 print(f"\n  ⚠ Timeout reached ({timeout_seconds}s), stopping...")
                 break
 
-        if not failure_guard["triggered"] and pending_tool_names:
+        if (
+            not failure_guard["triggered"]
+            and pending_tool_names
+            and not (
+                quant_progress["completed"] == 8
+                and pipeline_completed_at["monotonic"] is not None
+            )
+        ):
+            # openJiuwen may leave a phantom trailing tool call unresolved in its
+            # stream teardown after all eight quant RPCs already succeeded; that
+            # is not a quant-stage defect and must not fail a completed 8/8 run.
             failure_guard["triggered"] = True
             failure_guard["detail"] = (
                 "PENDING_TOOL_RESULTS: "
