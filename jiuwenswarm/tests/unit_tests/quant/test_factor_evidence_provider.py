@@ -23,7 +23,8 @@ EXPECTED_CAPABILITIES = {
         "AVAILABLE_BAOSTOCK_DIVIDEND_ARCHIVE",
     ),
     "E0_FACTOR_SNAPSHOT": (
-        "UNAVAILABLE_UNADJUSTED_INPUT_AND_EMPTY_TRUST_ROOT"
+        True,
+        "AVAILABLE_BAOSTOCK_QFQ_SNAPSHOT_ARCHIVE",
     ),
 }
 
@@ -42,7 +43,7 @@ def test_current_bytes_admit_only_the_official_calendar_capability() -> None:
 
     assert readiness.inventory_id == "wp1_factor_evidence_inventory_v1"
     assert readiness.source_bytes_verified is True
-    assert len(readiness.sources) == 10
+    assert len(readiness.sources) == 12
     assert all(item.verified for item in readiness.sources)
     assert readiness.calendar_archive_verified is True
     assert readiness.calendar_confirmation_cutoff == "2026-08-04"

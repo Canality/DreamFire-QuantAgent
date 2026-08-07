@@ -135,6 +135,24 @@ CORPORATE_ACTION_RECORDS_SPEC = PinnedSourceFile(
         "dcd0b4e7700ebf581eb3529611bcf0702e0aafa527381b6ed859387d6db8887c"
     ),
 )
+E0_SNAPSHOT_CSV_SPEC = PinnedSourceFile(
+    artifact_id="e0_factor_snapshot_csv",
+    relative_path=Path(
+        "jiuwenswarm/evaluation/research_evidence/e0_factor_snapshot_2020_2026/qfq_ohlcv.csv"
+    ),
+    expected_sha256=(
+        "53be223892d577e21b4cd7c2034a894bd321e7b90f6593de421e6554d58b440e"
+    ),
+)
+E0_SNAPSHOT_RECORDS_SPEC = PinnedSourceFile(
+    artifact_id="e0_factor_snapshot_source_records",
+    relative_path=Path(
+        "jiuwenswarm/evaluation/research_evidence/e0_factor_snapshot_2020_2026/source_records.json"
+    ),
+    expected_sha256=(
+        "184388562f6de36dbcf4b1f9d4b5b544b36e21f882e0ced0fdc771a337ed58a2"
+    ),
+)
 
 PINNED_SOURCE_FILES: tuple[PinnedSourceFile, ...] = (
     OFFICIAL_UNIVERSE_SPEC,
@@ -147,6 +165,8 @@ PINNED_SOURCE_FILES: tuple[PinnedSourceFile, ...] = (
     SINA_BENCHMARK_SPEC,
     CORPORATE_ACTION_CSV_SPEC,
     CORPORATE_ACTION_RECORDS_SPEC,
+    E0_SNAPSHOT_CSV_SPEC,
+    E0_SNAPSHOT_RECORDS_SPEC,
 )
 
 _SINA_SNAPSHOT_SPECS = (
@@ -171,10 +191,6 @@ _UNAVAILABLE_CAPABILITY_REASONS: tuple[tuple[str, str], ...] = (
     (
         "OFFICIAL_FORWARD_LABEL",
         "UNAVAILABLE_RAW_NO_LEDGER",
-    ),
-    (
-        "E0_FACTOR_SNAPSHOT",
-        "UNAVAILABLE_UNADJUSTED_INPUT_AND_EMPTY_TRUST_ROOT",
     ),
 )
 _EVIDENCE_KIND_CAPABILITY = {
@@ -208,7 +224,11 @@ _TRUSTED_EVIDENCE_KEYS: frozenset[
         ),
     }
 )
-_TRUSTED_FACTOR_SNAPSHOT_HASHES: frozenset[str] = frozenset()
+_TRUSTED_FACTOR_SNAPSHOT_HASHES: frozenset[str] = frozenset(
+    {
+        "53be223892d577e21b4cd7c2034a894bd321e7b90f6593de421e6554d58b440e",
+    }
+)
 
 
 def _inventory_hash() -> str:
@@ -466,6 +486,15 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
         if item.artifact_id
         in {"corporate_action_csv", "corporate_action_source_records"}
     )
+    e0_snapshot_ok = bool(
+        _TRUSTED_FACTOR_SNAPSHOT_HASHES
+        and all(
+            item.verified
+            for item in sources
+            if item.artifact_id
+            in {"e0_factor_snapshot_csv", "e0_factor_snapshot_source_records"}
+        )
+    )
     capabilities = (
         CapabilityDisposition(
             capability="CANONICAL_CALENDAR",
@@ -483,6 +512,15 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
                 "AVAILABLE_BAOSTOCK_DIVIDEND_ARCHIVE"
                 if corporate_action_ok
                 else "UNAVAILABLE_INVALID_CORPORATE_ACTION_ARCHIVE"
+            ),
+        ),
+        CapabilityDisposition(
+            capability="E0_FACTOR_SNAPSHOT",
+            available=e0_snapshot_ok,
+            reason=(
+                "AVAILABLE_BAOSTOCK_QFQ_SNAPSHOT_ARCHIVE"
+                if e0_snapshot_ok
+                else "UNAVAILABLE_INVALID_E0_FACTOR_SNAPSHOT_ARCHIVE"
             ),
         ),
         *tuple(
