@@ -1,5 +1,6 @@
 """Unit tests for quality gate — Codex R4 EvidenceRef enforcement."""
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -10,7 +11,10 @@ from jiuwenswarm.quant.reporting.models import (
     MetricFact,
     PortfolioSnapshot,
 )
-from jiuwenswarm.quant.reporting.quality_gate import validate_submission
+from jiuwenswarm.quant.reporting.quality_gate import (
+    _archive_entry_status,
+    validate_submission,
+)
 from jiuwenswarm.quant.reporting.package_builder import build_candidate_package
 from jiuwenswarm.quant.reporting.submission_contract import SubmissionContract
 
@@ -298,3 +302,93 @@ def test_fact_with_valid_evidence_passes():
     result = validate_submission(c, ps, {ticker: bundle}, set(c.report_codes), NOW,
                                   evidence_manifest={"e_good": good_ref})
     assert result.passed, f"Valid evidence should pass, got blockers: {result.blockers}"
+
+
+def _fake_archive(archived_ref: EvidenceRef, content: bytes):
+    """Build a minimal archive exposing read() + build_manifest()."""
+    class _Archive:
+        def __init__(self) -> None:
+            self._manifest = {archived_ref.evidence_id: archived_ref}
+            self._content = {archived_ref.evidence_id: content}
+
+        def read(self, evidence_id: str) -> bytes | None:
+            return self._content.get(evidence_id)
+
+        def build_manifest(self) -> dict[str, EvidenceRef]:
+            return dict(self._manifest)
+
+    return _Archive()
+
+
+def test_archive_status_accepts_same_content_with_different_retrieved_at():
+    """Same identity+content but a fresh retrieved_at must pass (shared archive)."""
+    eid = "ann-test-0001"
+    content = b'{"raw": true}'
+    sha = hashlib.sha256(content).hexdigest()
+    archived_ref = EvidenceRef(
+        evidence_id=eid, source_type="disclosure", source_name="TestSource",
+        source_url="https://example.invalid/source", period_end=None,
+        published_at=None, available_at=None,
+        retrieved_at=NOW - timedelta(hours=2), content_sha256=sha,
+    )
+    # identical identity/content but a later retrieval time
+    expected_ref = EvidenceRef(
+        evidence_id=eid, source_type="disclosure", source_name="TestSource",
+        source_url="https://example.invalid/source", period_end=None,
+        published_at=None, available_at=None,
+        retrieved_at=NOW, content_sha256=sha,
+    )
+    archive = _fake_archive(archived_ref, content)
+    status = _archive_entry_status(
+        archive, archive.build_manifest(), eid, expected_ref,
+    )
+    assert status is None, f"Same content with new retrieved_at must pass: {status}"
+
+
+def test_archive_status_rejects_content_hash_mismatch():
+    """Different content_sha256 must still fail closed."""
+    eid = "ann-test-0002"
+    content = b'{"raw": "other"}'
+    sha = hashlib.sha256(content).hexdigest()
+    archived_ref = EvidenceRef(
+        evidence_id=eid, source_type="disclosure", source_name="TestSource",
+        source_url="https://example.invalid/source", period_end=None,
+        published_at=None, available_at=None,
+        retrieved_at=NOW, content_sha256=sha,
+    )
+    expected_ref = EvidenceRef(
+        evidence_id=eid, source_type="disclosure", source_name="TestSource",
+        source_url="https://example.invalid/source", period_end=None,
+        published_at=None, available_at=None,
+        retrieved_at=NOW + timedelta(minutes=1),
+        content_sha256="f" * 64,
+    )
+    archive = _fake_archive(archived_ref, content)
+    status = _archive_entry_status(
+        archive, archive.build_manifest(), eid, expected_ref,
+    )
+    assert status is not None, "Content hash mismatch must fail closed"
+
+
+def test_archive_status_rejects_wrong_source_url():
+    """Identity/source lineage change must still be rejected."""
+    eid = "ann-test-0003"
+    content = b'{"raw": true}'
+    sha = hashlib.sha256(content).hexdigest()
+    archived_ref = EvidenceRef(
+        evidence_id=eid, source_type="disclosure", source_name="TestSource",
+        source_url="https://example.invalid/source", period_end=None,
+        published_at=None, available_at=None,
+        retrieved_at=NOW, content_sha256=sha,
+    )
+    expected_ref = EvidenceRef(
+        evidence_id=eid, source_type="disclosure", source_name="TestSource",
+        source_url="https://example.invalid/other", period_end=None,
+        published_at=None, available_at=None,
+        retrieved_at=NOW, content_sha256=sha,
+    )
+    archive = _fake_archive(archived_ref, content)
+    status = _archive_entry_status(
+        archive, archive.build_manifest(), eid, expected_ref,
+    )
+    assert status is not None, "Changed source_url must be rejected"

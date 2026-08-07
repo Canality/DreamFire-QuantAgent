@@ -60,7 +60,15 @@ def _archive_entry_status(
     evidence_id: str,
     expected_ref: EvidenceRef,
 ) -> str | None:
-    """Return ``None`` only when archived bytes and metadata match exactly."""
+    """Return ``None`` only when archived bytes and metadata match exactly.
+
+    Evidence identity is ``evidence_id + content_sha256`` plus the source
+    lineage, not the run-local ``retrieved_at`` or data attributes.  A shared
+    archive keeps the first-written ref (with its first ``retrieved_at``), while
+    each formal run produces a fresh ``retrieved_at`` for the same content, so a
+    full-object comparison would reject every re-run of an already-archived
+    announcement.  Compare identity/content fields only.
+    """
     try:
         read = getattr(archive, "read", None)
         if not isinstance(archived_manifest, Mapping) or read is None:
@@ -73,8 +81,15 @@ def _archive_entry_status(
             content, bytes,
         ):
             return "not found or corrupt"
-        if archived_ref != expected_ref:
-            return "archived EvidenceRef does not match supplied manifest"
+        for field in (
+            "evidence_id",
+            "source_type",
+            "source_name",
+            "source_url",
+            "content_sha256",
+        ):
+            if getattr(archived_ref, field) != getattr(expected_ref, field):
+                return "archived EvidenceRef does not match supplied manifest"
         if hashlib.sha256(content).hexdigest() != expected_ref.content_sha256:
             return "archived content hash does not match supplied manifest"
         return None
