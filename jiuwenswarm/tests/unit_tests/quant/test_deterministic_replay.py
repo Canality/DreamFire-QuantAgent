@@ -7,6 +7,7 @@ import json
 import sys
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from types import MappingProxyType
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -24,6 +25,8 @@ from jiuwenswarm.quant.market_data_service import (
 from jiuwenswarm.quant.phase_state import (
     QUANT_PHASE_SEQUENCE,
     build_trace_receipt,
+    canonical_json_bytes,
+    canonical_sha256,
     validate_quant_rpc_calls,
 )
 from jiuwenswarm.quant.reporting.snapshot_writer import write_market_data_snapshot
@@ -207,6 +210,30 @@ def test_trace_hash_excludes_wall_clock_timestamp_but_binds_payload() -> None:
     assert build_trace_receipt(calls) == first
     calls[1]["payload"]["all_composite"][ALL_STOCKS[0]] = -999.0
     assert build_trace_receipt(calls)["trace_sha256"] != first["trace_sha256"]
+
+
+def test_nested_mappingproxy_serializes_like_equivalent_dict() -> None:
+    """Windows formal payloads may carry MappingProxyType in a nested report;
+    canonical hashing must accept it and match the equivalent plain dict."""
+    nested = MappingProxyType({"candidate": {"immutable": True, "n": 1}})
+    value = {"report": {"detail": nested, "ticker": "600000.SH"}}
+    equivalent = {"report": {"detail": {"candidate": {"immutable": True, "n": 1}}, "ticker": "600000.SH"}}
+    assert canonical_sha256(value) == canonical_sha256(equivalent)
+    assert canonical_json_bytes(value) == canonical_json_bytes(equivalent)
+
+
+def test_canonical_bytes_stable_for_plain_inputs() -> None:
+    """Plain dict/list/scalar inputs keep identical canonical bytes."""
+    value = {"b": [1, 2.5, "x"], "a": {"n": None}}
+    assert canonical_json_bytes(value) == (
+        b'{"a":{"n":null},"b":[1,2.5,"x"]}'
+    )
+
+
+def test_canonical_bytes_rejects_non_json_safe_types() -> None:
+    """Fail-closed validation still rejects a non-Mapping unserializable value."""
+    with pytest.raises(ValueError):
+        canonical_json_bytes({"payload": object()})
 
 
 def test_real_fixture_replays_exactly_twenty_times_without_runtime_imports(

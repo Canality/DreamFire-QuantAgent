@@ -24,11 +24,31 @@ QUANT_PHASE_METHODS = dict(QUANT_PHASE_SEQUENCE)
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
+def _json_safe(value: object) -> object:
+    """Recursively normalize JSON-safe values for deterministic serialization.
+
+    ``json.dumps`` only accepts plain ``dict``/``list``/scalars. Non-dict
+    ``Mapping`` views such as ``types.MappingProxyType`` pass the ``Mapping``
+    type check but are not serializable, so normalize them to dict without
+    changing the bytes of already-serializable inputs.
+    """
+    if isinstance(value, Mapping) and not isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    return value
+
+
 def canonical_json_bytes(value: object) -> bytes:
     """Serialize one JSON value identically across platforms and fail closed."""
     _validate_json_value(value)
+    normalized = _json_safe(value)
     return json.dumps(
-        value,
+        normalized,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),

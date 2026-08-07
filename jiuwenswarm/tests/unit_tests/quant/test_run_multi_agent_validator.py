@@ -591,6 +591,73 @@ def test_parent_pid_bound_worker_marker_prevents_recursive_supervision(
     assert MODULE._run_cli([]) == 2
 
 
+def test_worker_accepts_supervisor_in_ancestor_chain_on_windows_venv(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows venv redirector stub inserts a process between supervisor and
+    worker; the supervisor pid must still be accepted from the ancestor chain."""
+
+    class PsutilProcess:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+
+        def parent(self) -> PsutilProcess | None:
+            # worker(36744) -> venv stub(20392) -> supervisor(44168) -> None
+            parents = {36744: 20392, 20392: 44168}
+            next_pid = parents.get(self.pid)
+            if next_pid is None:
+                return None
+            return PsutilProcess(next_pid)
+
+    fake_psutil = SimpleNamespace(
+        Process=PsutilProcess,
+        Error=RuntimeError,
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+    # worker reports the venv stub as its direct parent on Windows
+    monkeypatch.setattr(MODULE.os_env, "getppid", lambda: 20392)
+
+    assert MODULE._worker_has_parent(44168) is True
+    assert MODULE._worker_has_parent(20392) is True
+
+
+def test_worker_rejects_unrelated_pid_and_psutil_failure(monkeypatch) -> None:
+    """A pid not in the ancestor chain and any psutil error both fail closed."""
+
+    class PsutilProcess:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+
+        def parent(self) -> None:
+            return None
+
+    fake_psutil = SimpleNamespace(
+        Process=PsutilProcess,
+        Error=RuntimeError,
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_psutil)
+    monkeypatch.setattr(MODULE.os_env, "getppid", lambda: 20392)
+
+    assert MODULE._worker_has_parent(999999) is False
+
+    class ErrorProcess:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+
+        def parent(self) -> None:
+            raise RuntimeError("access denied")
+
+    fake_error = SimpleNamespace(
+        Process=ErrorProcess,
+        Error=RuntimeError,
+    )
+    monkeypatch.setitem(sys.modules, "psutil", fake_error)
+    assert MODULE._worker_has_parent(44168) is False
+
+    monkeypatch.setitem(sys.modules, "psutil", None)
+    assert MODULE._worker_has_parent(44168) is False
+
+
 def test_timeout_terminates_recursive_worker_descendants(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1359,6 +1359,35 @@ def _terminate_formal_worker_tree(process, *, grace_seconds: float = 10.0) -> No
             )
 
 
+def _worker_has_parent(expected_parent_pid: int, *, max_ancestors: int = 8) -> bool:
+    """Return whether the expected supervisor pid is the worker's parent.
+
+    On Windows the venv ``Scripts\\python.exe`` is a redirector stub: when the
+    supervisor spawns the worker through ``sys.executable``, the real worker is
+    a child of that stub, so ``os.getppid()`` returns the stub pid rather than
+    the supervisor pid. Accept the expected pid when it appears anywhere in the
+    bounded ancestor chain; any psutil failure fails closed so an unbound
+    process can never take the worker path.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return os_env.getppid() == expected_parent_pid
+    pid = os_env.getppid()
+    for _ in range(max_ancestors):
+        if pid == expected_parent_pid:
+            return True
+        try:
+            proc = psutil.Process(pid)
+            parent = proc.parent()
+        except (AttributeError, OSError, psutil.Error):
+            return False
+        if parent is None:
+            return False
+        pid = parent.pid
+    return False
+
+
 def _run_cli(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     worker_parent = os_env.environ.pop(FORMAL_WORKER_PARENT_ENV, "")
@@ -1367,7 +1396,7 @@ def _run_cli(argv: list[str] | None = None) -> int:
             expected_parent_pid = int(worker_parent)
         except ValueError:
             return 2
-        if expected_parent_pid != os_env.getppid():
+        if not _worker_has_parent(expected_parent_pid):
             return 2
         return asyncio.run(main(arguments))
     return _supervise_formal_worker(arguments)
