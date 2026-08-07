@@ -1388,6 +1388,18 @@ def _worker_has_parent(expected_parent_pid: int, *, max_ancestors: int = 8) -> b
     return False
 
 
+def _force_worker_exit(return_code: int) -> None:
+    """Force-exit the worker process on Windows only.
+
+    openJiuwen's Runner leaves non-daemon threads on Windows, so a normally
+    returned ``asyncio.run`` does not let the worker exit. Teardown already
+    completed inside ``main()``; force-exit only on win32 and keep Mac/Linux
+    on the normal return path.
+    """
+    if sys.platform == "win32":
+        os_env._exit(return_code)
+
+
 def _run_cli(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     worker_parent = os_env.environ.pop(FORMAL_WORKER_PARENT_ENV, "")
@@ -1398,7 +1410,9 @@ def _run_cli(argv: list[str] | None = None) -> int:
             return 2
         if not _worker_has_parent(expected_parent_pid):
             return 2
-        return asyncio.run(main(arguments))
+        return_code = asyncio.run(main(arguments))
+        _force_worker_exit(return_code)
+        return return_code
     return _supervise_formal_worker(arguments)
 
 

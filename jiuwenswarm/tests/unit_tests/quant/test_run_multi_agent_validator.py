@@ -502,7 +502,10 @@ async def test_main_returns_exit_code_without_forced_process_exit(
 
     assert await MODULE.main([]) == 0
     source = SCRIPT.read_text(encoding="utf-8")
-    assert "os_env._exit" not in source
+    # main() completes teardown and returns the exit code; forced process exit
+    # is only applied by the win32-only helper after asyncio.run returns.
+    assert "os_env._exit" in source
+    assert 'sys.platform == "win32"' in source
     assert "raise SystemExit(_run_cli())" in source
 
 
@@ -577,6 +580,12 @@ def test_parent_pid_bound_worker_marker_prevents_recursive_supervision(
         "_supervise_formal_worker",
         lambda _argv: (_ for _ in ()).throw(AssertionError("must not recurse")),
     )
+    forced: list[int] = []
+    monkeypatch.setattr(
+        MODULE,
+        "_force_worker_exit",
+        lambda rc: forced.append(rc),
+    )
     monkeypatch.setenv(
         MODULE.FORMAL_WORKER_PARENT_ENV,
         str(MODULE.os_env.getppid()),
@@ -586,9 +595,11 @@ def test_parent_pid_bound_worker_marker_prevents_recursive_supervision(
         "--end-date",
         "2026-08-05",
     ]) == 7
+    assert forced == [7]
 
     monkeypatch.setenv(MODULE.FORMAL_WORKER_PARENT_ENV, "1")
     assert MODULE._run_cli([]) == 2
+    assert forced == [7]
 
 
 def test_worker_accepts_supervisor_in_ancestor_chain_on_windows_venv(
