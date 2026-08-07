@@ -1102,6 +1102,7 @@ class QuantFinanceExtension(BaseExtension):
             )
             from jiuwenswarm.quant.reporting.providers.archive import EvidenceArchive
             from jiuwenswarm.quant.reporting.announcement_service import (
+                _thaw_json,
                 announcement_snapshot_projection,
             )
             from jiuwenswarm.quant.reporting.snapshot_writer import (
@@ -1371,7 +1372,7 @@ class QuantFinanceExtension(BaseExtension):
                 "announcement_tickers": announcement_result.tickers_with_events,
                 "disclosure_reports": candidate_binding["disclosure_reports"],
                 "evidence_count": candidate_binding["evidence_count"],
-                "announcement_health": announcement_result.universe_health,
+                "announcement_health": _thaw_json(announcement_result.universe_health),
                 "artifact_binding": candidate_binding,
                 "blockers": list(quality.blockers),
                 "warnings": list(quality.warnings),

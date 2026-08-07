@@ -110,3 +110,54 @@ Analyst、Risk & Evidence Analyst 三角色和 8 个 Quant RPC。
 3. WP1-E2/E3/E4 等待 PIT 企业行动/调整价、历史行业、成熟标签和可信 E0 快照。
 4. Fundamental/news-risk Provider 等待可归档、可跨设备交付的授权数据源。
 5. 获取主办方对 49/50、现金口径和报告权重的书面答复。
+
+## Windows 跨平台开发陷阱（Mac 开发必读）
+
+以下 5 个缺陷全部在 Mac 上不出现、Windows 上必现。Mac 开发涉及下列模块时，
+必须保留 Windows 兼容路径，不得用 Mac-only 写法覆盖。
+
+### 1. supervisor 进程树：venv stub 阻断父进程校验
+
+- **现象**：`run_multi_agent.py:1370` `_run_cli` 用 `os.getppid() == supervisor_pid`
+  校验，Windows venv 的 `Scripts\python.exe` 是 redirector stub，spawn 产生
+  `supervisor → venv stub → worker` 三层，`getppid()` 返回 stub PID ≠ supervisor。
+- **解决**：用 psutil 祖先链检查替代严格相等（`_worker_has_parent`）。
+- **规则**：涉及进程父子关系的校验一律用祖先链，不假设 `getppid() == target`。
+
+### 2. MappingProxyType 序列化：`json.dumps` 不支持
+
+- **现象**：`types.MappingProxyType` 满足 `isinstance(x, Mapping)`（True）但不满足
+  `isinstance(x, dict)`（False），`json.dumps` 抛 TypeError。`announcement_service`
+  的 `_freeze_json` 递归冻结产物和 `ServiceResult.seal()` 的只读视图在 Windows
+  上会泄漏到 payload/summary。
+- **解决**：两个位置——`phase_state.canonical_json_bytes` 做 `_json_safe` 归一化
+  （序列化前）；`extension.py` report 路径做 `_thaw_json`（源头解冻）。
+- **规则**：任何进入 `json.dumps` / pickle / summary 的 payload 必须先确认不含
+  MappingProxyType。新增 frozen/seal 逻辑时必须配 thaw 出口。
+
+### 3. asyncio 进程退出：openJiuwen Runner 残留线程
+
+- **现象**：`main()` 完整执行、teardown 全部成功、`asyncio.run` 返回后 Windows
+  Python 进程不退出——openJiuwen Runner 留有非守护线程或未清理 I/O。720s
+  watchdog 强杀。
+- **解决**：`_run_cli` 在 `asyncio.run(main())` 返回后对 `sys.platform == "win32"`
+  调用 `os._exit(return_code)`。Mac 路径不动。
+- **规则**：不要假设 `asyncio.run` 返回后进程会自动退出。Windows 上 formal worker
+  必须有显式 `os._exit`。
+
+### 4. EvidenceRef 身份比对：retrieved_at 干扰
+
+- **现象**：`quality_gate._archive_entry_status` 用完整 EvidenceRef 比对，含
+  `retrieved_at`（获取时间戳）。全局 archive 保留首次值，后续运行生成新值 →
+  同 content_sha256 也 mismatched。
+- **解决**：比对字段限定为身份+内容指纹（`evidence_id + source_type + source_name
+  + source_url + content_sha256`），排除 `retrieved_at` 和时间类字段。
+- **规则**：archive/缓存的身份比对只用不可变身份字段+内容哈希，排除运行时时间戳。
+
+### 5. 跨平台开发通用规则
+
+- **Mac 开发后必须在 Windows 上跑 formal 验证**，不得以 Mac 单测结果声称 Windows 可用。
+- **涉及上述 4 个陷阱模块的修改**，Mac 侧必须保持语义不变，平台分支用
+  `sys.platform == "win32"` 显式隔离。
+- **`pyvenv.cfg` 中 `home` 指向的 Python 可能在 Mac↔Windows 间不同**。
+  Mac 开发时不要假设 `sys.executable` 的行为与 Windows 一致。

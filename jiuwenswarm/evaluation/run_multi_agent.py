@@ -109,6 +109,7 @@ _phase_state = importlib.import_module("jiuwenswarm.quant.phase_state")
 build_trace_receipt = _phase_state.build_trace_receipt
 validate_phase_payload = _phase_state.validate_phase_payload
 validate_quant_rpc_calls = _phase_state.validate_quant_rpc_calls
+json_safe = _phase_state._json_safe
 Runner = importlib.import_module("openjiuwen.core.runner").Runner
 
 # ── Constants ───────────────────────────────────────────────
@@ -854,7 +855,7 @@ async def run_multi_agent_team(prompt: str, timeout_seconds: int = 600):
     # Summary
     summary_path = OUTPUT_DIR / f"multi_agent_summary_{artifact_id}.json"
     summary_path.write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(json_safe(summary), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
 

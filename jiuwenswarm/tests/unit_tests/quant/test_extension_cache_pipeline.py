@@ -335,6 +335,10 @@ def test_report_cache_preserves_scores_and_ordered_agent_views(monkeypatch, tmp_
     assert report["candidate_package"]["immutable"] is True
     assert report["candidate_package"]["disclosure_reports"] == 1
     assert report["announcement_evidence"]["snapshot_sha256"] == "f" * 64
+    # sealed ServiceResult exposes MappingProxyType views; the report payload
+    # must not leak them (openJiuwen pickle + summary json.dumps both reject them).
+    json.dumps(report, ensure_ascii=False)
+    assert isinstance(report["candidate_package"]["announcement_health"], dict)
     assert captured["candidate_id"] == "formal-test-formal-session"
     assert len(captured["bundles"]) == 49
     assert captured["bundles"][ALL_STOCKS[0]].data_provider_status == "complete"
