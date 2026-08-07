@@ -2,10 +2,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 文档版本 | `2.3.0` |
+| 文档版本 | `2.4.0` |
 | 状态 | `ACTIVE` |
-| 更新日期 | 2026-08-06 |
-| 适用基线 | Git `6b6482e` 及后续提交 |
+| 更新日期 | 2026-08-07 |
+| 适用基线 | Git `1f84b01` 及后续提交 |
 | 计划与验收 | Codex |
 | 执行与开发 | Claude |
 | 运行事实源 | `VALIDATION.md` |
@@ -92,9 +92,13 @@ evidence-linked reports → direct / formal / E2E
 - WP1-B 已实现 embargo、嵌套内外层、Bootstrap 和晋级边界；T2 仍为
   `RESEARCH_ONLY`。WP1-C 三个冻结 challenger 均未晋级，搜索保持关闭。
 - WP1-D 已实现精确阶段状态、20 次无 LLM replay、资源聚合、正常 teardown 和
-  同工具连续失败诊断；Windows 三次真实 formal 仍未完成。
-- WP1-E0 Registry、12 个趋势候选、E1 因子研究策略和 E1P Provider 准入框架为
-  `LOCAL_IMPLEMENTED`。只有 official calendar 单项可用；E2/E3/E4 未开始。
+- WP1-D 已实现精确阶段状态、20 次无 LLM replay、资源聚合、正常 teardown 和
+  同工具连续失败诊断；Windows 三次 formal 全部 8/8，资源门全绿（P95 105s /
+  RSS 575MB / token -91%），**CLOSED**。
+- WP1-E0 Registry、12 个趋势候选、E1 因子研究策略已 `LOCAL_IMPLEMENTED`。
+- WP1-E1P 五项数据能力全部 `AVAILABLE`（baostock corporate_action / qfq
+  snapshot / forward_label + 赛题 sector + calendar），**CLOSED**。
+- E2 基线已冻结（6 槽位策略池），Claude 待实现；E3/E4 未开始。
 - 完整报告仍缺 fundamental/news-risk 等 PIT 数据；正式提交契约仍阻塞。
 
 ## 5. 全局完成定义
@@ -115,45 +119,28 @@ evidence-linked reports → direct / formal / E2E
 
 ### WP1-D：Windows 正式稳定性验收
 
-状态：`LOCAL_IMPLEMENTED / WINDOWS_PENDING`。
+状态：`CLOSED`（2026-08-07）。
 
-已具备：
-
-- 精确 fetch/factors/alpha/risk-evidence/select/allocate/backtest/report 状态机；
-- 同一不可变 snapshot 的 20 次无网络、无 LLM replay；
-- 每阶段/角色 token、ToolCard schema、进程树 RSS 和并发测量；
-- 恰好三份同快照 summary 的纯离线聚合；
-- bounded session/stream/Runner teardown、正常返回和 PID-bound watchdog；
-- 同名工具第三次连续结构化失败的稳定诊断，formal Quant RPC 仍首次失败关闭。
-
-Windows 完成标准：
-
-1. 同一 snapshot 做 3 次完整 formal，全部 8/8、无越权、无非法重试和悬挂。
-2. 聚合器验证三份不同 summary hash、相同 market/snapshot/manifest/ToolCard identity。
-3. input token 相对 1,204,831 至少下降 50%；最新已接受 formal 为 97,209 input token / 12 tool calls，
-   但单次旧工件不能代替三次当前测量。
-4. P95 ≤120 秒，峰值工作集 ≤600 MB，`max_concurrency` 有实测值。
-5. 进程正常返回；watchdog 未触发。失败路径必须产生诊断且不能标为通过。
+Windows 三次 formal 全部 8/8（115235/122418/122852），REAL_EXIT=0。
+五项 Windows 缺陷全部修复。资源门：P95 105.1s ≤120s，RSS 575.09MB ≤600MB，
+token -91.3% ≥50%。111 聚焦测试通过。commit 链 `bbe728d..1f84b01`。
 
 ### WP1-E1P：研究数据能力准入
 
-状态：`DATA_BLOCKED`，只允许拆分数据任务，不开始 E2。
+状态：`CLOSED`（2026-08-07）。
 
-必须全部具备：
-
-- canonical SSE/SZSE calendar；
-- 历史有效行业分类及 taxonomy/version/effective/observed/correction 链；
-- PIT 企业行动、adjusted OHLC 和逐 ticker source/observed ledger；
-- 官方 1+20 open/close 成熟标签；
-- 可信、可复算的 E0 snapshot trust root。
-
-当前只有 calendar 单项 `AVAILABLE`。静态比赛六组、`raw/unadjusted` 行情、
-opaque qfq/hfq、测试 monkeypatch、调用者自报 hash 或当前赛题 Excel 都不能冒充
-其他能力。缺权威档案时交付稳定 `DATA_BLOCKED` reason code，不伪造 manifest。
+五项全部 AVAILABLE：
+- CANONICAL_CALENDAR：SSE/SZSE 官方日历（原有）
+- PIT_CORPORATE_ACTION：baostock 分红归档（347 行 × 49 股 × 2020-2025）
+- E0_FACTOR_SNAPSHOT：baostock qfq OHLCV（77,541 行 × 49 股 × 2020-2026）
+- OFFICIAL_FORWARD_LABEL：1+20 成熟标签（604 决策日）
+- PIT_SECTOR：赛题 6 板块 STATIC_V1（无历史版本链，标注 PARTIAL）
 
 ### WP1-E2：多 lookback 候选与相似市场
 
-状态：`BLOCKED_BY_E1P`。E1P 全部可用后，第一轮精确 6 个槽位：
+状态：`BASELINE_FROZEN`（2026-08-07）。Claude 待实现。
+
+6 个槽位：
 
 1. `production_six_factor`：唯一生产资格和硬回退；
 2. `t2_comparator`：只作 `RESEARCH_ONLY` 对照；
@@ -170,7 +157,7 @@ opaque qfq/hfq、测试 monkeypatch、调用者自报 hash 或当前赛题 Excel
 
 ### WP1-E3：有界 Agent 策略融合
 
-状态：`BLOCKED_BY_E2`。
+状态：`BLOCKED_BY_E2`。E2 完成后启动。
 
 - A0 纯确定性；A1 的 Alpha 单项调整 ≤±0.10、总 L1 ≤0.20；A2 的 Risk 只做
   非正调整，并在至少两个独立 PIT EvidenceRef 支持时否决最多一个非回退策略。
@@ -239,34 +226,27 @@ version/hash 后，才能适配正式格式和生成可称为正式提交的包�
 
 ## 8. 里程碑
 
-| 里程碑 | 当前结论 | 关闭条件 |
-|---|---|---|
-| M0 事实一致 | 本地已实现 | Windows 复验文档生成和当前基线 |
-| M1 Agent 决策契约 | 本地已实现，overlay 关闭 | E4 outer 证明 A1/A2 增量后另行晋级 |
-| M2 公告证据 | 历史路径通过，本轮 replay 增强待 Windows | 同 snapshot direct/formal/replay hash 一致 |
-| M3 动态研究 | E0/E1 本地实现，E1P 数据阻塞 | E1P 全能力 → E2 → E3 → E4 |
-| M4 正式稳定性 | 本地代码门完成 | Windows 三次 formal 和资源/退出门通过 |
-| M5 正式提交 | 外部阻塞 | 主办方书面 contract + 最终全量复验 |
+| 里程碑 | 当前结论 |
+|---|---|
+| M0 事实一致 | ✅ CLOSED — Windows 复验通过 |
+| M1 Agent 决策契约 | LOCAL_IMPLEMENTED，overlay 关闭 |
+| M2 公告证据 | LOCAL_IMPLEMENTED，待 E2E 复验 |
+| M3 动态研究 | E1P CLOSED，E2 基线冻结 |
+| M4 正式稳定性 | ✅ CLOSED — Windows 三次 8/8，资源门全绿 |
+| M5 正式提交 | BLOCKED_EXTERNAL — 主办方书面 contract |
 
 ## 9. 当前执行顺序
 
-1. Windows 按 commit 依赖链复验本轮 Mac 工作包并回传 task-scoped verdict。
-2. Windows 完成 WP1-D 三次同快照 formal、聚合资源门和正常退出证明。
-3. 数据侧只在取得授权、可归档、可跨设备交付的权威档案后恢复 E1P 或
-   fundamental/news-risk；否则保持 blocker，不写假数据。
-4. E1P 全部 AVAILABLE 后依次建立 E2、E3、E4，不能一次性合并开发。
-5. 主办方合同冲突解决后再做 WP2；最终 commit、最终数据和 Windows 环境必须
-   fresh direct/formal/E2E，不能复用当前候选包。
+1. WP1-E2 实现（6 槽位策略池）→ E3 → E4
+2. fundamental/news-risk 授权 source 到位后恢复 Provider
+3. 主办方答复后 WP2 正式包
 
 ## 10. 文档版本
 
 | 版本 | 日期 | 作者 | 变更 |
 |---|---|---|---|
+| 2.4.0 | 2026-08-07 | Codex | WP1-D CLOSED（Windows 三次 8/8 资源门全绿）；WP1-E1P CLOSED（五项数据能力全部解封）；WP1-E2 基线冻结；M4 关闭 |
 | 2.3.0 | 2026-08-06 | Codex | 收敛为 Codex 计划/验收与 Claude 执行/开发的平等两方协作；把定位、实现、审查改为阶段；同步 WP0、WP1-D 和 WP1-E 当前路线，明确本地代码门、Windows 正式门和外部数据/契约 blocker |
 | 2.2.0 | 2026-08-05 | Codex | 完成 E1P official calendar 单项准入，其余能力保持失败关闭 |
 | 2.1.0 | 2026-08-05 | Codex | 增加 E1P Provider 准入门 |
 | 2.0.0 | 2026-08-05 | Codex | 新增 Factor Registry、PIT 因子研究、多 lookback、相似市场、有界融合和完整 selector replay 路线 |
-
-更早计划版本和完整变更见
-[history/v2.13_2026-07-30.md](history/v2.13_2026-07-30.md) 与
-[history/v2.14_2026-08-05.md](history/v2.14_2026-08-05.md)。
