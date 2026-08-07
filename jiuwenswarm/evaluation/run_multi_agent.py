@@ -1400,6 +1400,24 @@ def _force_worker_exit(return_code: int) -> None:
         os_env._exit(return_code)
 
 
+def _run_worker_main(arguments: list[str]) -> int:
+    """Run ``main()`` and return its exit code without asyncio.run teardown.
+
+    On Windows ``asyncio.run`` blocks in its shutdown phase waiting on tasks
+    openJiuwen left behind, so the coroutine completes but the call never
+    returns. ``loop.run_until_complete`` stops right after ``main()`` returns
+    and leaves the loop unclosed; ``_force_worker_exit`` then os._exits.
+    """
+    if sys.platform == "win32":
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(main(arguments))
+        finally:
+            pass  # skip loop.close(): pending tasks would block; os._exit follows
+    return asyncio.run(main(arguments))
+
+
 def _run_cli(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     worker_parent = os_env.environ.pop(FORMAL_WORKER_PARENT_ENV, "")
@@ -1410,7 +1428,7 @@ def _run_cli(argv: list[str] | None = None) -> int:
             return 2
         if not _worker_has_parent(expected_parent_pid):
             return 2
-        return_code = asyncio.run(main(arguments))
+        return_code = _run_worker_main(arguments)
         _force_worker_exit(return_code)
         return return_code
     return _supervise_formal_worker(arguments)
