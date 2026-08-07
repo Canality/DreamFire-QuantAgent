@@ -117,8 +117,39 @@ SINA_BENCHMARK_SPEC = PinnedSourceFile(
     ),
 )
 
+CORPORATE_ACTION_CSV_SPEC = PinnedSourceFile(
+    artifact_id="corporate_action_csv",
+    relative_path=Path(
+        "jiuwenswarm/evaluation/research_evidence/corporate_action_2020_2026/corporate_actions.csv"
+    ),
+    expected_sha256=(
+        "9e453033e2d8f14c86987d25ab99b6a4b8c9a3b5c69c67ea0f3b57eaeb81f014"
+    ),
+)
+CORPORATE_ACTION_RECORDS_SPEC = PinnedSourceFile(
+    artifact_id="corporate_action_source_records",
+    relative_path=Path(
+        "jiuwenswarm/evaluation/research_evidence/corporate_action_2020_2026/source_records.json"
+    ),
+    expected_sha256=(
+        "dcd0b4e7700ebf581eb3529611bcf0702e0aafa527381b6ed859387d6db8887c"
+    ),
+)
+
 PINNED_SOURCE_FILES: tuple[PinnedSourceFile, ...] = (
     OFFICIAL_UNIVERSE_SPEC,
+    SINA_MANIFEST_SPEC,
+    SINA_OPEN_SPEC,
+    SINA_HIGH_SPEC,
+    SINA_LOW_SPEC,
+    SINA_CLOSE_SPEC,
+    SINA_VOLUME_SPEC,
+    SINA_BENCHMARK_SPEC,
+    CORPORATE_ACTION_CSV_SPEC,
+    CORPORATE_ACTION_RECORDS_SPEC,
+)
+
+_SINA_SNAPSHOT_SPECS = (
     SINA_MANIFEST_SPEC,
     SINA_OPEN_SPEC,
     SINA_HIGH_SPEC,
@@ -129,21 +160,17 @@ PINNED_SOURCE_FILES: tuple[PinnedSourceFile, ...] = (
 )
 
 _EXPECTED_SNAPSHOT_FILE_NAMES = frozenset(
-    spec.relative_path.name for spec in PINNED_SOURCE_FILES[1:]
+    spec.relative_path.name for spec in _SINA_SNAPSHOT_SPECS
 )
 _EXPECTED_MANIFEST_CHILDREN = {
     spec.relative_path.name: spec.expected_sha256
-    for spec in PINNED_SOURCE_FILES[2:]
+    for spec in _SINA_SNAPSHOT_SPECS[1:]
 }
 _UNAVAILABLE_CAPABILITY_REASONS: tuple[tuple[str, str], ...] = (
     ("PIT_SECTOR", "UNAVAILABLE_NO_HISTORICAL_SECTOR_VERSION"),
     (
         "OFFICIAL_FORWARD_LABEL",
         "UNAVAILABLE_RAW_NO_LEDGER",
-    ),
-    (
-        "PIT_CORPORATE_ACTION",
-        "UNAVAILABLE_NO_CORPORATE_ACTION_ARCHIVE",
     ),
     (
         "E0_FACTOR_SNAPSHOT",
@@ -171,7 +198,14 @@ _TRUSTED_EVIDENCE_KEYS: frozenset[
             "official_calendar_2024_2026/v1",
             official_calendar_archive.ARCHIVE_SOURCE_SHA256,
             official_calendar_archive.EXPECTED_CALENDAR_EVIDENCE_SHA256,
-        )
+        ),
+        (
+            "corporate_action",
+            "BAOSTOCK_QUERY_DIVIDEND_DATA",
+            "corporate_action_2020_2026/v1",
+            CORPORATE_ACTION_RECORDS_SPEC.expected_sha256,
+            CORPORATE_ACTION_CSV_SPEC.expected_sha256,
+        ),
     }
 )
 _TRUSTED_FACTOR_SNAPSHOT_HASHES: frozenset[str] = frozenset()
@@ -426,6 +460,12 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
         all(item.verified for item in sources) and not inventory_errors
     )
     calendar = official_calendar_archive._inspect_at_root(root)
+    corporate_action_ok = all(
+        item.verified
+        for item in sources
+        if item.artifact_id
+        in {"corporate_action_csv", "corporate_action_source_records"}
+    )
     capabilities = (
         CapabilityDisposition(
             capability="CANONICAL_CALENDAR",
@@ -434,6 +474,15 @@ def _inspect_at_root(root: Path) -> ResearchEvidenceReadiness:
                 "AVAILABLE_OFFICIAL_SSE_SZSE_CONFIRMED_ARCHIVE"
                 if calendar.verified
                 else "UNAVAILABLE_INVALID_OFFICIAL_CALENDAR_ARCHIVE"
+            ),
+        ),
+        CapabilityDisposition(
+            capability="PIT_CORPORATE_ACTION",
+            available=corporate_action_ok,
+            reason=(
+                "AVAILABLE_BAOSTOCK_DIVIDEND_ARCHIVE"
+                if corporate_action_ok
+                else "UNAVAILABLE_INVALID_CORPORATE_ACTION_ARCHIVE"
             ),
         ),
         *tuple(

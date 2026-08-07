@@ -18,7 +18,10 @@ EXPECTED_CAPABILITIES = {
     ),
     "PIT_SECTOR": "UNAVAILABLE_NO_HISTORICAL_SECTOR_VERSION",
     "OFFICIAL_FORWARD_LABEL": "UNAVAILABLE_RAW_NO_LEDGER",
-    "PIT_CORPORATE_ACTION": "UNAVAILABLE_NO_CORPORATE_ACTION_ARCHIVE",
+    "PIT_CORPORATE_ACTION": (
+        True,
+        "AVAILABLE_BAOSTOCK_DIVIDEND_ARCHIVE",
+    ),
     "E0_FACTOR_SNAPSHOT": (
         "UNAVAILABLE_UNADJUSTED_INPUT_AND_EMPTY_TRUST_ROOT"
     ),
@@ -39,7 +42,7 @@ def test_current_bytes_admit_only_the_official_calendar_capability() -> None:
 
     assert readiness.inventory_id == "wp1_factor_evidence_inventory_v1"
     assert readiness.source_bytes_verified is True
-    assert len(readiness.sources) == 8
+    assert len(readiness.sources) == 10
     assert all(item.verified for item in readiness.sources)
     assert readiness.calendar_archive_verified is True
     assert readiness.calendar_confirmation_cutoff == "2026-08-04"
@@ -62,7 +65,7 @@ def test_current_bytes_admit_only_the_official_calendar_capability() -> None:
     }
     assert readiness.ready_for_e0 is False
     assert readiness.ready_for_e1 is False
-    assert readiness.trusted_evidence_key_count == 1
+    assert readiness.trusted_evidence_key_count == 2
     assert readiness.trusted_factor_snapshot_count == 0
     assert readiness.to_dict() == provider.inspect_research_evidence_readiness().to_dict()
 

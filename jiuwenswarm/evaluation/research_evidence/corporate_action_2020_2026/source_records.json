@@ -1,0 +1,262 @@
+{
+  "schema": "corporate_action_archive/v1",
+  "source": "baostock query_dividend_data",
+  "fetched_at": "2026-08-07T06:26:11.602601+00:00",
+  "tickers": 49,
+  "years": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+  ],
+  "total_rows": 347,
+  "per_ticker": {
+    "601318.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 14
+    },
+    "600036.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "601688.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 9
+    },
+    "601398.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 9
+    },
+    "601288.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 9
+    },
+    "601988.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 9
+    },
+    "600000.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "601998.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "600519.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "000858.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "600887.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "603288.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "600660.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "000333.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "000651.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 12
+    },
+    "601888.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "600809.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "300750.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "002594.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "601012.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "300274.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "600900.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "600438.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 5
+    },
+    "600089.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "600212.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 0
+    },
+    "688981.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 0
+    },
+    "600584.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "600183.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "300308.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "300394.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "603501.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "600703.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "600570.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "600845.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "688041.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 4
+    },
+    "603986.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 5
+    },
+    "002475.SZ": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "601899.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 9
+    },
+    "600309.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "601600.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "600028.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 12
+    },
+    "601088.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "600547.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "600426.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 8
+    },
+    "601168.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "600031.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "601766.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    },
+    "601668.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 6
+    },
+    "601186.SH": {
+      "ok": 6,
+      "errors": 0,
+      "rows": 7
+    }
+  }
+}
