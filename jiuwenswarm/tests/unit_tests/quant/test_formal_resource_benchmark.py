@@ -71,6 +71,8 @@ def _valid_calls() -> list[dict]:
             "coverage_complete": True,
             "n_stocks": 49,
             "expected_stocks": 49,
+            "date_range": "2025-01-02 00:00:00 ~ 2025-05-21 00:00:00",
+            "n_days": 90,
         }),
         _bound({
             "success": True,
@@ -254,18 +256,14 @@ def test_hash_tamper_and_cross_snapshot_inputs_are_rejected(tmp_path: Path) -> N
     with pytest.raises(ValueError, match="SHA-256 mismatch"):
         aggregate_formal_resources([(runs[0][0], "0" * 64), *runs[1:]])
 
-    summaries[2]["candidate_package"]["snapshot_id"] = "different"
-    summaries[2]["quant_rpc_calls"][-1]["payload"]["candidate_package"][
-        "snapshot_id"
-    ] = "different"
-    summaries[2]["quant_rpc_calls"][-1]["payload"]["candidate_package"][
-        "artifact_binding"
-    ]["snapshot_id"] = "different"
+    summaries[2]["quant_rpc_calls"][0]["payload"]["date_range"] = (
+        "2025-02-01 00:00:00 ~ 2025-06-21 00:00:00"
+    )
     summaries[2]["deterministic_trace"] = build_trace_receipt(
         summaries[2]["quant_rpc_calls"], mode="LIVE_TRACE"
     )
     runs = _write_runs(tmp_path, summaries)
-    with pytest.raises(ValueError, match="one snapshot_id"):
+    with pytest.raises(ValueError, match="one window_key"):
         aggregate_formal_resources(runs)
 
 

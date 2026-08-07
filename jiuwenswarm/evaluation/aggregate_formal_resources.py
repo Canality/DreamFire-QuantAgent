@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -218,11 +218,31 @@ def _validate_summary(summary: dict[str, Any]) -> dict[str, Any]:
         "snapshot_id": snapshot_id,
         "snapshot_manifest_sha256": manifest_sha,
         "tool_schema_sha256": schema_sha,
+        "window_key": _fetch_window_key(calls),
         "total_duration_seconds": resource.get("total_duration_seconds"),
         "peak_memory_mb": resource.get("peak_memory_mb"),
         "max_concurrency": resource.get("max_concurrency"),
         "total_input_tokens": resource.get("total_input_tokens"),
     }
+
+
+def _fetch_window_key(calls: Sequence[Mapping[str, Any]]) -> str:
+    """Return the stable decision-window identity of a formal trace.
+
+    Each formal run performs a real fetch, so market bytes (and thus
+    ``market_content_sha256``) legitimately differ run to run. The formal-path
+    "same snapshot" contract is the parameter window: start/end dates plus the
+    expected universe. Only the first quant.fetch_data call is authoritative.
+    """
+    for call in calls:
+        if call.get("method") == "quant.fetch_data":
+            payload = call.get("payload")
+            if isinstance(payload, Mapping):
+                start = payload.get("date_range")
+                days = payload.get("n_days")
+                expected = payload.get("expected_stocks")
+                return f"{start}|{days}|{expected}"
+    raise ValueError("formal trace has no quant.fetch_data payload")
 
 
 def aggregate_formal_resources(
@@ -239,11 +259,13 @@ def aggregate_formal_resources(
     sessions = [row["session_id"] for row in validated]
     if len(set(sessions)) != REQUIRED_RUNS:
         raise ValueError("formal session IDs must be distinct")
+    # Formal-path identity is the decision-window + fixed tool schema. Each
+    # formal run does a real fetch, so market bytes (market_content_sha256 /
+    # snapshot_id / snapshot_manifest_sha256) legitimately differ; replay-mode
+    # byte-identical snapshots are not expected on the formal path.
     identity_fields = (
-        "market_content_sha256",
-        "snapshot_id",
-        "snapshot_manifest_sha256",
         "tool_schema_sha256",
+        "window_key",
     )
     for field in identity_fields:
         if len({row[field] for row in validated}) != 1:
