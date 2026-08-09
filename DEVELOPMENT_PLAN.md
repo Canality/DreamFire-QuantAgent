@@ -92,7 +92,6 @@ evidence-linked reports → direct / formal / E2E
 - WP1-B 已实现 embargo、嵌套内外层、Bootstrap 和晋级边界；T2 仍为
   `RESEARCH_ONLY`。WP1-C 三个冻结 challenger 均未晋级，搜索保持关闭。
 - WP1-D 已实现精确阶段状态、20 次无 LLM replay、资源聚合、正常 teardown 和
-- WP1-D 已实现精确阶段状态、20 次无 LLM replay、资源聚合、正常 teardown 和
   同工具连续失败诊断；Windows 三次 formal 全部 8/8，资源门全绿（P95 105s /
   RSS 575MB / token -91%），**CLOSED**。
 - WP1-E0 Registry、12 个趋势候选、E1 因子研究策略已 `LOCAL_IMPLEMENTED`。

@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -181,9 +182,32 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def current_hashes(root: Path) -> dict[str, str | None]:
+def baseline_repo_relative(root: Path, relative: str) -> str:
+    normalized = relative.replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    lexical = Path(normalized)
+    if not normalized or lexical.is_absolute():
+        raise ValueError(f"baseline path must be repository-relative: {relative}")
+    if any(part.lower() in SENSITIVE_PARTS for part in lexical.parts):
+        raise ValueError(f"sensitive baseline path is not allowed: {relative}")
+    candidate = (root / lexical).resolve()
+    try:
+        candidate.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ValueError(f"path escapes repository: {relative}") from exc
+    return lexical.as_posix()
+
+
+def current_hashes(
+    root: Path, *, baseline_paths: Iterable[str] = ()
+) -> dict[str, str | None]:
     hashes: dict[str, str | None] = {}
-    for relative in git_visible_files(root):
+    relative_paths = set(git_visible_files(root))
+    relative_paths.update(
+        baseline_repo_relative(root, relative) for relative in baseline_paths
+    )
+    for relative in sorted(relative_paths):
         path = root / relative
         hashes[relative] = sha256(path) if path.is_file() else None
     return hashes
@@ -412,7 +436,7 @@ def changed_since_baseline(root: Path, task_id: str) -> tuple[list[str], list[st
     baseline_path = handoff_dir(root, task_id) / "baseline.json"
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
     before = baseline["hashes"]
-    after = current_hashes(root)
+    after = current_hashes(root, baseline_paths=before)
     changed = sorted(
         relative for relative in set(before) | set(after) if before.get(relative) != after.get(relative)
     )

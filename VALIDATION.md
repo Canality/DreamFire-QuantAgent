@@ -3,13 +3,14 @@
 > 本文件是项目可运行状态的唯一事实源。计划、README、Agent 身份和历史只能
 > 引用这里，不得把本地单测、旧 session 或设计目标改写成新的业务通过。
 
-## 结论（2026-08-07）
+## 结论（2026-08-09）
 
 | 对象 | 证据等级 | 当前结论 |
 |---|---|---|
 | v2.15 Windows formal | BUSINESS_PASSED | commit `1f84b01` 的 `2025-01-02 → 2025-05-21` 三次 8/8（115235/122418/122852），REAL_EXIT=0，12 tool calls，0 errors，三金融角色无越权；P95 105s / RSS 575MB / token -91% |
 | v2.15 E1P 数据能力 | BUSINESS_PASSED | 五项全部 AVAILABLE：calendar + corporate_action（baostock 347 行）+ factor_snapshot（baostock 77,541 行 qfq）+ forward_label（604 决策日）+ sector（赛题 6 板块） |
 | v2.14 量化 direct | BUSINESS_PASSED（历史锚） | commit `89322cd`，收益 `+0.7476%`、最大回撤 `1.6424%` |
+| GitHub 发布前 fresh direct | PATH_PASSED | 2026-08-09 在 Windows 请求 `2025-07-04 → 2026-08-08` 数据，exit 0；覆盖 49/49、6 板块、15 持仓、cash 5.07%、quality `PASSED`；direct 路径没有 Agent views，不提升为 `BUSINESS_PASSED` |
 | v2.14 JiuwenSwarm formal | BUSINESS_PASSED（历史锚） | session `multi-agent-validation-20260805-100147` 8/8、12 tool calls、0 error |
 | WP0-A 文档契约 | LOCAL_IMPLEMENTED | README 动态区块由绑定产物生成；runtime Skill 镜像恢复并防漂移；无产物时保持 `NOT_GENERATED`，不能从文档提升事实 |
 | WP0-B Agent 决策契约 | LOCAL_IMPLEMENTED / OVERLAY_DISABLED | PIT `AgentProposal`、不可变 `DecisionTrace`、共享 server-owned selection 和 A0/A1/A2 诊断已实现；生产 overlay 仍关闭，没有样本外晋级证据 |
@@ -39,6 +40,26 @@ v2.15 commit：`1f84b01`（2026-08-07）。
   evidence 身份比对/mappingproxy 泄漏），111 聚焦测试通过。
 
 v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
+
+### GitHub 发布前 fresh 路径复验（2026-08-09）
+
+- 工作目录：`jiuwenswarm`。
+- 命令：`.\.venv\Scripts\python.exe -u scripts/run_quant_pipeline.py`。
+- 请求数据区间：`2025-07-04 → 2026-08-08`；退出码：`0`。
+- 结果：官方范围覆盖 49/49、6 个板块、15 个持仓、现金权重 5.07%，quality
+  `PASSED`。
+- 产物：`output/direct_github_release_20260809.log`、
+  `output/pipeline_results_20260809_133817.json`、
+  `output/submission_candidates/direct-20260809_133817`（均相对仓库根目录）。
+- 证据等级仅为 `PATH_PASSED`：direct 运行明确警告没有 Agent views，不能证明
+  正式三角色、8/8 Quant RPC 或角色权限边界。
+- fresh formal：`Not tested`；combined independent E2E：`Not tested`。当前 shell
+  没有安全的模型 credential，不复用或调用已经泄露的 key，也不为绕过该边界降低
+  正式运行门禁。
+
+这次 fresh direct 不降低或替代 2026-08-07 v2.15 formal 的
+`BUSINESS_PASSED` 历史锚，也不改变 `SubmissionContract` 的
+`PROVISIONAL / BLOCKED` 状态。
 
 ### v2.15 Windows 实现链
 

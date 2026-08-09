@@ -2,7 +2,7 @@
 
 华为 openJiuwen Track 2 参赛项目。系统在官方 49 家上市公司范围内完成行情获取、多因子分析、Alpha/Risk & Evidence 多 Agent 审查、选股、配仓、20 日回测和逐公司报告生成。
 
-> 当前代码候选为 **v2.15**：动态研究和正式稳定性代码门已形成 Mac 本地候选，开发协作已收敛为 Codex / Claude 两方；生产策略、报告等级和正式提交门仍按当前契约执行。v2.14 继续是最后一次已接受业务运行锚，v2.15 等待 Windows 正式复验。任何 direct/formal 的覆盖量、阶段完成度、资源消耗和独立审计结果都不得在说明文字中手工维护，只能由下方机器区块和 [VALIDATION.md](VALIDATION.md) 表达；下一阶段路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
+> 当前代码候选为 **v2.15**：Windows formal 与 E1P 数据能力已通过当前验收，开发协作已收敛为 Codex / Claude 两方；v2.14 direct/formal 继续作为历史锚，生产策略、报告等级和正式提交门仍按当前契约执行。任何 direct/formal 的覆盖量、阶段完成度、资源消耗和独立审计结果都不得在说明文字中手工维护，只能由下方机器区块和 [VALIDATION.md](VALIDATION.md) 表达；下一阶段路线见 [DEVELOPMENT_PLAN.md](DEVELOPMENT_PLAN.md)。
 
 <!-- BEGIN GENERATED VALIDATION SUMMARY -->
 > 本区块只能由 `generate_validation_summary.py --readme update` 根据绑定的运行与独立审计产物更新。

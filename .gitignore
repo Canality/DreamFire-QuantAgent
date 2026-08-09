@@ -27,6 +27,8 @@ jiuwenswarm/evaluation/latest_score.json
 参考项目/
 scripts/tmp_*
 .tmp-*
+/.codex/
+/codex-opencode-go.*
 
 # Sensitive
 *.env

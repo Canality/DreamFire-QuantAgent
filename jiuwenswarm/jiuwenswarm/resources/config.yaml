@@ -197,7 +197,7 @@ models:
   defaults:
     - model_client_config:
         api_base: https://api.deepseek.com
-        api_key: sk-e3f3e95edefd4538ae0ceae0548575db
+        api_key: ${API_KEY}
         model_name: deepseek-chat
         client_provider: OpenAI
         timeout: 1800
