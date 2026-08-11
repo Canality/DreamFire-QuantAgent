@@ -2,10 +2,10 @@
 
 | 字段 | 值 |
 |---|---|
-| 文档版本 | `2.4.0` |
+| 文档版本 | `2.6.0` |
 | 状态 | `ACTIVE` |
-| 更新日期 | 2026-08-07 |
-| 适用基线 | Git `1f84b01` 及后续提交 |
+| 更新日期 | 2026-08-11 |
+| 适用基线 | Git `4b96859` 及后续已验收提交 |
 | 计划与验收 | Codex |
 | 执行与开发 | Claude |
 | 运行事实源 | `VALIDATION.md` |
@@ -97,7 +97,7 @@ evidence-linked reports → direct / formal / E2E
 - WP1-E0 Registry、12 个趋势候选、E1 因子研究策略已 `LOCAL_IMPLEMENTED`。
 - WP1-E1P 五项数据能力全部 `AVAILABLE`（baostock corporate_action / qfq
   snapshot / forward_label + 赛题 sector + calendar），**CLOSED**。
-- E2 基线已冻结（6 槽位策略池），Claude 待实现；E3/E4 未开始。
+- E2A 六槽位注册表、E2B prior-only 相似市场核心和 E2C 确定性策略池历史回放均已 `LOCAL_IMPLEMENTED` 并通过 Codex 独立验收；T2 只获得研究候选资格，production 不变；E3 已建立只读定位契约，E4 未开始。
 - 完整报告仍缺 fundamental/news-risk 等 PIT 数据；正式提交契约仍阻塞。
 
 ## 5. 全局完成定义
@@ -137,7 +137,7 @@ token -91.3% ≥50%。111 聚焦测试通过。commit 链 `bbe728d..1f84b01`。
 
 ### WP1-E2：多 lookback 候选与相似市场
 
-状态：`BASELINE_FROZEN`（2026-08-07）。Claude 待实现。
+状态：`LOCAL_IMPLEMENTED / RESEARCH_ONLY`（E2A/E2B：2026-08-09；E2C：2026-08-11）。
 
 6 个槽位：
 
@@ -154,9 +154,16 @@ token -91.3% ≥50%。111 聚焦测试通过。commit 链 `bbe728d..1f84b01`。
 `(distance, decision_date, market_snapshot_hash)`；缺字段、MAD 为零或邻居不足
 只关闭相似分支，基础研究契约失败才硬回退 production。
 
+E2C 已使用准入的 49 股/6 板块 E0 qfq 和官方 v2 成熟标签完成 12 个不重叠窗口的
+确定性回放。`production_six_factor` 保持基线；`t2_comparator` 通过预注册门槛但仅为
+`QUALIFIED_RESEARCH_ONLY`；短/中/长趋势因少于 8 个可比窗口失败关闭；相似槽位因
+缺可信对齐 benchmark 记录 `BENCHMARK_UNAVAILABLE`。E0 无 volume 列，因此该结果
+不是实时含量路径的逐字段等价证据，也未改变 production。
+
 ### WP1-E3：有界 Agent 策略融合
 
-状态：`BLOCKED_BY_E2`。E2 完成后启动。
+状态：`DRAFT / READY_FOR_LOCATION`。任务 `WP1-E3-R1` 已建立；先只读定位，Codex
+接受 location 并冻结白名单后才能实现。
 
 - A0 纯确定性；A1 的 Alpha 单项调整 ≤±0.10、总 L1 ≤0.20；A2 的 Risk 只做
   非正调整，并在至少两个独立 PIT EvidenceRef 支持时否决最多一个非回退策略。
@@ -230,13 +237,13 @@ version/hash 后，才能适配正式格式和生成可称为正式提交的包�
 | M0 事实一致 | ✅ CLOSED — Windows 复验通过 |
 | M1 Agent 决策契约 | LOCAL_IMPLEMENTED，overlay 关闭 |
 | M2 公告证据 | LOCAL_IMPLEMENTED，待 E2E 复验 |
-| M3 动态研究 | E1P CLOSED，E2 基线冻结 |
+| M3 动态研究 | E1P CLOSED；E2 LOCAL_IMPLEMENTED；E3 DRAFT |
 | M4 正式稳定性 | ✅ CLOSED — Windows 三次 8/8，资源门全绿 |
 | M5 正式提交 | BLOCKED_EXTERNAL — 主办方书面 contract |
 
 ## 9. 当前执行顺序
 
-1. WP1-E2 实现（6 槽位策略池）→ E3 → E4
+1. WP1-E3 有界融合只读定位/冻结/实现/验收 → E4 完整 selector replay
 2. fundamental/news-risk 授权 source 到位后恢复 Provider
 3. 主办方答复后 WP2 正式包
 
@@ -244,6 +251,8 @@ version/hash 后，才能适配正式格式和生成可称为正式提交的包�
 
 | 版本 | 日期 | 作者 | 变更 |
 |---|---|---|---|
+| 2.6.0 | 2026-08-11 | Codex | WP1-E2C 确定性回放以 LOCAL_IMPLEMENTED 验收；T2 仅获研究候选资格；建立 WP1-E3-R1 有界融合只读定位契约 |
+| 2.5.0 | 2026-08-09 | Codex | WP1-E2A/E2B LOCAL_IMPLEMENTED 并验收；新增 E2C 真实历史策略池回放作为 E3 前置证据门 |
 | 2.4.0 | 2026-08-07 | Codex | WP1-D CLOSED（Windows 三次 8/8 资源门全绿）；WP1-E1P CLOSED（五项数据能力全部解封）；WP1-E2 基线冻结；M4 关闭 |
 | 2.3.0 | 2026-08-06 | Codex | 收敛为 Codex 计划/验收与 Claude 执行/开发的平等两方协作；把定位、实现、审查改为阶段；同步 WP0、WP1-D 和 WP1-E 当前路线，明确本地代码门、Windows 正式门和外部数据/契约 blocker |
 | 2.2.0 | 2026-08-05 | Codex | 完成 E1P official calendar 单项准入，其余能力保持失败关闭 |

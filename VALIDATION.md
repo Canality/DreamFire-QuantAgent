@@ -3,7 +3,7 @@
 > 本文件是项目可运行状态的唯一事实源。计划、README、Agent 身份和历史只能
 > 引用这里，不得把本地单测、旧 session 或设计目标改写成新的业务通过。
 
-## 结论（2026-08-09）
+## 结论（2026-08-11）
 
 | 对象 | 证据等级 | 当前结论 |
 |---|---|---|
@@ -20,11 +20,12 @@
 | WP1-D 全包 | BUSINESS_PASSED | 8 阶段状态机/20 次 replay/资源门/teardown/failure-guard 全部通过 Windows 三次 formal |
 | WP1-E0/E1 | LOCAL_IMPLEMENTED / RESEARCH_ONLY | 12 项 Factor Registry、稳定 implementation hash 和成熟标签因子研究策略已实现；没有真实完整 trust roots，不产生当前因子方向/权重，不接 production |
 | WP1-E1P Provider 准入 | BUSINESS_PASSED | 五项全部 AVAILABLE：E0 snapshot（baostock qfq）/ corporate action（baostock）/ forward label（604 日）/ sector（静态 6 板块）/ calendar（原有） |
-| WP1-E2 策略池 | 基线冻结 | 6 槽位已定义，Claude 待实现 |
+| WP1-E2 策略池 | LOCAL_IMPLEMENTED / RESEARCH_ONLY | E2A 六槽位不可变注册表与 E2B prior-only 六维相似市场选择器已通过 Codex 独立验收；真实对齐 benchmark 仍缺失，相似分支保持 `BENCHMARK_UNAVAILABLE`；未接 production |
+| WP1-E2C 策略池回放 | LOCAL_IMPLEMENTED / RESEARCH_ONLY | 2026-08-11 Windows 独立复跑 12 个不重叠成熟窗口并复现 artifact SHA-256；T2 通过预注册研究门，三类趋势因可比窗口不足失败关闭，相似市场因 benchmark 缺失失败关闭；production 未改变 |
 | PIT fundamental/news-risk | DATA_BLOCKED | fundamental grade 已失败关闭 generic fact；仍缺合法 structured historical source、版本/更正链和跨设备交付授权。news-risk 也未建立独立准入 |
 | 完整金融报告 | FINANCIAL_PARTIAL | 公告和技术证据可审计，但 fundamental/news-risk/宏观/另类数据不足，不能写 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 49/50、现金权重和报告作用仍需主办方可归档书面答复；不得生成或命名正式提交包 |
-| 开发协作治理 | LOCAL_IMPLEMENTED | Codex/Claude 两方平等协作；AGENTS.md 已记录 Windows 跨平台 5 陷阱 |
+| 开发协作治理 | LOCAL_IMPLEMENTED | Codex/Claude 两方平等协作；AGENTS.md 已记录 Windows 跨平台 5 陷阱；双 Stop Hook 本地文件桥接经 14 项聚焦测试和独立审查接受，不属于产品运行证据 |
 
 ## 证据边界
 
@@ -78,6 +79,16 @@ v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
 | `4187062` | OFFICIAL_FORWARD_LABEL 准入 |
 | `1f84b01` | PIT_SECTOR_STATIC_V1 准入 |
 
+### WP1-E2C 本地确定性策略池回放（2026-08-11）
+
+- 任务：`WP1-E2C-R1`；代码锚：`4b96859`；证据等级：`LOCAL_IMPLEMENTED / RESEARCH_ONLY`。
+- Windows 命令：`jiuwenswarm/.venv/Scripts/python.exe evaluation/strategy_pool_replay.py --out-dir ../output/agent_handoffs/WP1-E2C-R1/codex_replay`；退出码：`0`。
+- 输入：已准入 49 股/6 板块、E0 baostock qfq 快照、官方 v2 `decision+2 open → decision+21 close` 成熟标签；12 个不重叠窗口覆盖 `2025-01-14 → 2025-12-11`。
+- 产物：`output/agent_handoffs/WP1-E2C-R1/codex_replay/strategy_pool_replay.json`；独立复现 SHA-256 `b45fbaebb606f23af41734e133130920b2afb57834f2262297411db96f40e9f5`，逐窗口和整包 hash 可重算且篡改负测通过。
+- 结果：`production_six_factor=OK_BASELINE`；`t2_comparator=QUALIFIED_RESEARCH_ONLY`，中位收益差 `+0.7448%`、utility win rate `91.67%`、最近四窗 `4/4`，回撤门通过；短/中/长趋势均因 `<8` 个可比窗口 `DOES_NOT_QUALIFY_INSUFFICIENT_WINDOWS`；`similar_market_blend=BENCHMARK_UNAVAILABLE`。
+- 独立门禁：31 项聚焦测试、Ruff、py_compile、scope-check、`git diff --check` 和 artifact 重算均 exit `0`；完整裁决见 `output/agent_handoffs/WP1-E2C-R1/review.json`。
+- 边界：E0 归档没有 volume 列，production/T2 的 volume 因子在本回放中为中性；未运行 direct/formal/RPC/E2E，不提升为 `PATH_PASSED` 或 `BUSINESS_PASSED`，不构成 T2 生产晋级。
+
 ## 当前冻结状态
 
 - 生产策略：`production_six_factor`。
@@ -86,8 +97,10 @@ v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
 - Agent overlay：关闭。
 - 报告：`FINANCIAL_PARTIAL`。
 - SubmissionContract：`PROVISIONAL / BLOCKED`。
-- E2：基线冻结，Claude 待实现（6 槽位策略池）
-- E3/E4：未开始，依赖 E2 完成
+- E2A/E2B：`LOCAL_IMPLEMENTED / RESEARCH_ONLY`；六槽位注册与相似市场核心已验收，真实 benchmark 缺失时分支失败关闭
+- E2C：`LOCAL_IMPLEMENTED / RESEARCH_ONLY / CLOSED`；T2 仅获得 E3 研究候选资格，production 不变
+- E3：`DRAFT`；只读定位契约 `WP1-E3-R1` 已建立，尚未冻结实现白名单
+- E4：未开始，依赖 E3 的有界融合实现和独立验收
 - 开发协作：Codex/Claude 两方；金融运行时仍为三角色和 8 RPC
 
 ## 仍缺少什么
@@ -106,7 +119,7 @@ v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
 
 ## 下一阶段开始条件
 
-1. WP1-E2 实现完成后按 E2 → E3 → E4 分任务开发。
+1. 按 `WP1-E3-R1` 先完成只读定位和 Codex 范围冻结，再实现有界 Agent 策略融合；E3 独立验收后才启动 E4。
 2. fundamental/news-risk 只有授权 source 到位后才恢复 Provider 工作。
 3. 主办方答复归档并生成 contract version/hash 后才开始 WP2 正式包。
 4. 最终提交前在最终 commit、最终数据和 Windows 环境 fresh 重跑 direct/
@@ -117,4 +130,4 @@ v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
 - Git 跟踪源码、当前文档、官方材料、可复现实验、任务契约和版本 history。
 - `output/`、交付包、缓存、媒体和 `tmp/` 不提交；本轮未删除或改写用户 `tmp/`。
 - v2.13/v2.14 历史保持原样；v2.15 讨论已归档 `history/v2.15_2026-08-07_discussion.md`。
-- 未经用户明确授权不 push、tag。
+- commit/push 与版本边界由 Codex 按用户持续授权、门禁证据和任务契约自主裁定并记录；tag 和外部发布仍需单独授权。
