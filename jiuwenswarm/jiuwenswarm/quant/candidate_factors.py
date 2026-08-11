@@ -5,12 +5,13 @@ from __future__ import annotations
 import inspect
 import re
 import textwrap
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, time
 from math import sqrt
 from numbers import Real
 from types import CodeType
-from typing import Any, Callable, Sequence
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -25,7 +26,6 @@ from jiuwenswarm.quant.factor_registry import (
     validate_registry,
 )
 
-
 AVAILABLE = "AVAILABLE"
 INSUFFICIENT_HISTORY = "INSUFFICIENT_HISTORY"
 INVALID_PRICE_WINDOW = "INVALID_PRICE_WINDOW"
@@ -36,13 +36,18 @@ _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _DECISION_CLOSE = time(15, 0)
 _ENGINE_VERSION = "wp1-e0-trend-kernels/1.0.0"
 _CALENDAR_AUTHORITY = "SSE_SZSE_OFFICIAL_CALENDAR_ARCHIVE"
-_CORPORATE_ACTION_AUTHORITY = "PIT_CORPORATE_ACTION_ARCHIVE"
+_CORPORATE_ACTION_AUTHORITY = "BAOSTOCK_QUERY_DIVIDEND_DATA_OPERATE"
 _ACCEPTED_ADJUSTMENT_POLICIES = frozenset(
-    {"point_in_time_adjusted", "verified_no_action_window"}
+    {
+        "point_in_time_adjusted",
+        "verified_no_action_window",
+        "scale_invariant_qfq_retrospective",
+    }
 )
 _POLICY_RESULTS = {
     "point_in_time_adjusted": "POINT_IN_TIME_ADJUSTED",
     "verified_no_action_window": "NO_CORPORATE_ACTION_IN_WINDOW",
+    "scale_invariant_qfq_retrospective": "SCALE_INVARIANT_QFQ_RETROSPECTIVE",
 }
 _HASH_RE = re.compile(r"[0-9a-f]{64}")
 
@@ -82,16 +87,19 @@ class CalendarEvidence:
             self.source_sha256,
             "calendar evidence source_sha256",
         )
-        if self.calendar_id != "SSE_SZSE_CANONICAL":
-            raise FactorInputError("calendar_id must be SSE_SZSE_CANONICAL")
+        if self.calendar_id != "SSE_SZSE_A_SHARE_CONFIRMED_THROUGH_20260804":
+            raise FactorInputError(
+                "calendar_id must be SSE_SZSE_A_SHARE_CONFIRMED_THROUGH_20260804"
+            )
         try:
             bound_sessions = pd.DatetimeIndex(pd.to_datetime(list(self.sessions)))
         except (TypeError, ValueError) as exc:
             raise FactorInputError("calendar evidence sessions are invalid") from exc
         _validate_sessions(bound_sessions)
-        if not canonical_sessions.equals(bound_sessions):
+        if not _is_contiguous_slice(bound_sessions, canonical_sessions):
             raise FactorInputError(
-                "canonical sessions do not match archived calendar evidence"
+                "canonical sessions must be a contiguous slice of the archived "
+                "calendar evidence"
             )
         _require_trusted_evidence(
             kind="calendar",
@@ -104,15 +112,22 @@ class CalendarEvidence:
 
 @dataclass(frozen=True)
 class CorporateActionEvidence:
-    """Recomputable ticker/window binding to archived corporate-action results."""
+    """Recomputable ticker/window binding to archived corporate-action results.
+
+    ``archive_evidence_sha256`` is the provider-owned pinned operate archive hash
+    used for admission; ``evidence_hash`` is the typed canonical hash that binds
+    the window, policy, and the full per-window action projection.
+    """
 
     authority: str
     source_version: str
     source_sha256: str
+    archive_evidence_sha256: str
     policy: str
     window_start: str
     window_end: str
     ticker_results: tuple[tuple[str, str], ...]
+    in_window_actions: tuple[tuple[str, ...], ...] = ()
 
     @property
     def evidence_hash(self) -> str:
@@ -123,10 +138,12 @@ class CorporateActionEvidence:
             "authority": self.authority,
             "source_version": self.source_version,
             "source_sha256": self.source_sha256,
+            "archive_evidence_sha256": self.archive_evidence_sha256,
             "policy": self.policy,
             "window_start": self.window_start,
             "window_end": self.window_end,
             "ticker_results": [list(item) for item in self.ticker_results],
+            "in_window_actions": [list(item) for item in self.in_window_actions],
         }
 
     def validate(
@@ -148,6 +165,10 @@ class CorporateActionEvidence:
             self.source_sha256,
             "corporate-action evidence source_sha256",
         )
+        _validate_evidence_hash(
+            self.archive_evidence_sha256,
+            "corporate-action archive evidence sha256",
+        )
         if self.policy != adjustment_policy:
             raise FactorInputError(
                 "corporate-action evidence policy does not match input policy"
@@ -159,14 +180,16 @@ class CorporateActionEvidence:
             raise FactorInputError(
                 "corporate-action evidence window is invalid"
             ) from exc
+        exact_start = sessions[0].date().isoformat()
+        exact_end = sessions[-1].date().isoformat()
         if (
-            window_start != window_start.normalize()
+            self.window_start != exact_start
+            or self.window_end != exact_end
+            or window_start != window_start.normalize()
             or window_end != window_end.normalize()
-            or window_start > sessions[0]
-            or window_end < sessions[-1]
         ):
             raise FactorInputError(
-                "corporate-action evidence does not cover the input window"
+                "corporate-action evidence window must exactly cover the input window"
             )
         expected_tickers = tuple(sorted(tickers))
         result_tickers = tuple(item[0] for item in self.ticker_results)
@@ -179,12 +202,40 @@ class CorporateActionEvidence:
             raise FactorInputError(
                 "corporate-action evidence result does not satisfy policy"
             )
+        for action in self.in_window_actions:
+            if len(action) != 8 or action[0] not in expected_tickers:
+                raise FactorInputError(
+                    "corporate-action in-window action is malformed"
+                )
+            try:
+                action_date = pd.Timestamp(action[1]).normalize()
+            except (TypeError, ValueError) as exc:
+                raise FactorInputError(
+                    "corporate-action in-window action date is invalid"
+                ) from exc
+            if action_date < window_start or action_date > window_end:
+                raise FactorInputError(
+                    "corporate-action in-window action is outside the window"
+                )
+        try:
+            authoritative = factor_evidence_provider.operate_window_projection(
+                window_start=self.window_start,
+                window_end=self.window_end,
+                tickers=expected_tickers,
+            )
+        except ValueError as exc:
+            raise FactorInputError(str(exc)) from exc
+        if self.in_window_actions != authoritative:
+            raise FactorInputError(
+                "corporate-action in-window actions do not match the "
+                "authoritative operate projection"
+            )
         _require_trusted_evidence(
-            kind="corporate_action",
+            kind="corporate_action_operate",
             authority=self.authority,
             source_version=self.source_version,
             source_sha256=self.source_sha256,
-            evidence_hash=self.evidence_hash,
+            evidence_hash=self.archive_evidence_sha256,
         )
 
 
@@ -253,6 +304,7 @@ class FactorSnapshot:
     calendar_evidence_hash: str
     adjustment_policy: str
     corporate_action_evidence_hash: str
+    archive_evidence_sha256: str
     forecast_horizon: int
     registry_hash: str
     input_hash: str
@@ -269,6 +321,7 @@ class FactorSnapshot:
             "calendar_evidence_hash": self.calendar_evidence_hash,
             "adjustment_policy": self.adjustment_policy,
             "corporate_action_evidence_hash": self.corporate_action_evidence_hash,
+            "archive_evidence_sha256": self.archive_evidence_sha256,
             "forecast_horizon": self.forecast_horizon,
             "registry_hash": self.registry_hash,
             "input_hash": self.input_hash,
@@ -320,6 +373,29 @@ def _validate_sessions(sessions: Any) -> None:
         raise FactorInputError("canonical sessions must be normalized session dates")
     if bool((sessions.dayofweek >= 5).any()):
         raise FactorInputError("canonical sessions cannot contain weekends")
+
+
+def _is_contiguous_slice(
+    bound: pd.DatetimeIndex,
+    window: pd.DatetimeIndex,
+) -> bool:
+    """True iff ``window`` is a non-empty contiguous slice of ``bound``.
+
+    The window is located by its first and last sessions; a missing middle day,
+    an inserted non-session, a wrong order, or duplicates make the located slice
+    differ from the window, so the check fails.  This is not a suffix check and
+    not a generic subset check.
+    """
+
+    if len(window) == 0 or not isinstance(window, pd.DatetimeIndex):
+        return False
+    start_pos = bound.get_indexer([window[0]])
+    end_pos = bound.get_indexer([window[-1]])
+    if start_pos[0] < 0 or end_pos[0] < 0:
+        return False
+    start = int(start_pos[0])
+    end = int(end_pos[0])
+    return bound[start : end + 1].equals(window)
 
 
 def _validate_wide_closes(closes: Any) -> None:
@@ -585,6 +661,7 @@ def compute_trend_snapshot(
         "calendar_evidence_hash": calendar_evidence_hash,
         "adjustment_policy": inputs.adjustment_policy,
         "corporate_action_evidence_hash": corporate_action_evidence_hash,
+        "archive_evidence_sha256": factor_evidence_provider.E0_SNAPSHOT_CSV_SPEC.expected_sha256,
         "forecast_horizon": inputs.forecast_horizon,
         "registry_hash": current_registry_hash,
         "input_hash": input_hash,
@@ -598,6 +675,7 @@ def compute_trend_snapshot(
         calendar_evidence_hash=calendar_evidence_hash,
         adjustment_policy=inputs.adjustment_policy,
         corporate_action_evidence_hash=corporate_action_evidence_hash,
+        archive_evidence_sha256=factor_evidence_provider.E0_SNAPSHOT_CSV_SPEC.expected_sha256,
         forecast_horizon=inputs.forecast_horizon,
         registry_hash=current_registry_hash,
         input_hash=input_hash,

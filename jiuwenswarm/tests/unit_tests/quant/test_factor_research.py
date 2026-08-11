@@ -12,8 +12,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import pytest
-
-import jiuwenswarm.quant.factor_evidence_provider as factor_evidence_provider
+from jiuwenswarm.quant import factor_evidence_provider, research_evidence_loader
 from jiuwenswarm.quant.candidate_factors import AVAILABLE, FactorSnapshot
 from jiuwenswarm.quant.factor_registry import (
     FACTOR_REGISTRY,
@@ -30,7 +29,6 @@ from jiuwenswarm.quant.factor_research import (
     SectorMetadataEvidence,
     compute_factor_research_snapshot,
 )
-
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 TICKERS = tuple(f"T{index:03d}" for index in range(49))
@@ -63,6 +61,25 @@ def _test_only_trust_roots(monkeypatch: pytest.MonkeyPatch) -> None:
         factor_evidence_provider,
         "trusted_factor_snapshot_contains",
         TEST_TRUSTED_FACTOR_SNAPSHOTS.__contains__,
+    )
+    # Synthetic research-logic tests use fabricated snapshots/labels; the
+    # provider-backed projection verifiers are tested separately against real
+    # archives in test_research_evidence_loader, so this fixture isolates the
+    # research logic (rank-IC, thresholds) without weakening the trust gate.
+    monkeypatch.setattr(
+        research_evidence_loader,
+        "verify_factor_snapshot",
+        lambda snapshot: True,
+    )
+    monkeypatch.setattr(
+        research_evidence_loader,
+        "verify_forward_label",
+        lambda label: True,
+    )
+    monkeypatch.setattr(
+        research_evidence_loader,
+        "verify_sector_metadata",
+        lambda evidence: True,
     )
 
 
@@ -121,6 +138,7 @@ def _factor_snapshot(
         "calendar_evidence_hash": calendar_evidence_hash,
         "adjustment_policy": "point_in_time_adjusted",
         "corporate_action_evidence_hash": "b" * 64,
+        "archive_evidence_sha256": "a" * 64,
         "forecast_horizon": 20,
         "registry_hash": FACTOR_REGISTRY_HASH,
         "input_hash": input_hash,
@@ -133,6 +151,7 @@ def _factor_snapshot(
         calendar_evidence_hash=calendar_evidence_hash,
         adjustment_policy="point_in_time_adjusted",
         corporate_action_evidence_hash="b" * 64,
+        archive_evidence_sha256="a" * 64,
         forecast_horizon=20,
         registry_hash=FACTOR_REGISTRY_HASH,
         input_hash=input_hash,
@@ -158,6 +177,7 @@ def _replace_snapshot_frames(
         "calendar_evidence_hash": snapshot.calendar_evidence_hash,
         "adjustment_policy": snapshot.adjustment_policy,
         "corporate_action_evidence_hash": snapshot.corporate_action_evidence_hash,
+        "archive_evidence_sha256": snapshot.archive_evidence_sha256,
         "forecast_horizon": snapshot.forecast_horizon,
         "registry_hash": snapshot.registry_hash,
         "input_hash": snapshot.input_hash,
@@ -184,13 +204,17 @@ def _trust_evidence(
         | OfficialForwardLabel
     ),
 ) -> None:
+    if isinstance(evidence, (SectorMetadataEvidence, OfficialForwardLabel)):
+        evidence_hash = evidence.archive_evidence_sha256
+    else:
+        evidence_hash = evidence.evidence_hash
     TEST_TRUSTED_EVIDENCE_KEYS.add(
         (
             kind,
             evidence.authority,
             evidence.source_version,
             evidence.source_sha256,
-            evidence.evidence_hash,
+            evidence_hash,
         )
     )
 
@@ -200,6 +224,7 @@ def _sector_evidence(first_day: pd.Timestamp) -> SectorMetadataEvidence:
         authority="PIT_SECTOR_METADATA_ARCHIVE",
         source_version="test-sector/v1",
         source_sha256="c" * 64,
+        archive_evidence_sha256="c" * 64,
         effective_date=(first_day - pd.Timedelta(days=10)).date().isoformat(),
         observed_at=_aware(first_day - pd.Timedelta(days=5)).isoformat(),
         sectors=SECTORS,
@@ -246,6 +271,7 @@ def _label(
         authority="PIT_OFFICIAL_FORWARD_LABEL_ARCHIVE",
         source_version="test-label/v1",
         source_sha256="d" * 64,
+        archive_evidence_sha256="d" * 64,
         calendar_id="TEST_CANONICAL",
         calendar_evidence_hash=calendar_evidence_hash,
         decision_date=decision.date().isoformat(),
@@ -525,11 +551,17 @@ def test_arbitrary_evidence_and_constructed_factor_snapshots_are_rejected() -> N
             sector_evidence=sectors,
         )
 
-    TEST_TRUSTED_FACTOR_SNAPSHOTS.clear()
-    with pytest.raises(FactorResearchInputError, match="trusted E0 snapshot"):
+    fabricated = replace(
+        observations[0].factor_snapshot,
+        snapshot_hash="0" * 64,
+    )
+    with pytest.raises(FactorResearchInputError, match="not self-consistent"):
         compute_factor_research_snapshot(
             decision_time=decision_time,
-            observations=observations,
+            observations=(
+                replace(observations[0], factor_snapshot=fabricated),
+            )
+            + observations[1:],
             calendar_evidence=calendar,
             sector_evidence=sectors,
         )

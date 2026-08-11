@@ -7,8 +7,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 import pytest
-
-import jiuwenswarm.quant.factor_evidence_provider as factor_evidence_provider
+from jiuwenswarm.quant import factor_evidence_provider
 from jiuwenswarm.quant.candidate_factors import (
     AVAILABLE,
     INSUFFICIENT_HISTORY,
@@ -21,7 +20,6 @@ from jiuwenswarm.quant.candidate_factors import (
     compute_trend_snapshot,
 )
 from jiuwenswarm.quant.factor_registry import FACTOR_REGISTRY
-
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 EVIDENCE_HASH = "a" * 64
@@ -50,14 +48,19 @@ def _test_only_trusted_evidence_manifest(
 
 
 def _trust_for_test(evidence: CalendarEvidence | CorporateActionEvidence) -> None:
-    kind = "calendar" if isinstance(evidence, CalendarEvidence) else "corporate_action"
+    if isinstance(evidence, CalendarEvidence):
+        kind = "calendar"
+        evidence_hash = evidence.evidence_hash
+    else:
+        kind = "corporate_action_operate"
+        evidence_hash = evidence.archive_evidence_sha256
     TEST_TRUSTED_EVIDENCE_KEYS.add(
         (
             kind,
             evidence.authority,
             evidence.source_version,
             evidence.source_sha256,
-            evidence.evidence_hash,
+            evidence_hash,
         )
     )
 
@@ -90,22 +93,29 @@ def _input(
         authority="SSE_SZSE_OFFICIAL_CALENDAR_ARCHIVE",
         source_version="test-fixture/v1",
         source_sha256=EVIDENCE_HASH,
-        calendar_id="SSE_SZSE_CANONICAL",
+        calendar_id="SSE_SZSE_A_SHARE_CONFIRMED_THROUGH_20260804",
         sessions=tuple(pd.Timestamp(item).date().isoformat() for item in canonical),
     )
     expected_result = {
         "point_in_time_adjusted": "POINT_IN_TIME_ADJUSTED",
         "verified_no_action_window": "NO_CORPORATE_ACTION_IN_WINDOW",
+        "scale_invariant_qfq_retrospective": "SCALE_INVARIANT_QFQ_RETROSPECTIVE",
     }.get(adjustment_policy, "UNVERIFIED")
     corporate = corporate_action_evidence or CorporateActionEvidence(
-        authority="PIT_CORPORATE_ACTION_ARCHIVE",
+        authority="BAOSTOCK_QUERY_DIVIDEND_DATA_OPERATE",
         source_version="test-fixture/v1",
         source_sha256="b" * 64,
+        archive_evidence_sha256="c" * 64,
         policy=adjustment_policy,
         window_start=pd.Timestamp(canonical[0]).date().isoformat(),
         window_end=pd.Timestamp(canonical[-1]).date().isoformat(),
         ticker_results=tuple(
             (str(ticker), expected_result) for ticker in sorted(closes.columns)
+        ),
+        in_window_actions=factor_evidence_provider.operate_window_projection(
+            window_start=pd.Timestamp(canonical[0]).date().isoformat(),
+            window_end=pd.Timestamp(canonical[-1]).date().isoformat(),
+            tickers=tuple(sorted(str(t) for t in closes.columns)),
         ),
     )
     _trust_for_test(calendar)
@@ -213,7 +223,7 @@ def test_invalid_price_is_ticker_local_and_unavailable() -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("decision_time", datetime(2025, 1, 30, 15, 30), "timezone-aware"),
+        ("decision_time", datetime(2025, 1, 30, 15, 30), "timezone-aware"),  # noqa: DTZ001
         ("adjustment_policy", "raw_unadjusted", "corporate-action policy"),
         ("forecast_horizon", 5, "official forecast horizon"),
     ],

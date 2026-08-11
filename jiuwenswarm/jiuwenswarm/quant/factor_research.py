@@ -8,11 +8,12 @@ the public computation fails closed rather than accepting caller assertions.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time
 from enum import Enum
 from numbers import Real
-from typing import Any, Sequence
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -26,7 +27,6 @@ from jiuwenswarm.quant.factor_registry import (
     FactorDefinition,
     canonical_hash,
 )
-
 
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
 _DECISION_CLOSE = time(15, 0)
@@ -243,6 +243,7 @@ class SectorMetadataEvidence:
     authority: str
     source_version: str
     source_sha256: str
+    archive_evidence_sha256: str
     effective_date: str
     observed_at: str
     sectors: tuple[tuple[str, str], ...]
@@ -256,6 +257,7 @@ class SectorMetadataEvidence:
             "authority": self.authority,
             "source_version": self.source_version,
             "source_sha256": self.source_sha256,
+            "archive_evidence_sha256": self.archive_evidence_sha256,
             "effective_date": self.effective_date,
             "observed_at": self.observed_at,
             "sectors": [list(item) for item in self.sectors],
@@ -307,8 +309,16 @@ class SectorMetadataEvidence:
             authority=self.authority,
             source_version=self.source_version,
             source_sha256=self.source_sha256,
-            evidence_hash=self.evidence_hash,
+            evidence_hash=self.archive_evidence_sha256,
         )
+        from jiuwenswarm.quant import research_evidence_loader as _loader
+
+        try:
+            _loader.verify_sector_metadata(self)
+        except (ValueError, TypeError, RuntimeError) as exc:
+            raise FactorResearchInputError(
+                "sector metadata does not match the authoritative workbook projection"
+            ) from exc
         return tickers
 
 
@@ -344,6 +354,7 @@ class OfficialForwardLabel:
     authority: str
     source_version: str
     source_sha256: str
+    archive_evidence_sha256: str
     calendar_id: str
     calendar_evidence_hash: str
     decision_date: str
@@ -364,6 +375,7 @@ class OfficialForwardLabel:
             "authority": self.authority,
             "source_version": self.source_version,
             "source_sha256": self.source_sha256,
+            "archive_evidence_sha256": self.archive_evidence_sha256,
             "calendar_id": self.calendar_id,
             "calendar_evidence_hash": self.calendar_evidence_hash,
             "decision_date": self.decision_date,
@@ -457,8 +469,16 @@ class OfficialForwardLabel:
             authority=self.authority,
             source_version=self.source_version,
             source_sha256=self.source_sha256,
-            evidence_hash=self.evidence_hash,
+            evidence_hash=self.archive_evidence_sha256,
         )
+        from jiuwenswarm.quant import research_evidence_loader as _loader
+
+        try:
+            _loader.verify_forward_label(self)
+        except (ValueError, TypeError, RuntimeError) as exc:
+            raise FactorResearchInputError(
+                "forward label does not match the authoritative archive projection"
+            ) from exc
         returns = {
             ticker: (
                 None
@@ -554,10 +574,14 @@ def _validate_factor_snapshot(
         snapshot.to_dict()
     except (TypeError, ValueError) as exc:
         raise FactorResearchInputError("E0 factor snapshot is not self-consistent") from exc
-    if not factor_evidence_provider.trusted_factor_snapshot_contains(
-        snapshot.snapshot_hash
-    ):
-        raise FactorResearchInputError("factor observation lacks a trusted E0 snapshot")
+    from jiuwenswarm.quant import research_evidence_loader as _loader
+
+    try:
+        _loader.verify_factor_snapshot(snapshot)
+    except (ValueError, TypeError, RuntimeError) as exc:
+        raise FactorResearchInputError(
+            "factor observation lacks a trusted E0 snapshot"
+        ) from exc
     if snapshot.registry_hash != FACTOR_REGISTRY_HASH:
         raise FactorResearchInputError("factor snapshot registry hash mismatch")
     if snapshot.forecast_horizon != 20:
