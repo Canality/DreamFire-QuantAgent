@@ -2,9 +2,9 @@
 
 | 字段 | 值 |
 |---|---|
-| 文档版本 | `2.6.0` |
+| 文档版本 | `2.8.0` |
 | 状态 | `ACTIVE` |
-| 更新日期 | 2026-08-11 |
+| 更新日期 | 2026-08-13 |
 | 适用基线 | Git `4b96859` 及后续已验收提交 |
 | 计划与验收 | Codex |
 | 执行与开发 | Claude |
@@ -97,7 +97,7 @@ evidence-linked reports → direct / formal / E2E
 - WP1-E0 Registry、12 个趋势候选、E1 因子研究策略已 `LOCAL_IMPLEMENTED`。
 - WP1-E1P 五项数据能力全部 `AVAILABLE`（baostock corporate_action / qfq
   snapshot / forward_label + 赛题 sector + calendar），**CLOSED**。
-- E2A 六槽位注册表、E2B prior-only 相似市场核心和 E2C 确定性策略池历史回放均已 `LOCAL_IMPLEMENTED` 并通过 Codex 独立验收；T2 只获得研究候选资格，production 不变；E3 已建立只读定位契约，E4 未开始。
+- E2A 六槽位注册表、E2B prior-only 相似市场核心、E2C 确定性策略池历史回放和 E3 有界 Agent 融合均已 `LOCAL_IMPLEMENTED / RESEARCH_ONLY` 并通过 Codex 独立验收；T2 只获得研究候选资格，production 不变；E4 已冻结 contract v2 与 fresh baseline，状态 `READY_FOR_IMPLEMENTATION`.
 - 完整报告仍缺 fundamental/news-risk 等 PIT 数据；正式提交契约仍阻塞。
 
 ## 5. 全局完成定义
@@ -162,8 +162,8 @@ E2C 已使用准入的 49 股/6 板块 E0 qfq 和官方 v2 成熟标签完成 12
 
 ### WP1-E3：有界 Agent 策略融合
 
-状态：`DRAFT / READY_FOR_LOCATION`。任务 `WP1-E3-R1` 已建立；先只读定位，Codex
-接受 location 并冻结白名单后才能实现。
+状态：`LOCAL_IMPLEMENTED / RESEARCH_ONLY / CLOSED`（2026-08-12）。任务
+`WP1-E3-R1` 已完成定位、范围冻结、两轮 PIT 因果修正和 Codex 独立验收。
 
 - A0 纯确定性；A1 的 Alpha 单项调整 ≤±0.10、总 L1 ≤0.20；A2 的 Risk 只做
   非正调整，并在至少两个独立 PIT EvidenceRef 支持时否决最多一个非回退策略。
@@ -175,7 +175,7 @@ E2C 已使用准入的 49 股/6 板块 E0 qfq 和官方 v2 成熟标签完成 12
 
 ### WP1-E4：完整动态选择器回放
 
-状态：`BLOCKED_BY_E3`。
+状态：`READY_FOR_LOCATION`。E3 前置阻塞已解除；尚未建立 E4 实现基线或运行回放。
 
 - 每个历史决策日从零重建 registry、因子快照、成熟标签、变换器、邻居、候选、
   Agent 输入、融合、组合和官方 20 日结果。
@@ -237,13 +237,13 @@ version/hash 后，才能适配正式格式和生成可称为正式提交的包�
 | M0 事实一致 | ✅ CLOSED — Windows 复验通过 |
 | M1 Agent 决策契约 | LOCAL_IMPLEMENTED，overlay 关闭 |
 | M2 公告证据 | LOCAL_IMPLEMENTED，待 E2E 复验 |
-| M3 动态研究 | E1P CLOSED；E2 LOCAL_IMPLEMENTED；E3 DRAFT |
+| M3 动态研究 | E1P CLOSED；E2/E3 LOCAL_IMPLEMENTED；E4 READY_FOR_LOCATION |
 | M4 正式稳定性 | ✅ CLOSED — Windows 三次 8/8，资源门全绿 |
 | M5 正式提交 | BLOCKED_EXTERNAL — 主办方书面 contract |
 
 ## 9. 当前执行顺序
 
-1. WP1-E3 有界融合只读定位/冻结/实现/验收 → E4 完整 selector replay
+1. WP1-E4 完整 selector replay：只读定位 → 范围冻结 → 实现 → 独立验收
 2. fundamental/news-risk 授权 source 到位后恢复 Provider
 3. 主办方答复后 WP2 正式包
 
@@ -251,6 +251,7 @@ version/hash 后，才能适配正式格式和生成可称为正式提交的包�
 
 | 版本 | 日期 | 作者 | 变更 |
 |---|---|---|---|
+| 2.7.0 | 2026-08-12 | Codex | WP1-E3-R1 以 LOCAL_IMPLEMENTED / RESEARCH_ONLY 验收关闭；解除 E4 的 E3 前置阻塞，进入 READY_FOR_LOCATION |
 | 2.6.0 | 2026-08-11 | Codex | WP1-E2C 确定性回放以 LOCAL_IMPLEMENTED 验收；T2 仅获研究候选资格；建立 WP1-E3-R1 有界融合只读定位契约 |
 | 2.5.0 | 2026-08-09 | Codex | WP1-E2A/E2B LOCAL_IMPLEMENTED 并验收；新增 E2C 真实历史策略池回放作为 E3 前置证据门 |
 | 2.4.0 | 2026-08-07 | Codex | WP1-D CLOSED（Windows 三次 8/8 资源门全绿）；WP1-E1P CLOSED（五项数据能力全部解封）；WP1-E2 基线冻结；M4 关闭 |

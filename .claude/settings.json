@@ -13,11 +13,23 @@
       "Bash(curl:*)",
       "Bash(mkdir:*)",
       "Read(*)",
-      "Write(*/Track_2/**)",
       "Edit(*/Track_2/**)",
-      "Glob(*/Track_2/**)",
       "Grep(*/Track_2/**)",
       "WebFetch(domain:www.xir.cn)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && jiuwenswarm/.venv/Scripts/python.exe .claude/hooks/codex_bridge_stop.py",
+            "timeout": 21610,
+            "statusMessage": "Waiting for the local Codex handoff"
+          }
+        ]
+      }
     ]
   }
 }

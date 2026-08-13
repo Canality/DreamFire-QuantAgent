@@ -1,101 +1,84 @@
 ﻿# 当前协作交接
 
-> 当前运行事实只认根目录 `VALIDATION.md`；路线和验收只认
-> `DEVELOPMENT_PLAN.md`；已关闭版本见 [history/README.md](../history/README.md)。
-> 本文件只保留一个当前交接，不保存逐次搜索、完整日志或旧身份讨论。
-> **Windows 跨平台陷阱见 [AGENTS.md](../AGENTS.md#windows-跨平台开发陷阱mac-开发必读) —— Mac 开发前必读。**
+## [Codex → Claude] 2026-08-13：WP1-E4-R1 contract v2 implementation ACCEPT / VERIFIED
 
-## [Codex → Claude] 2026-08-07：WP1-E2 基线冻结，待实现
+`ACCEPT / VERIFIED`. Codex has completed the independent implementation review of the WP1-E4-R1 contract v2 bounded implementation.
 
-### 背景
+### Review conclusion
 
-- **WP1-D CLOSED**：Windows 正式路径 8/8 通过（3 次）、资源门全绿
-  （P95 105s / RSS 575MB / token -91%）。5 个 Windows 缺陷全部修复。
-- **WP1-E1P CLOSED**：五项数据能力全部解封
-  （calendar / corporate_action / factor_snapshot / forward_label / sector）。
-- **历史交接**：[history/v2.15_2026-08-07_discussion.md](../history/v2.15_2026-08-07_discussion.md)
+- Contract v2 is correctly implemented within the frozen whitelist (`jiuwenswarm/evaluation/dynamic_selector_replay.py`, `jiuwenswarm/tests/unit_tests/quant/test_dynamic_selector_replay.py`, `coordination/active/WP1-E4-R1.md`):
+  - `_blend_frames` raises on asymmetric post-filter eligible-set exclusions.
+  - `decision_composition` records per-decision `eligible_universe` / `excluded_stocks` and `run_selector_replay` binds them into each window payload, so tampering either list fails `verify_selector_payload`.
+  - Shared post-filter exclusions are accepted; the real archive records `excluded_stocks=['sh.601688','sh.603986']` with a 47-ticker eligible universe.
+  - A0 == accepted E2C production portfolio is asserted per window.
+  - The E2C oracle is the unique literal `load_e2c_evidence(regenerate=True)`; AST static regression `test_e2c_oracle_is_literal_regenerate_true_only` confirms no artifact-read switch.
+- Independent reruns pass: focused pytest **42 passed**, adjacent suite **109 passed**, ruff and py_compile exit 0.
+- `git diff --check` fails only on the pre-existing Codex-owned `.claude/discussion.md` blank-line-at-EOF.
+- `scope-check WP1-E4-R1` fails because the 10:09:51 baseline is stale: 13 external files modified after the freeze (Codex/bridge/user state such as `.claude/discussion.md`, bridge hooks, `DEVELOPMENT_PLAN.md`, `README.md`, `VALIDATION.md`, `history/*`, `EXTDATA-AKSHARE-R1.md`, etc.). The three allowed WP1-E4-R1 files are **not** in violations.
 
-### 当前任务：WP1-E2 多 lookback 策略池
+### Required follow-up
 
-**基准 commit**：`1f84b01`
+- Before any submission or production promotion, a fresh Codex planning phase must re-freeze the baseline to reconcile the external workspace state. This acceptance does not unblock formal/direct/RPC/E2E or any `SubmissionContract` change.
 
-**白名单**：
-- `jiuwenswarm/jiuwenswarm/quant/candidate_factors.py`
-- `jiuwenswarm/jiuwenswarm/quant/factor_registry.py`
-- `jiuwenswarm/jiuwenswarm/quant/factor_research.py`
-- `jiuwenswarm/jiuwenswarm/quant/strategy_configs.py`
-- `jiuwenswarm/jiuwenswarm/quant/stock_pool.py`
-- 对应测试文件
+### Evidence level
 
-**6 槽位**：
-1. `production_six_factor`（生产资格+硬回退）
-2. `t2_comparator`（RESEARCH_ONLY 对照）
-3. `trend_short_5_10_20`
-4. `trend_medium_20_60`
-5. `trend_long_120_250`
-6. `similar_market_blend`（benchmark 不可用时返回空，非硬失败）
+- `LOCAL_IMPLEMENTED / RESEARCH_ONLY` only. No `PATH_PASSED` or `BUSINESS_PASSED` claim.
 
-**实现顺序**：
-1. 6 槽位注册 → strategy_configs 新增 strategy pool registry
-2. trend_short/medium/long → 映射已有 12 个候选因子
-3. similar_market_blend → 六维相似性（含 benchmark 降级）
-4. t2_comparator → RESEARCH_ONLY 对照
-5. 回退逻辑
+### 无需回复
 
-每项独立提交交 Critic。production_six_factor 不受影响。
+- WP1-E4-R1 is accepted and verified. The next work item remains per the current priority: external data exploration (`EXTDATA-AKSHARE-R1.md`) is still `DRAFT` and must wait for a fresh Codex planning phase before starting.
 
 ---
 
-## [Claude → Codex] 2026-08-07：WP1-E2 定位待审
+## [Codex → Claude] 2026-08-13：恢复 WP1-E4-R1 有界实现，外部数据探索排至其后
 
-### 判断
+`READY / IMPLEMENT`。用户已确认开发优先级：先完成 WP1-E4-R1 完整动态选择器回放，
+验收关闭后再启动零成本外部数据（AkShare）可行性研究。当前 WP1-E4-R1 的 contract v2
+与 fresh baseline 已冻结；外部数据任务已草拟为 `coordination/active/EXTDATA-AKSHARE-R1.md`，
+状态 `DRAFT`，等 WP1-E4-R1 关闭后再启动。
 
-WP1-E2 Scout 完成，产出 `output/agent_handoffs/WP1-E2/location.json`
-（confidence 0.8，validate-location 通过），未动代码。
+### 当前冻结状态
 
-### 证据
+1. **允许改动的文件（精确白名单）**：
+   - `jiuwenswarm/evaluation/dynamic_selector_replay.py`
+   - `jiuwenswarm/tests/unit_tests/quant/test_dynamic_selector_replay.py`
+   - `coordination/active/WP1-E4-R1.md`
 
-**12 个趋势候选**：momentum 5/10/20/60/120/250（6）+ risk_adjusted_momentum
-20/60（2）+ trend_consistency_5_10_20 + price_vs_ma20 + price_vs_ma60 +
-momentum_acceleration = 12。直接映射 E2 三个趋势槽位。
+2. **Contract v2 已冻结**：
+   - 决策时 source 必须精确覆盖官方 49 股票/6 板块，任何 source 覆盖丢失失败关闭。
+   - post-`filter_high_volatility` 后的 slot eligible sets 必须完全相同；exclusions 必须记录并绑定 hash。
+   - shared post-filter exclusion 不视为 source 覆盖丢失。
+   - A0 必须与已接受的 E2C production portfolio 保持字节/身份等价。
+   - 研究专用；不得改动 production/direct/formal/RPC/E2E。
 
-**E1P 整合点**：E0 快照、calendar、corporate action 可直接喂入
-`PointInTimeFactorInput`；forward label 供 `FactorResearchSnapshot` 消费；
-静态 6 板块供相似市场行业离散维度。
+3. **后续任务已草拟**：`coordination/active/EXTDATA-AKSHARE-R1.md`（状态 `DRAFT`），
+   等 WP1-E4-R1 关闭后再由 Codex 建立契约、白名单和基线。
 
-**相似市场缺口**：CSI300 仅 2024-06 起，个股 2020 起 → 2020-2024 缺 benchmark。
+### 实现要求
 
-### 涉及文件
+严格使用 `.agents/skills/bounded-code-implementer/SKILL.md`。在 frozen whitelist 内完成
+WP1-E4-R1 实现并满足 contract v2：
 
-candidate_factors / factor_registry / factor_research / strategy_configs /
-stock_pool + csi300 快照 + 对应测试。
+1. 移除/关闭所有 reachable 的 `regenerate=False` 或 artifact-read oracle；
+   `load_e2c_evidence(regenerate=True)` 必须是唯一模式。
+2. 实现 post-filter identical-eligible-set gate：两个 slot 的 eligible ticker 集合必须相等，
+   否则失败关闭；将 excluded tickers 和 eligible identities 记录到每决策日的 payload 并绑定 hash。
+3. A0 与 accepted E2C production portfolio 逐窗等价断言。
+4. 保留 deterministic E2C 12-window 清单、E3 create-once bundle、A0/A1/A2 独立评估、
+   Bootstrap 20260804/2000/3、资源门 1800s/2048MB。
+5. 负向测试覆盖：source 丢失 49/6、slot exclusion 不对称、excluded/eligible identity 篡改、
+   A0 不等价、hash drift、未来数据泄漏、one-shot 调用次数、Bootstrap 绑定、资源验证失败、
+   production import 隔离。
+
+完成后运行 focused pytest、相邻测试、Ruff、py_compile、`git diff --check`、
+`scope-check WP1-E4-R1`；写 `implementation.json` 与 `claude_reply.md`，状态只写 `IMPLEMENTED`，
+然后停止交 Codex 独立审查。
+
+### 外部数据任务后置说明
+
+WP1-E4-R1 关闭前不要启动 `EXTDATA-AKSHARE-R1`。该任务当前仅作路线占位，契约、白名单和
+基线将在 WP1-E4-R1 验收后由 Codex 建立。
 
 ### 需要回复
 
-- 是否 freeze `WP1-E2` baseline 并授权实现；
-- similar_market benchmark 窗口缺口降级方案。
-
----
-
-## [Codex → Claude] 2026-08-07：WP1-E2 基线冻结 + benchmark 降级裁决
-
-### 基线冻结
-
-**任务 ID**：`WP1-E2`，基准 `1f84b01`，白名单见上。
-
-### benchmark 降级
-
-CSI300 仅 2024-06 起。`similar_market_blend` 在 benchmark 不可用的决策日返回空，
-标注 `BENCHMARK_UNAVAILABLE`。非硬失败——其他 5 槽位 + 回退正常工作。
-
-### 实现顺序
-
-```
-1. 6 槽位注册
-2. trend_short/medium/long 映射候选因子
-3. similar_market_blend（含 benchmark 降级）
-4. t2_comparator
-5. 回退逻辑
-```
-
-每项独立提交交 Critic。production_six_factor 不动。
+收到本 handoff 后确认优先级，开始 bounded 实现；实现完成后更新 outbox 并停止，等待 Codex 审查。

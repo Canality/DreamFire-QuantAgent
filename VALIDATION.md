@@ -3,7 +3,7 @@
 > 本文件是项目可运行状态的唯一事实源。计划、README、Agent 身份和历史只能
 > 引用这里，不得把本地单测、旧 session 或设计目标改写成新的业务通过。
 
-## 结论（2026-08-11）
+## 结论（2026-08-13）
 
 | 对象 | 证据等级 | 当前结论 |
 |---|---|---|
@@ -22,10 +22,11 @@
 | WP1-E1P Provider 准入 | BUSINESS_PASSED | 五项全部 AVAILABLE：E0 snapshot（baostock qfq）/ corporate action（baostock）/ forward label（604 日）/ sector（静态 6 板块）/ calendar（原有） |
 | WP1-E2 策略池 | LOCAL_IMPLEMENTED / RESEARCH_ONLY | E2A 六槽位不可变注册表与 E2B prior-only 六维相似市场选择器已通过 Codex 独立验收；真实对齐 benchmark 仍缺失，相似分支保持 `BENCHMARK_UNAVAILABLE`；未接 production |
 | WP1-E2C 策略池回放 | LOCAL_IMPLEMENTED / RESEARCH_ONLY | 2026-08-11 Windows 独立复跑 12 个不重叠成熟窗口并复现 artifact SHA-256；T2 通过预注册研究门，三类趋势因可比窗口不足失败关闭，相似市场因 benchmark 缺失失败关闭；production 未改变 |
+| WP1-E3 有界 Agent 融合 | LOCAL_IMPLEMENTED / RESEARCH_ONLY | `WP1-E3-R1` 已由 Codex 独立验收并关闭；fresh scope-check、61 项聚焦测试、107 项相邻测试、真实 PIT 前缀工件、Ruff 和差异检查均通过；未运行真实模型或 direct/formal/RPC/E2E，overlay 与 production 均未改变 |
 | PIT fundamental/news-risk | DATA_BLOCKED | fundamental grade 已失败关闭 generic fact；仍缺合法 structured historical source、版本/更正链和跨设备交付授权。news-risk 也未建立独立准入 |
 | 完整金融报告 | FINANCIAL_PARTIAL | 公告和技术证据可审计，但 fundamental/news-risk/宏观/另类数据不足，不能写 `FULL_REPORT_PASSED` |
 | 正式提交契约 | PROVISIONAL / BLOCKED | 49/50、现金权重和报告作用仍需主办方可归档书面答复；不得生成或命名正式提交包 |
-| 开发协作治理 | LOCAL_IMPLEMENTED | Codex/Claude 两方平等协作；AGENTS.md 已记录 Windows 跨平台 5 陷阱；双 Stop Hook 本地文件桥接经 14 项聚焦测试和独立审查接受，不属于产品运行证据 |
+| 开发协作治理 | LOCAL_IMPLEMENTED / BRIDGE_FIXED | Codex/Claude 两方平等协作；AGENTS.md 已记录 Windows 跨平台 5 陷阱；BRIDGE-OPS-5 已验收，Stop hook 默认 actionable + pending-record 跨进程耐久化，47 项聚焦测试通过；双 CLI 桥接不属于产品运行证据 |
 
 ## 证据边界
 
@@ -99,8 +100,8 @@ v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
 - SubmissionContract：`PROVISIONAL / BLOCKED`。
 - E2A/E2B：`LOCAL_IMPLEMENTED / RESEARCH_ONLY`；六槽位注册与相似市场核心已验收，真实 benchmark 缺失时分支失败关闭
 - E2C：`LOCAL_IMPLEMENTED / RESEARCH_ONLY / CLOSED`；T2 仅获得 E3 研究候选资格，production 不变
-- E3：`DRAFT`；只读定位契约 `WP1-E3-R1` 已建立，尚未冻结实现白名单
-- E4：未开始，依赖 E3 的有界融合实现和独立验收
+- E3：`LOCAL_IMPLEMENTED / RESEARCH_ONLY / CLOSED`；有界融合已验收，真实模型、production 和正式路径均未启用
+- E4：`READY_FOR_LOCATION`；E3 前置阻塞已解除，但完整动态选择器回放尚未开始
 - 开发协作：Codex/Claude 两方；金融运行时仍为三角色和 8 RPC
 
 ## 仍缺少什么
@@ -119,7 +120,7 @@ v2.14 锚 commit `89322cd` 仍为可回溯历史参考。
 
 ## 下一阶段开始条件
 
-1. 按 `WP1-E3-R1` 先完成只读定位和 Codex 范围冻结，再实现有界 Agent 策略融合；E3 独立验收后才启动 E4。
+1. 为 WP1-E4 建立新的只读定位契约；完成定位、范围冻结、实现和独立验收后，才形成完整动态选择器回放证据。
 2. fundamental/news-risk 只有授权 source 到位后才恢复 Provider 工作。
 3. 主办方答复归档并生成 contract version/hash 后才开始 WP2 正式包。
 4. 最终提交前在最终 commit、最终数据和 Windows 环境 fresh 重跑 direct/

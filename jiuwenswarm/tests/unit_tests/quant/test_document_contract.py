@@ -35,6 +35,7 @@ HISTORY_INDEX = PROJECT_ROOT / "history" / "README.md"
 HISTORY_V213 = PROJECT_ROOT / "history" / "v2.13_2026-07-30.md"
 HISTORY_V214 = PROJECT_ROOT / "history" / "v2.14_2026-08-05.md"
 HISTORY_V215 = PROJECT_ROOT / "history" / "v2.15_2026-08-06.md"
+HISTORY_V216 = PROJECT_ROOT / "history" / "v2.16_2026-08-13.md"
 
 ACTIVE_IDENTITY_FILES = (
     PROJECT_ROOT / "AGENTS.md",
@@ -195,7 +196,7 @@ def test_market_regime_vocabulary_remains_supported():
 
 def test_version_history_archive_contract():
     """Version history is complete, append-only, and separate from current truth."""
-    for path in (HISTORY_INDEX, HISTORY_V213, HISTORY_V214, HISTORY_V215):
+    for path in (HISTORY_INDEX, HISTORY_V213, HISTORY_V214, HISTORY_V215, HISTORY_V216):
         assert path.is_file(), f"missing version-history file: {path}"
 
     history_files = sorted(HISTORY_INDEX.parent.glob("v*.md"))
@@ -203,9 +204,13 @@ def test_version_history_archive_contract():
         "v2.13_2026-07-30.md",
         "v2.14_2026-08-05.md",
         "v2.15_2026-08-06.md",
+        "v2.15_2026-08-07.md",
+        "v2.15_2026-08-07_discussion.md",
+        "v2.16_2026-08-13.md",
+        "v2.16_2026-08-13_discussion.md",
     ]
     assert all(
-        re.fullmatch(r"v\d+\.\d+_\d{4}-\d{2}-\d{2}\.md", path.name)
+        re.fullmatch(r"v\d+\.\d+_\d{4}-\d{2}-\d{2}(_discussion)?\.md", path.name)
         for path in history_files
     )
 
@@ -242,6 +247,15 @@ def test_version_history_archive_contract():
     ):
         assert marker in v215
 
+    v216 = HISTORY_V216.read_text(encoding="utf-8")
+    for marker in (
+        "BRIDGE-OPS-5",
+        "Mac 交接文件已清理",
+        "WP1-E4-R1",
+        "v2.15 Windows 继续作为历史锚",
+    ):
+        assert marker in v216
+
     current_validation = VALIDATION.read_text(encoding="utf-8")
     assert not re.search(r"^### (?:-\d+|[0-4])\.", current_validation, re.MULTILINE)
     for marker in (
@@ -257,37 +271,13 @@ def test_version_history_archive_contract():
 
     current_discussion = DISCUSSION.read_text(encoding="utf-8")
     assert "双入口已接线，完整 E2E 仍失败" not in current_discussion
-    assert "v2.15 Mac 候选交接复验" in current_discussion
+    assert "v2.15 Mac 候选交接复验" not in current_discussion
     assert "v2.14 活动旧角色兼容清理待复验" not in current_discussion
-    ordered_v215_commits = (
-        "4a3d812",
-        "43559a4",
-        "9c16155",
-        "66e711c",
-        "6f54a70",
-        "e690455",
-        "5fb0ec6",
-        "dd38f34",
-        "3586ce0",
-        "775666f",
-        "8d00f54",
-        "5391cbb",
-        "921fe88",
-        "eb81ce5",
-        "0a32068",
-        "287f5e8",
-        "cf6017d",
-        "2a04f49",
-        "44acb51",
-        "6b6482e",
-        "f205967",
-    )
-    commit_chain = current_discussion.split(
-        "本轮需要按父子依赖顺序复验的提交：", maxsplit=1
-    )[1].split("此前已复制到 Windows：", maxsplit=1)[0]
-    commit_offsets = [commit_chain.index(commit) for commit in ordered_v215_commits]
-    assert commit_offsets == sorted(commit_offsets)
-    assert "TRACK2-V215-HANDOFF-0806" in current_discussion
+    assert "TRACK2-V215-HANDOFF-0806" not in current_discussion
+    # v2.16 current handoff should reference WP1-E4-R1 implementation and BRIDGE-OPS-5
+    assert "WP1-E4-R1" in current_discussion
+    assert "BRIDGE-OPS-5" in current_discussion or "BRIDGE" in current_discussion
+    assert "READY / IMPLEMENT" in current_discussion
 
     for identity_file in (
         PROJECT_ROOT / "AGENTS.md",
